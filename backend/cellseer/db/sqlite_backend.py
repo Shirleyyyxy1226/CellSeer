@@ -1,0 +1,306 @@
+"""
+SQLiteBackend — DBBackend implementation backed by the existing CellSeer SQLite schema.
+
+Storage model
+-------------
+- Cell metadata → `cell` table (one row per cell)
+- Time-series data → `dataset` table as Parquet-encoded BLOBs
+  (cell_id, name, data) — no files on disk, everything in one DB file
+
+Reading back is lazy: BLOB bytes → io.BytesIO → pl.read_parquet().lazy()
+"""
+from __future__ import annotations
+
+import io
+import json
+import sqlite3
+from pathlib import Path
+from typing import TYPE_CHECKING, Dict, List, Optional
+
+import polars as pl
+
+from cellseer.db.base import DBBackend
+from cellseer.metadata import CellMetadata
+from project_scope import DEFAULT_PROJECT_ID, ensure_project_exists, ensure_project_schema, normalize_project_id
+
+if TYPE_CHECKING:
+    from cellseer.cell import Cell
+    from cellseer.project import Project
+
+
+class SQLiteBackend(DBBackend):
+    """
+    Wraps an existing (or new) CellSeer SQLite database.
+
+    Parameters
+    ----------
+    db_path : Path | str
+        Path to the SQLite file. Created if it does not exist.
+    """
+
+    def __init__(self, db_path: Path | str) -> None:
+        self.db_path = Path(db_path)
+        self.project_id = DEFAULT_PROJECT_ID
+        self._ensure_schema()
+
+    def set_project_scope(self, project_id: str) -> "SQLiteBackend":
+        self.project_id = normalize_project_id(project_id)
+        conn = self._connect()
+        ensure_project_exists(conn, self.project_id)
+        conn.close()
+        return self
+
+    # ------------------------------------------------------------------
+    # Schema management
+    # ------------------------------------------------------------------
+
+    def _connect(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    def _ensure_schema(self) -> None:
+        schema_path = Path(__file__).resolve().parents[2] / "schema.sql"
+        conn = self._connect()
+        if schema_path.exists():
+            conn.executescript(schema_path.read_text())
+        ensure_project_schema(conn)
+        ensure_project_exists(conn, self.project_id)
+        conn.commit()
+        conn.close()
+
+    # ------------------------------------------------------------------
+    # DBBackend interface
+    # ------------------------------------------------------------------
+
+    def upsert_cell(self, cell: "Cell") -> None:
+        """
+        Write cell metadata and all datasets into the DB.
+
+        Metadata goes to the `cell` table; each dataset is collected,
+        encoded as Parquet bytes, and stored as a BLOB in the `dataset` table.
+        No files are written to disk.
+        """
+        m = cell.metadata
+        pid = normalize_project_id(getattr(self, "project_id", DEFAULT_PROJECT_ID))
+        conn = self._connect()
+        ensure_project_exists(conn, pid)
+
+        # 1. Upsert metadata row
+        conn.execute(
+            """
+            INSERT INTO cell (
+                project_id, cell_id, id_no, batch, category, cathode, cathode_diameter_mm,
+                anode, anode_diameter_mm, np_ratio, separator_type,
+                separator_diameter_mm, electrolyte, electrolyte_volume_ul,
+                spacer_mm, repeat, do_formation, do_ratetest, do_eis,
+                anode_mass, cathode_mass, notes
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(cell_id) DO UPDATE SET
+                project_id=excluded.project_id,
+                id_no=excluded.id_no, batch=excluded.batch,
+                category=excluded.category, cathode=excluded.cathode,
+                cathode_diameter_mm=excluded.cathode_diameter_mm,
+                anode=excluded.anode,
+                anode_diameter_mm=excluded.anode_diameter_mm,
+                np_ratio=excluded.np_ratio,
+                separator_type=excluded.separator_type,
+                separator_diameter_mm=excluded.separator_diameter_mm,
+                electrolyte=excluded.electrolyte,
+                electrolyte_volume_ul=excluded.electrolyte_volume_ul,
+                spacer_mm=excluded.spacer_mm, repeat=excluded.repeat,
+                do_formation=excluded.do_formation,
+                do_ratetest=excluded.do_ratetest, do_eis=excluded.do_eis,
+                anode_mass=excluded.anode_mass, cathode_mass=excluded.cathode_mass,
+                notes=excluded.notes
+            """,
+            (
+                pid, m.cell_id, m.id_no, m.batch, m.category,
+                m.cathode, m.cathode_diameter_mm,
+                m.anode, m.anode_diameter_mm, m.np_ratio,
+                m.separator_type, m.separator_diameter_mm,
+                m.electrolyte, m.electrolyte_volume_ul,
+                m.spacer_mm, m.repeat,
+                m.do_formation, m.do_ratetest, m.do_eis,
+                m.anode_mass_g, m.cathode_mass_g, m.notes,
+            ),
+        )
+
+        # 2. Write each dataset as a Parquet BLOB
+        for name, raw in cell.datasets.items():
+            buf = io.BytesIO()
+            raw.collect().write_parquet(buf, compression="lz4")
+            blob = buf.getvalue()
+            # Serialise protocol if present on CyclingData
+            from cellseer.data.cycling_data import CyclingData as _CyclingData
+            meta_json: Optional[str] = None
+            if isinstance(raw, _CyclingData) and raw.protocol is not None:
+                meta_json = json.dumps({"protocol": raw.protocol.to_list()})
+            conn.execute(
+                """
+                INSERT INTO dataset (project_id, cell_id, name, data, meta)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(cell_id, name) DO UPDATE SET
+                    project_id=excluded.project_id,
+                    data=excluded.data,
+                    meta=excluded.meta,
+                    created_at=datetime('now')
+                """,
+                (pid, m.cell_id, name, blob, meta_json),
+            )
+
+        conn.commit()
+        conn.close()
+
+    def load_cell(self, cell_id: str) -> "Cell":
+        """
+        Reconstruct a Cell from the DB.
+
+        Metadata is read from `cell`; each dataset BLOB is decoded from
+        Parquet bytes and wrapped in a LazyFrame — lazy until .data is called.
+        """
+        from cellseer.cell import Cell
+        from cellseer.data.cycling_data import CyclingData
+        from cellseer.data.result import Result as _Result
+
+        conn = self._connect()
+
+        pid = normalize_project_id(getattr(self, "project_id", DEFAULT_PROJECT_ID))
+        row = conn.execute(
+            "SELECT * FROM cell WHERE project_id = ? AND cell_id = ?", (pid, cell_id)
+        ).fetchone()
+        if row is None:
+            conn.close()
+            raise KeyError(f"Cell {cell_id!r} not found in {self.db_path}")
+
+        meta = _row_to_metadata(dict(row))
+        cell = Cell(metadata=meta)
+
+        ds_rows = conn.execute(
+            "SELECT name, data, meta FROM dataset WHERE project_id = ? AND cell_id = ?",
+            (pid, cell_id),
+        ).fetchall()
+        conn.close()
+
+        # cycling → CyclingData, everything else (dqdv, dvdq, future types) → Result
+        for ds_row in ds_rows:
+            name = ds_row["name"]
+            lf = pl.read_parquet(io.BytesIO(ds_row["data"])).lazy()
+            protocol = _parse_protocol_meta(ds_row["meta"] if "meta" in ds_row.keys() else None)
+            if name == "cycling":
+                try:
+                    cell.datasets[name] = CyclingData(lf=lf, info={"cell_id": cell_id}, protocol=protocol)
+                except Exception:
+                    cell.datasets[name] = _Result(lf=lf, info={"cell_id": cell_id})
+            else:
+                cell.datasets[name] = _Result(lf=lf, info={"cell_id": cell_id})
+
+        return cell
+
+    def list_cells(self) -> List[str]:
+        pid = normalize_project_id(getattr(self, "project_id", DEFAULT_PROJECT_ID))
+        conn = self._connect()
+        rows = conn.execute(
+            "SELECT cell_id FROM cell WHERE project_id = ? ORDER BY cell_id", (pid,)
+        ).fetchall()
+        conn.close()
+        return [r["cell_id"] for r in rows]
+
+    def load_project(self, project_name: str) -> "Project":
+        from cellseer.project import Project
+
+        self.set_project_scope(project_name)
+        project = Project(name=project_name)
+        for cell_id in self.list_cells():
+            try:
+                project.add_cell(self.load_cell(cell_id))
+            except Exception:
+                pass
+        return project
+
+    def get_annotation(self, id_no: int) -> dict:
+        pid = normalize_project_id(getattr(self, "project_id", DEFAULT_PROJECT_ID))
+        conn = self._connect()
+        row = conn.execute(
+            """
+            SELECT ca.note, ca.tags, ca.updated_at
+            FROM cell_annotation ca
+            JOIN cell c ON c.cell_id = ca.cell_id
+            WHERE c.project_id = ? AND c.id_no = ? AND ca.project_id = ?
+            """,
+            (pid, id_no, pid),
+        ).fetchone()
+        conn.close()
+        if row is None:
+            return {"note": None, "tags": [], "updatedAt": None}
+        return {
+            "note": row["note"],
+            "tags": json.loads(row["tags"]) if row["tags"] else [],
+            "updatedAt": row["updated_at"],
+        }
+
+    def log_ingest(
+        self,
+        cell_id: str,
+        filepaths: List[Path],
+        cycler: Optional[str] = None,
+        confidence: Optional[float] = None,
+    ) -> None:
+        """Append rows to ingest_log, one per file."""
+        pid = normalize_project_id(getattr(self, "project_id", DEFAULT_PROJECT_ID))
+        conn = self._connect()
+        for order, fp in enumerate(filepaths, start=1):
+            conn.execute(
+                """
+                INSERT INTO ingest_log (project_id, cell_id, filepath, file_order, cycler, confidence)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (pid, cell_id, str(fp), order, cycler, confidence),
+            )
+        conn.commit()
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Private helpers
+# ---------------------------------------------------------------------------
+
+def _parse_protocol_meta(meta_json: Optional[str]):
+    """Return a Protocol if meta_json contains one, else None."""
+    if not meta_json:
+        return None
+    try:
+        from cellseer.data.protocol import Protocol
+        data = json.loads(meta_json)
+        segments = data.get("protocol")
+        if segments:
+            return Protocol.from_dict_list(segments)
+    except Exception:
+        pass
+    return None
+
+
+def _row_to_metadata(row: dict) -> CellMetadata:
+    return CellMetadata(
+        cell_id=row["cell_id"],
+        id_no=row.get("id_no"),
+        batch=row.get("batch"),
+        category=row.get("category"),
+        cathode=row.get("cathode"),
+        cathode_diameter_mm=row.get("cathode_diameter_mm"),
+        anode=row.get("anode"),
+        anode_diameter_mm=row.get("anode_diameter_mm"),
+        np_ratio=row.get("np_ratio"),
+        separator_type=row.get("separator_type"),
+        separator_diameter_mm=row.get("separator_diameter_mm"),
+        electrolyte=row.get("electrolyte"),
+        electrolyte_volume_ul=row.get("electrolyte_volume_ul"),
+        spacer_mm=row.get("spacer_mm"),
+        repeat=row.get("repeat"),
+        do_formation=row.get("do_formation"),
+        do_ratetest=row.get("do_ratetest"),
+        do_eis=row.get("do_eis"),
+        anode_mass_g=row.get("anode_mass"),
+        cathode_mass_g=row.get("cathode_mass"),
+        notes=row.get("notes"),
+    )

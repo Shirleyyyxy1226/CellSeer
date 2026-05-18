@@ -1,0 +1,2 @@
+[console_scripts]
+cellseer = cellseer.cli:main

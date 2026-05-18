@@ -1,0 +1,11 @@
+Metadata-Version: 2.4
+Name: cellseer
+Version: 0.1.0
+Requires-Python: >=3.10
+Requires-Dist: polars>=0.20
+Requires-Dist: pydantic>=2.0
+Requires-Dist: openpyxl>=3.1
+Provides-Extra: pyprobe
+Requires-Dist: pyprobe; extra == "pyprobe"
+Provides-Extra: duckdb
+Requires-Dist: duckdb>=0.10; extra == "duckdb"
