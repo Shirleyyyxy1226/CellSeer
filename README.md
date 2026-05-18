@@ -54,6 +54,19 @@ Then open: [http://localhost:8080](http://localhost:8080)
 
 Frontend dev server proxies `/api` to `http://127.0.0.1:8000`.
 
+## Essential API endpoints
+
+| Area | Method | Endpoint | Description |
+|---|---|---|---|
+| Health | GET | `/api/health` | Verify backend is running |
+| Hierarchy | GET | `/api/hierarchy` | Load hierarchy tree data from DB |
+| Cells | GET | `/api/cell-record-index` | List available cells for dashboards |
+| Cells | GET | `/api/cell-record/{id_no}` | Get cycling curve data for one cell |
+| ICA / dVdQ | GET | `/api/cell-record/{id_no}/ica-dvq` | Get ICA and dV/dQ payload for one cell |
+| Upload | POST | `/api/upload` | Upload and ingest one file |
+| Upload | GET | `/api/upload/status/{task_id}` | Check upload task progress |
+| Projects | GET | `/api/projects` | List projects |
+
 ## Connect to database
 
 By default, backend reads:
@@ -67,13 +80,6 @@ export CELLSEER_DB_PATH="/absolute/path/to/your.db"
 python -m uvicorn backend.api:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-Optional path overrides:
-
-- `CELLSEER_PROJECT_ROOT`
-- `CELLSEER_PUBLIC_DIR`
-- `CELLSEER_DATA_DIR`
-
-(see `backend/config.py` for full defaults)
 
 ## If you already have your own DB
 
