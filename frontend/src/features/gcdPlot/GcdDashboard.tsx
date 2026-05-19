@@ -199,8 +199,16 @@ const GcdDashboard = ({
     }
     if (treeFilterPath.length > 0) {
       const matchedIdNos = matchPathToIdNos(treeFilterPath);
-      if (!matchedIdNos || matchedIdNos.size === 0) return [];
-      return filteredCells.filter((c) => matchedIdNos.has(c.idNo)).sort((a, b) => a.idNo - b.idNo);
+      if (matchedIdNos && matchedIdNos.size > 0) {
+        return filteredCells.filter((c) => matchedIdNos.has(c.idNo)).sort((a, b) => a.idNo - b.idNo);
+      }
+      // Leaf clicks set treeFilterPath but may not resolve via path match; honour explicit cell selection.
+      if (!multiselectionMode && selectedCellIds.length > 0) {
+        return filteredCells
+          .filter((c) => selectedCellIds.includes(c.idNo))
+          .sort((a, b) => a.idNo - b.idNo);
+      }
+      return [];
     }
     // Default when opening: show only the first cell
     return filteredCells.slice(0, 1);

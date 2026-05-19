@@ -81,7 +81,6 @@ src/
 | `npm run dev` | Start Vite dev server                  |
 | `npm run build` | Production build                     |
 | `npm run api` | Start FastAPI backend (port 8000)      |
-| `npm run export-rate` | Export rate-performance JSON   |
 | `npm run lint`| Run ESLint                            |
 
 ## Configuration

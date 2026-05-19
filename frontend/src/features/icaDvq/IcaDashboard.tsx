@@ -91,9 +91,15 @@ const IcaDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) =
     }
     if (treeFilterPath.length > 0) {
       const matchedIdNos = matchPathToIdNos(treeFilterPath);
-      if (!matchedIdNos || matchedIdNos.size === 0) return new Set<string>();
-      const treeIds = new Set(cells.filter((c) => matchedIdNos.has(c.idNo)).map((c) => c.cellId));
-      return new Set([...allIds].filter((id) => treeIds.has(id)));
+      if (matchedIdNos && matchedIdNos.size > 0) {
+        const treeIds = new Set(cells.filter((c) => matchedIdNos.has(c.idNo)).map((c) => c.cellId));
+        return new Set([...allIds].filter((id) => treeIds.has(id)));
+      }
+      if (!multiselectionMode && selectedCellIds.length > 0) {
+        const selIds = new Set(cells.filter((c) => selectedCellIds.includes(c.idNo)).map((c) => c.cellId));
+        return new Set([...allIds].filter((id) => selIds.has(id)));
+      }
+      return new Set<string>();
     }
     return allIds;
   }, [data?.cellData, cells, treeFilterPath, multiselectionMode, selectedCellIds, matchPathToIdNos]);

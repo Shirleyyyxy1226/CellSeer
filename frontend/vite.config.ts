@@ -18,17 +18,6 @@ export default defineConfig(({ mode }) => ({
       },
     },
   },
-  build: {
-    rollupOptions: {
-      input: {
-        main: path.resolve(__dirname, "index.html"),
-        treeStandalone: path.resolve(
-          __dirname,
-          "CoinCellAssemble_250Plan(Intial 40 cells)_tree.html",
-        ),
-      },
-    },
-  },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
   resolve: {
     alias: {

@@ -224,8 +224,9 @@ export function ProjectHierarchyProvider({ children }: { children: React.ReactNo
       rows.forEach((row) => {
         const ok = path.every(({ header, val }) => {
           let idx = resolvePathColumnIndex(headers, header);
+          // Leaf clicks use pseudo-header "Cell" with id_no as val (e.g. "194"), not the Repeat leaf column.
           if (idx < 0 && header.trim().toLowerCase() === 'cell') {
-            idx = leafCol;
+            idx = idNoCol >= 0 ? idNoCol : leafCol;
           }
           if (idx < 0) return false;
           return valueMatchesPathValue(String(row[idx] ?? ''), val);
