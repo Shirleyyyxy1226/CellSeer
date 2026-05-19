@@ -1,36 +1,35 @@
-# CellSeer
+# CellSeer Frontend
 
-Battery cell cycling visualization dashboard for Neware test data. View ICA (dQ/dV), dV/dQ, rate performance, GCD curves, and hierarchy-based filtering.
+Battery cell cycling visualization dashboard. View ICA (dQ/dV), dV/dQ, rate performance, GCD curves, and hierarchy-based filtering.
 
 ## Features
 
-- **ICA 3D** — Incremental capacity analysis across cycles and voltage
-- **dV/dQ 3D** — Differential voltage vs capacity
+- **ICA / dV/dQ** — Incremental capacity and differential voltage analysis
 - **Rate Performance** — Capacity vs C-rate
 - **GCD plot** — Voltage vs capacity (galvanostatic charge/discharge)
-- **Hierarchy Tree** — Cathode → Separator → Spacer → Cells filtering
-- **Multi-Factor** — Coulombic efficiency by chemistry / separator / spacer
+- **Hierarchy Tree** — Filter cells by metadata hierarchy
+- **Particle Master** — Overview plots with parallel coordinates
 
-Data is loaded from the backend API and precomputed JSON in `public/`.
+Data is loaded from the FastAPI backend (`/api/*`).
 
 ## Tech stack
 
-- **Vite** — Build tool
-- **React 18** + **TypeScript**
+- **Vite** + **React 18** + **TypeScript**
 - **Tailwind CSS** + **shadcn/ui**
-- **Plotly.js** — 3D and 2D charts
+- **Plotly.js** — 2D and 3D charts
 
 ## Quick start
 
 ### Prerequisites
 
 - Node.js 18+ and npm
-- Python 3.9+ (for backend)
+- Python 3.10+ (for backend; see repo root `README.md`)
 
 ### 1. Install dependencies
 
+From this directory:
+
 ```bash
-cd Untitled/plotly-storyteller
 npm install
 ```
 
@@ -42,17 +41,16 @@ npm run dev
 
 Open [http://localhost:8080](http://localhost:8080).
 
-### 3. Run the backend (optional)
+### 3. Run the backend
 
-For live ICA/dV/dQ and cell-record data from the database:
+From the **repository root** (in another terminal):
 
 ```bash
-# From project root
-cd ../..
+source .venv/bin/activate
 python -m uvicorn backend.api:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-Or use the npm script:
+Or from `frontend/`:
 
 ```bash
 npm run api
@@ -64,37 +62,32 @@ The dev server proxies `/api` to `http://127.0.0.1:8000`.
 
 ```
 src/
-├── components/       # UI components
-│   ├── panels/       # Tab panels (ICA3DPanel, DVQ3DPanel, etc.)
-│   ├── tree/         # HierarchyTreeSidebar, TreeViewFilterSidebar
+├── components/
+│   ├── tree/         # HierarchyEditor, TreeSvg, PublicTreeFilterSidebar
 │   └── ui/           # shadcn components
-├── hooks/            # useIcaDvqData, etc.
-├── lib/              # icaDvqUtils, ratePerfAggregation
-├── data/             # sampleData (fallback), sampleData
+├── contexts/         # ProjectHierarchy, TreeFilter, CellSelection
+├── features/         # Dashboards per tab (icaDvq, gcdPlot, ratePerformance, …)
+├── hooks/
+├── lib/              # analyseApi, treeUtils, plot helpers
 └── pages/            # Index (main app)
 ```
 
 ## Scripts
 
-| Command       | Description                            |
-|---------------|----------------------------------------|
-| `npm run dev` | Start Vite dev server                  |
-| `npm run build` | Production build                     |
-| `npm run api` | Start FastAPI backend (port 8000)      |
-| `npm run lint`| Run ESLint                            |
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start Vite dev server |
+| `npm run build` | Production build |
+| `npm run api` | Start FastAPI backend (port 8000) |
+| `npm run lint` | Run ESLint |
+| `npm run test` | Run Vitest |
 
 ## Configuration
 
-- **`VITE_DATA_BASE_URL`** — Base URL for data (e.g. S3/R2). Leave empty to use `public/`.
-- See `.env.example` and `S3_R2_SETUP.md` for production data hosting.
+Copy `.env.example` to `.env.local` if needed:
 
-## Backend
+- **`VITE_DATA_BASE_URL`** — Optional base URL for static JSON assets (CDN). Leave unset to use the API only.
 
-The backend (`backend/`) provides:
+## Backend API
 
-- `GET /api/cell-record/{id_no}/ica-dvq` — Precomputed ICA and dV/dQ per cycle
-- `GET /api/hierarchy` — DB-backed hierarchy payload (for Tree panel)
-- `POST /api/hierarchy/analyse` — Ad-hoc hierarchy analysis from tabular metadata
-- `GET /api/health` — Health check
-
-See `backend/README.md` for ingest, PyProBE setup, and database usage.
+The backend (`../backend/`) provides hierarchy, cell records, uploads, and annotations. See the [root README](../README.md) for setup, database path, and optional PyProBE ingest.

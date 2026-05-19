@@ -3,9 +3,8 @@ filters/base.py — Low-level numerical filter primitives shared by all filter c
 
 Why a separate base module?
 ---------------------------
-The four filter classes (Procedure, Experiment, Cycle, Step) share the same
-underlying slicing logic. Keeping that logic here avoids copy-paste across
-files and makes each filter class a thin wrapper.
+Shared slicing helpers used by analysis (e.g. ``cycle_summary``) and available
+for custom pipelines. :class:`CyclingData` implements the user-facing filter API.
 
 Key design
 ----------

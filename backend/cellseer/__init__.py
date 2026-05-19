@@ -36,9 +36,6 @@ from cellseer.data.cycling_data import CyclingData
 # Protocol (test schedule metadata)
 from cellseer.data.protocol import Protocol
 
-# Filters
-from cellseer.filters import Cycle, Step
-
 # Readers
 from cellseer.readers.cycling.cycler_reader import CyclerReader
 from cellseer.readers.cycling.neware_reader import NewareReader
@@ -65,8 +62,6 @@ __all__ = [
     "Result", "CyclingData",
     # Protocol
     "Protocol",
-    # Filters
-    "Cycle", "Step",
     # Readers
     "CyclerReader", "NewareReader", "BiologicReader", "ArbinReader", "detect_reader",
     "MetadataReader",

@@ -3,7 +3,7 @@
  * When a higher-level node is selected, show average traces per next-level group with matched colors.
  */
 
-import type { TreeFilterPath } from '@/components/tree/HierarchyTreeSidebar';
+import type { TreeFilterPath } from '@/components/tree/treeTypes';
 import { stringToColor, formatNodeLabel } from './treeUtils';
 import type { ColStats, LabelDecoration } from './treeUtils';
 

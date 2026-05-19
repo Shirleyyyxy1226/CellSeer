@@ -15,7 +15,7 @@ import {
   saveHierarchyOrder,
   type AnalyseResponse,
 } from '@/lib/analyseApi';
-import type { TreeFilterPath } from '@/components/tree/HierarchyTreeSidebar';
+import type { TreeFilterPath } from '@/components/tree/treeTypes';
 import type { ParsedCSV } from '@/lib/treeUtils';
 import { useDataRefresh } from '@/contexts/DataRefreshContext';
 

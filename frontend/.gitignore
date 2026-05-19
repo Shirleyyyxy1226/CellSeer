@@ -26,12 +26,7 @@ dist-ssr
 *.sln
 *.sw?
 
-# Large cycling files (keep metadata CSV, exclude raw data)
-data/newest/*
-!data/newest/.gitkeep
-
-# Large data files — regenerate with export scripts, store in S3/R2 for deploy
-# See ../DEPLOY.md and ../S3_R2_SETUP.md
+# Legacy static JSON exports (app uses /api; remove if you regenerate locally)
 public/cell-record.json
 public/cell-record/
 public/voltage-capacity.json

@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useState } from 'react';
-import type { TreeFilterPath } from '@/components/tree/HierarchyTreeSidebar';
+import type { TreeFilterPath } from '@/components/tree/treeTypes';
 
 interface TreeFilterContextValue {
   treeFilterPath: TreeFilterPath;
