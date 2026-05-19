@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional
 import polars as pl
 
 from cellseer.db.base import DBBackend
-from cellseer.metadata import CellMetadata
+from cellseer.analysis.metadata import CellMetadata
 from project_scope import DEFAULT_PROJECT_ID, ensure_project_exists, ensure_project_schema, normalize_project_id
 
 if TYPE_CHECKING:

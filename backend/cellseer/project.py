@@ -28,8 +28,9 @@ from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Union
 
 from pydantic import BaseModel, ConfigDict
 
+from cellseer.analysis.metadata import CellMetadata
 from cellseer.cell import Cell
-from cellseer.metadata import CellMetadata
+from cellseer.readers.metadata import read_metadata_rows
 
 if TYPE_CHECKING:
     from cellseer.db.base import DBBackend
@@ -88,19 +89,13 @@ class Project(BaseModel):
         """
         path = Path(path)
         name = project_name or path.stem
-
-        if path.suffix.lower() in (".xlsx", ".xls"):
-            rows = _read_excel(path, sheet_name)
-        elif path.suffix.lower() == ".csv":
-            rows = _read_csv(path)
-        else:
+        suffix = path.suffix.lower()
+        if suffix not in (".xlsx", ".xls", ".csv"):
             raise ValueError(f"Unsupported metadata file format: {path.suffix}")
 
+        rows = read_metadata_rows(path, sheet_name=sheet_name)
         project = cls(name=name)
         for row in rows:
-            cell_id = str(row.get("Cell_ID") or "").strip()
-            if not cell_id:
-                continue
             try:
                 meta = CellMetadata.from_dict(row)
                 project.add_cell(Cell(metadata=meta))
@@ -168,31 +163,3 @@ class Project(BaseModel):
 
     def __repr__(self) -> str:
         return f"Project(name={self.name!r}, n_cells={len(self)})"
-
-
-# ---------------------------------------------------------------------------
-# Private helpers
-# ---------------------------------------------------------------------------
-
-def _read_excel(path: Path, sheet_name: Optional[str]) -> List[Dict]:
-    try:
-        import polars as pl
-        kwargs = {"sheet_name": sheet_name} if sheet_name else {}
-        df = pl.read_excel(path, **kwargs)
-        return df.to_dicts()
-    except Exception:
-        # Fall back to openpyxl via pandas
-        import pandas as pd
-        kwargs = {"sheet_name": sheet_name or 0}
-        df = pd.read_excel(path, **kwargs)
-        return df.where(df.notna(), None).to_dict(orient="records")
-
-
-def _read_csv(path: Path) -> List[Dict]:
-    try:
-        import polars as pl
-        return pl.read_csv(path).to_dicts()
-    except Exception:
-        import pandas as pd
-        df = pd.read_csv(path)
-        return df.where(df.notna(), None).to_dict(orient="records")

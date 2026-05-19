@@ -25,7 +25,7 @@ summary = cycle_summary(cell.datasets["cycling"])
 from cellseer._version import __version__
 
 # Core objects
-from cellseer.metadata import CellMetadata
+from cellseer.analysis.metadata import CellMetadata
 from cellseer.cell import Cell
 from cellseer.project import Project
 
@@ -45,6 +45,7 @@ from cellseer.readers.cycling.neware_reader import NewareReader
 from cellseer.readers.cycling.biologic_reader import BiologicReader
 from cellseer.readers.cycling.arbin_reader import ArbinReader
 from cellseer.readers.cycling.detect import detect_reader
+from cellseer.readers.metadata import MetadataReader
 
 # Ingest helpers
 from cellseer.ingest import ingest_metadata, ingest_cycling_file
@@ -68,6 +69,7 @@ __all__ = [
     "Cycle", "Step",
     # Readers
     "CyclerReader", "NewareReader", "BiologicReader", "ArbinReader", "detect_reader",
+    "MetadataReader",
     # Ingest
     "ingest_metadata", "ingest_cycling_file",
     # DB

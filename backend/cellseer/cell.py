@@ -37,7 +37,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Union
 from pydantic import BaseModel, ConfigDict
 
 from cellseer.data.result import Result
-from cellseer.metadata import CellMetadata
+from cellseer.analysis.metadata import CellMetadata
 
 if TYPE_CHECKING:
     from cellseer.db.base import DBBackend
