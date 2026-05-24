@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from cellviz import ica_dashboard, ica_plot
+from cellviz import dqdv_dashboard, dqdv_plot
 from cellviz.io import CellData, load, load_many
 from cellviz.style import cell_color, cycle_fade_color
 
@@ -24,22 +24,22 @@ def _sample_df() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def test_ica_plot_3d_from_dataframe():
-    fig = ica_plot(_sample_df(), mode="3d")
+def test_dqdv_plot_3d_from_dataframe():
+    fig = dqdv_plot(_sample_df(), mode="3d")
     assert len(fig.data) == 2
     assert all(t.type == "scatter3d" for t in fig.data)
     assert fig.layout.scene.xaxis.range[0] > fig.layout.scene.xaxis.range[1]
 
 
-def test_ica_plot_charge_direction():
+def test_dqdv_plot_charge_direction():
     df = _sample_df().copy()
     df["Current [A]"] = 0.2
-    fig = ica_plot(df, mode="3d", direction="charge")
+    fig = dqdv_plot(df, mode="3d", direction="charge")
     assert len(fig.data) == 2
 
 
 def test_multi_input_map_labels():
-    fig = ica_plot({"A": _sample_df(), "B": _sample_df()}, mode="3d")
+    fig = dqdv_plot({"A": _sample_df(), "B": _sample_df()}, mode="3d")
     names = [t.name for t in fig.data if t.showlegend]
     assert any("A" in n for n in names)
     assert any("B" in n for n in names)
@@ -48,7 +48,7 @@ def test_multi_input_map_labels():
 def test_file_label_defaults_to_filename(tmp_path: Path):
     path = tmp_path / "cell_alpha.csv"
     _sample_df().to_csv(path, index=False)
-    fig = ica_plot(path, mode="3d")
+    fig = dqdv_plot(path, mode="3d")
     legend_names = [t.name for t in fig.data if t.showlegend]
     assert any("cell_alpha" in n for n in legend_names)
 
@@ -64,14 +64,14 @@ def test_load_cell_record_dict():
     assert loaded.label == "Record"
 
 
-def test_ica_plot_2d_mode():
-    fig = ica_plot(_sample_df(), mode="2d")
+def test_dqdv_plot_2d_mode():
+    fig = dqdv_plot(_sample_df(), mode="2d")
     assert len(fig.data) >= 2
     assert fig.layout.xaxis.title.text == "Voltage (V)"
 
 
 def test_dashboard_returns_composed_figure():
-    fig = ica_dashboard(_sample_df(), serve=False)
+    fig = dqdv_dashboard(_sample_df(), serve=False)
     assert len(fig.data) >= 2
 
 

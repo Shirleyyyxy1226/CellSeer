@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
-import { fetchCellRecordIndex, fetchIcaCells, fetchIcaDvq } from '@/lib/api';
+import { fetchCellRecordIndex, fetchDifferentialCells, fetchDifferential } from '@/lib/api';
 import { useDataRefresh } from '@/contexts/DataRefreshContext';
-import { interpolateOntoGrid, cellColor } from '@/lib/icaDvqUtils';
+import { interpolateOntoGrid, cellColor } from '@/lib/differentialUtils';
 
-export interface IcaDvqCellInfo {
+export interface DifferentialCellInfo {
   id: string;
   name: string;
   cathode: string;
@@ -12,26 +12,26 @@ export interface IcaDvqCellInfo {
   color: string;
 }
 
-export interface IcaCycleTrace {
+export interface DqDvCycleTrace {
   cycle: number;
   dqdv: number[];
 }
 
-export interface DvqCycleTrace {
+export interface DvDqCycleTrace {
   cycle: number;
   dvdq: number[];
 }
 
-export interface IcaData {
+export interface DqDvData {
   voltages: number[];
   cycles: number[];
-  cellData: { cell: IcaDvqCellInfo; cycleTraces: IcaCycleTrace[] }[];
+  cellData: { cell: DifferentialCellInfo; cycleTraces: DqDvCycleTrace[] }[];
 }
 
-export interface DvqData {
+export interface DvDqData {
   capacities: number[];
   cycles: number[];
-  cellData: { cell: IcaDvqCellInfo; cycleTraces: DvqCycleTrace[] }[];
+  cellData: { cell: DifferentialCellInfo; cycleTraces: DvDqCycleTrace[] }[];
 }
 
 interface VQCellIndex {
@@ -43,10 +43,10 @@ interface VQCellIndex {
   spacerMm: number | null;
 }
 
-interface IcaDvqApiResponse {
+interface DifferentialApiResponse {
   idNo: number;
   direction?: 'discharge' | 'charge';
-  cycles: Record<string, { ica: { v: number[]; dqdv: number[] }; dvq: { q: number[]; dvdq: number[] } }>;
+  cycles: Record<string, { dqdv: { v: number[]; dqdv: number[] }; dvdq: { q: number[]; dvdq: number[] } }>;
 }
 
 const MAX_CELLS_LOAD = 24;
@@ -80,23 +80,23 @@ function buildSharedGrid(values: number[], defaultMin: number, defaultMax: numbe
   return out.length >= 2 ? out : [min, max];
 }
 
-export function useIcaDvqData(
+export function useDifferentialData(
   cathodeFilter: string,
   spacerFilter: string,
   separatorFilter: string,
   direction: 'discharge' | 'charge' = 'discharge',
 ): {
-  icaData: IcaData | null;
-  dvqData: DvqData | null;
+  dqdvData: DqDvData | null;
+  dvdqData: DvDqData | null;
   cells: Array<{ idNo: number; cellId: string; cellName: string; cathode: string; separatorType: string; spacerMm: number | null }>;
   loading: boolean;
   error: string | null;
-  noIcaDvqHint: string | null;
+  noDifferentialHint: string | null;
 } {
   const { dataVersion } = useDataRefresh();
   const [cellIndex, setCellIndex] = useState<VQCellIndex[] | null>(null);
-  const [icaReadyIdNos, setIcaReadyIdNos] = useState<Set<number>>(new Set());
-  const [icaDvqByCell, setIcaDvqByCell] = useState<Map<number, IcaDvqApiResponse>>(new Map());
+  const [readyIdNos, setReadyIdNos] = useState<Set<number>>(new Set());
+  const [byCell, setByCell] = useState<Map<number, DifferentialApiResponse>>(new Map());
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -110,13 +110,13 @@ export function useIcaDvqData(
         return true;
       })
       .sort((a, b) => {
-        const aReady = icaReadyIdNos.has(a.idNo) ? 1 : 0;
-        const bReady = icaReadyIdNos.has(b.idNo) ? 1 : 0;
+        const aReady = readyIdNos.has(a.idNo) ? 1 : 0;
+        const bReady = readyIdNos.has(b.idNo) ? 1 : 0;
         if (aReady !== bReady) return bReady - aReady;
         return a.idNo - b.idNo;
       })
       .slice(0, MAX_CELLS_LOAD);
-  }, [cellIndex, cathodeFilter, separatorFilter, spacerFilter, icaReadyIdNos]);
+  }, [cellIndex, cathodeFilter, separatorFilter, spacerFilter, readyIdNos]);
 
   useEffect(() => {
     setLoadError(null);
@@ -125,7 +125,7 @@ export function useIcaDvqData(
       .then((d) => {
         if (d.cells.length) {
           setCellIndex(d.cells as VQCellIndex[]);
-          setIcaDvqByCell(new Map());
+          setByCell(new Map());
           setLoadError(null);
         } else {
           setCellIndex(null);
@@ -142,14 +142,14 @@ export function useIcaDvqData(
 
   useEffect(() => {
     let cancelled = false;
-    fetchIcaCells(direction)
+    fetchDifferentialCells(direction)
       .then((d) => {
         if (!cancelled) {
-          setIcaReadyIdNos(new Set((d.idNos ?? []).map((n) => Number(n)).filter((n) => Number.isFinite(n))));
+          setReadyIdNos(new Set((d.idNos ?? []).map((n) => Number(n)).filter((n) => Number.isFinite(n))));
         }
       })
       .catch(() => {
-        if (!cancelled) setIcaReadyIdNos(new Set());
+        if (!cancelled) setReadyIdNos(new Set());
       });
     return () => {
       cancelled = true;
@@ -158,17 +158,17 @@ export function useIcaDvqData(
 
   useEffect(() => {
     if (!filteredCells.length) {
-      setIcaDvqByCell(new Map());
+      setByCell(new Map());
       return;
     }
     const aborted = { current: false };
-    setIcaDvqByCell(new Map());
+    setByCell(new Map());
     const fetchAll = async () => {
       const results = await Promise.all(
         filteredCells.map(async (cell) => {
           if (aborted.current) return null;
           try {
-            const data = await fetchIcaDvq(cell.idNo, direction) as IcaDvqApiResponse;
+            const data = await fetchDifferential(cell.idNo, direction) as DifferentialApiResponse;
             if (data?.cycles && Object.keys(data.cycles).length > 0) {
               return { idNo: cell.idNo, data } as const;
             }
@@ -179,11 +179,11 @@ export function useIcaDvqData(
         })
       );
       if (aborted.current) return;
-      const map = new Map<number, IcaDvqApiResponse>();
+      const map = new Map<number, DifferentialApiResponse>();
       for (const entry of results) {
         if (entry) map.set(entry.idNo, entry.data);
       }
-      setIcaDvqByCell(map);
+      setByCell(map);
     };
     fetchAll();
     return () => {
@@ -191,37 +191,37 @@ export function useIcaDvqData(
     };
   }, [filteredCells, direction]);
 
-  const { icaData, dvqData } = useMemo(() => {
-    if (!cellIndex || icaDvqByCell.size === 0) return { icaData: null, dvqData: null };
+  const { dqdvData, dvdqData } = useMemo(() => {
+    if (!cellIndex || byCell.size === 0) return { dqdvData: null, dvdqData: null };
 
     const allV: number[] = [];
     const allQ: number[] = [];
     const allCycles = new Set<number>();
 
-    for (const [, resp] of icaDvqByCell) {
+    for (const [, resp] of byCell) {
       for (const cycStr of Object.keys(resp.cycles)) {
         const d = resp.cycles[cycStr];
-        if (!d?.ica || !d?.dvq) continue;
+        if (!d?.dqdv || !d?.dvdq) continue;
         const cyc = parseInt(cycStr, 10);
         if (isNaN(cyc)) continue;
         allCycles.add(cyc);
-        if (d.ica.v) for (let i = 0; i < d.ica.v.length; i++) allV.push(d.ica.v[i]);
-        if (d.dvq.q) for (let i = 0; i < d.dvq.q.length; i++) allQ.push(d.dvq.q[i]);
+        if (d.dqdv.v) for (let i = 0; i < d.dqdv.v.length; i++) allV.push(d.dqdv.v[i]);
+        if (d.dvdq.q) for (let i = 0; i < d.dvdq.q.length; i++) allQ.push(d.dvdq.q[i]);
       }
     }
 
     const vGrid = buildSharedGrid(allV, 2.5, 4.3, 0.002);
     const qGrid = buildSharedGrid(allQ, 0, 0.01, 0.0001);
 
-    const icaCellData: IcaData['cellData'] = [];
-    const dvqCellData: DvqData['cellData'] = [];
+    const dqdvCellData: DqDvData['cellData'] = [];
+    const dvdqCellData: DvDqData['cellData'] = [];
 
     let idx = 0;
     for (const cell of filteredCells) {
-      const resp = icaDvqByCell.get(cell.idNo);
+      const resp = byCell.get(cell.idNo);
       if (!resp?.cycles) continue;
 
-      const cellInfo: IcaDvqCellInfo = {
+      const cellInfo: DifferentialCellInfo = {
         id: cell.cellId,
         name: cell.cellName,
         cathode: cell.cathode,
@@ -237,49 +237,49 @@ export function useIcaDvqData(
         .sort((a, b) => a - b)
         .slice(0, MAX_CYCLES_PER_CELL);
 
-      const icaTraces: IcaCycleTrace[] = [];
-      const dvqTraces: DvqCycleTrace[] = [];
+      const dqdvTraces: DqDvCycleTrace[] = [];
+      const dvdqTraces: DvDqCycleTrace[] = [];
 
       for (const cyc of cycleKeys) {
         const d = resp.cycles[String(cyc)];
-        if (!d?.ica || !d?.dvq) continue;
-        if (d.ica.v.length < 2 || d.ica.dqdv.length < 2) continue;
-        if (d.dvq.q.length < 2 || d.dvq.dvdq.length < 2) continue;
+        if (!d?.dqdv || !d?.dvdq) continue;
+        if (d.dqdv.v.length < 2 || d.dqdv.dqdv.length < 2) continue;
+        if (d.dvdq.q.length < 2 || d.dvdq.dvdq.length < 2) continue;
 
-        icaTraces.push({
+        dqdvTraces.push({
           cycle: cyc,
-          dqdv: interpolateOntoGrid(d.ica.v, d.ica.dqdv, vGrid, 0),
+          dqdv: interpolateOntoGrid(d.dqdv.v, d.dqdv.dqdv, vGrid, 0),
         });
-        dvqTraces.push({
+        dvdqTraces.push({
           cycle: cyc,
-          dvdq: interpolateOntoGrid(d.dvq.q, d.dvq.dvdq, qGrid, 0.1),
+          dvdq: interpolateOntoGrid(d.dvdq.q, d.dvdq.dvdq, qGrid, 0.1),
         });
       }
 
-      if (icaTraces.length > 0) icaCellData.push({ cell: cellInfo, cycleTraces: icaTraces });
-      if (dvqTraces.length > 0) dvqCellData.push({ cell: cellInfo, cycleTraces: dvqTraces });
+      if (dqdvTraces.length > 0) dqdvCellData.push({ cell: cellInfo, cycleTraces: dqdvTraces });
+      if (dvdqTraces.length > 0) dvdqCellData.push({ cell: cellInfo, cycleTraces: dvdqTraces });
     }
 
     const cycles = Array.from(allCycles).sort((a, b) => a - b);
     return {
-      icaData:
-        icaCellData.length > 0 ? { voltages: vGrid, cycles, cellData: icaCellData } : null,
-      dvqData:
-        dvqCellData.length > 0 ? { capacities: qGrid, cycles, cellData: dvqCellData } : null,
+      dqdvData:
+        dqdvCellData.length > 0 ? { voltages: vGrid, cycles, cellData: dqdvCellData } : null,
+      dvdqData:
+        dvdqCellData.length > 0 ? { capacities: qGrid, cycles, cellData: dvdqCellData } : null,
     };
-  }, [cellIndex, filteredCells, icaDvqByCell]);
+  }, [cellIndex, filteredCells, byCell]);
 
-  const noIcaDvqHint =
-    !loading && !loadError && cellIndex?.length && !icaData
-      ? `No ICA/DVQ found for the currently visible cells (${direction}). Upload cycling data for these cells (or regenerate dQ/dV + dV/dQ datasets) and ensure backend API is running.`
+  const noDifferentialHint =
+    !loading && !loadError && cellIndex?.length && !dqdvData
+      ? `No dQ/dV or dV/dQ found for the currently visible cells (${direction}). Upload cycling data for these cells (or regenerate dQ/dV + dV/dQ datasets) and ensure backend API is running.`
       : null;
 
   return {
-    icaData: icaData ?? null,
-    dvqData: dvqData ?? null,
+    dqdvData: dqdvData ?? null,
+    dvdqData: dvdqData ?? null,
     cells: filteredCells,
     loading,
     error: loadError,
-    noIcaDvqHint,
+    noDifferentialHint,
   };
 }

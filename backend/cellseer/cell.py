@@ -223,18 +223,18 @@ class Cell(BaseModel):
             )
 
         if not dqdv_frames or not dvdq_frames:
-            # Make missing ICA/DVQ explicit instead of silently succeeding with cycling-only data.
+            # Make missing dQ/dV or dV/dQ explicit instead of silently succeeding with cycling-only data.
             if cycle_failures:
                 details = "; ".join(
                     [f"cycle {c}: {msg}" for c, msg in cycle_failures[:6]]
                 )
                 more = f" (+{len(cycle_failures) - 6} more)" if len(cycle_failures) > 6 else ""
                 raise ValueError(
-                    f"Unable to generate ICA/DVQ from dataset '{cycling_dataset}'. "
+                    f"Unable to generate dQ/dV or dV/dQ from dataset '{cycling_dataset}'. "
                     f"Direction '{direction}'. Failed cycles: {details}{more}"
                 )
             raise ValueError(
-                f"Unable to generate ICA/DVQ from dataset '{cycling_dataset}' "
+                f"Unable to generate dQ/dV or dV/dQ from dataset '{cycling_dataset}' "
                 f"(direction '{direction}', no valid cycle traces)."
             )
         return self

@@ -1,4 +1,4 @@
-import type { Dataset, IcaCyclePoint } from '../types';
+import type { Dataset, DqDvCyclePoint } from '../types';
 
 export interface CellRecordLike {
   id?: string;
@@ -8,16 +8,16 @@ export interface CellRecordLike {
   name?: string;
   color?: string;
   cycles?: unknown;
-  ica?: unknown;
+  dqdv?: unknown;
 }
 
 export type DatasetInput = Dataset | CellRecordLike;
 export type DatasetsInput = DatasetInput | DatasetInput[] | Record<string, DatasetInput>;
 
-function hasCurves(input: unknown): input is { cycles?: unknown; ica?: unknown } {
+function hasCurves(input: unknown): input is { cycles?: unknown; dqdv?: unknown } {
   if (!input || typeof input !== 'object') return false;
   const obj = input as Record<string, unknown>;
-  return Array.isArray(obj.cycles) || typeof obj.ica === 'object';
+  return Array.isArray(obj.cycles) || typeof obj.dqdv === 'object';
 }
 
 function looksLikeRecord(input: unknown): input is DatasetInput {
@@ -33,7 +33,7 @@ function looksLikeRecord(input: unknown): input is DatasetInput {
   );
 }
 
-function toIcaCycles(cycles: unknown): IcaCyclePoint[] {
+function toDqDvCycles(cycles: unknown): DqDvCyclePoint[] {
   if (!Array.isArray(cycles)) return [];
   return cycles
     .map((entry) => {
@@ -53,18 +53,18 @@ function toIcaCycles(cycles: unknown): IcaCyclePoint[] {
       if (!Number.isFinite(cycle) || v.length === 0 || dqdv.length === 0) return null;
       return { cycle, v, dqdv };
     })
-    .filter((point): point is IcaCyclePoint => point !== null);
+    .filter((point): point is DqDvCyclePoint => point !== null);
 }
 
 function toCycles(input: CellRecordLike): Dataset['cycles'] {
-  const directCycles = toIcaCycles(input.cycles);
+  const directCycles = toDqDvCycles(input.cycles);
   if (directCycles.length > 0) {
     return directCycles.map((c) => ({ cycle: c.cycle, x: c.v, y: c.dqdv }));
   }
 
-  if (!input.ica || typeof input.ica !== 'object') return [];
+  if (!input.dqdv || typeof input.dqdv !== 'object') return [];
   const out: Dataset['cycles'] = [];
-  for (const [cycleKey, value] of Object.entries(input.ica as Record<string, unknown>)) {
+  for (const [cycleKey, value] of Object.entries(input.dqdv as Record<string, unknown>)) {
     if (!value || typeof value !== 'object') continue;
     const row = value as Record<string, unknown>;
     const cycle = Number(cycleKey);

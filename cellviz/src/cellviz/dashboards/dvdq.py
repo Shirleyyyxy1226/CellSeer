@@ -5,7 +5,7 @@ from typing import Any, Literal
 from plotly.subplots import make_subplots
 
 from ..io import CyclerName
-from ..plots.ica import ica_plot
+from ..plots.dvdq import dvdq_plot
 
 
 Direction = Literal["discharge", "charge"]
@@ -18,13 +18,13 @@ def _figure(
     direction: Direction,
     cycler: CyclerName,
 ):
-    fig3d = ica_plot(data, labels=labels, cycles=cycles, mode="3d", direction=direction, cycler=cycler)
-    fig2d = ica_plot(data, labels=labels, cycles=cycles, mode="2d", direction=direction, cycler=cycler)
+    fig3d = dvdq_plot(data, labels=labels, cycles=cycles, mode="3d", direction=direction, cycler=cycler)
+    fig2d = dvdq_plot(data, labels=labels, cycles=cycles, mode="2d", direction=direction, cycler=cycler)
     combined = make_subplots(
         rows=1,
         cols=2,
         specs=[[{"type": "scene"}, {"type": "xy"}]],
-        subplot_titles=("ICA 3D", "ICA 2D"),
+        subplot_titles=("dV/dQ 3D", "dV/dQ 2D"),
     )
     for tr in fig3d.data:
         combined.add_trace(tr, row=1, col=1)
@@ -34,7 +34,7 @@ def _figure(
     return combined
 
 
-def ica_dashboard(
+def dvdq_dashboard(
     data: Any,
     *,
     serve: bool = False,
@@ -68,11 +68,11 @@ def ica_dashboard(
                 value=len(cycle_values) - 1,
                 id="cycle-slider",
             ),
-            dcc.Graph(id="ica-graph", figure=figure),
+            dcc.Graph(id="dvdq-graph", figure=figure),
         ]
     )
 
-    @app.callback(Output("ica-graph", "figure"), Input("cycle-slider", "value"))
+    @app.callback(Output("dvdq-graph", "figure"), Input("cycle-slider", "value"))
     def _update(cycle_idx: int):
         selected = [cycle_values[int(cycle_idx)]]
         return _figure(data, labels, selected, direction, cycler)

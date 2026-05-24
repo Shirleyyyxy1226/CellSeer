@@ -9,7 +9,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
-export type SidebarTab = 'ica' | 'dvq' | 'rateperf-hier' | 'voltagecap';
+export type SidebarTab = 'dqdv' | 'dvdq' | 'rateperf-hier' | 'voltagecap';
 
 interface CellFilterSidebarProps {
   visibleCells: string[];
@@ -59,8 +59,8 @@ const spacers = ['All', ...Array.from(new Set(CELL_METADATA.map((c) => c.spacer)
 const separators = ['All', ...Array.from(new Set(CELL_METADATA.map((c) => c.separator)))];
 
 const CHART_LINKS: { key: SidebarTab; label: string }[] = [
-  { key: 'ica', label: 'ICA 3D' },
-  { key: 'dvq', label: 'dV/dQ 3D' },
+  { key: 'dqdv', label: 'dQ/dV 3D' },
+  { key: 'dvdq', label: 'dV/dQ 3D' },
   { key: 'rateperf-hier', label: 'Rate Performance' },
   { key: 'voltagecap', label: 'GCD Plot' },
 ];

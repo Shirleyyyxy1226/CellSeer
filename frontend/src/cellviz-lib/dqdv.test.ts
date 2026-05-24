@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildIcaFigure, normalizeCyclerDatasets, type Dataset } from '@/cellviz-lib';
+import { buildDqDvFigure, normalizeCyclerDatasets, type Dataset } from '@/cellviz-lib';
 
 function sampleDatasets(): Dataset[] {
   return [
@@ -15,9 +15,9 @@ function sampleDatasets(): Dataset[] {
   ];
 }
 
-describe('buildIcaFigure', () => {
+describe('buildDqDvFigure', () => {
   it('builds one scatter3d trace per cycle and reverses x range', () => {
-    const fig = buildIcaFigure(sampleDatasets(), { mode: '3d' });
+    const fig = buildDqDvFigure(sampleDatasets(), { mode: '3d' });
     expect(fig.data).toHaveLength(2);
     expect(fig.data[0]?.type).toBe('scatter3d');
     expect(fig.data[1]?.showlegend).toBe(true);
@@ -26,7 +26,7 @@ describe('buildIcaFigure', () => {
   });
 
   it('builds baseline 2d traces including peak in hover', () => {
-    const fig = buildIcaFigure(sampleDatasets(), {
+    const fig = buildDqDvFigure(sampleDatasets(), {
       mode: '2d',
       viewMode: 'baseline',
       cycleIndex: 1,
@@ -40,7 +40,7 @@ describe('buildIcaFigure', () => {
   });
 
   it('omits baseline trace when exact baseline cycle is missing', () => {
-    const fig = buildIcaFigure(sampleDatasets(), {
+    const fig = buildDqDvFigure(sampleDatasets(), {
       mode: '2d',
       viewMode: 'baseline',
       cycleIndex: 1,

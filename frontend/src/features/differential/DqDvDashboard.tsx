@@ -1,14 +1,15 @@
 import { useMemo, useState, useCallback, useEffect } from 'react';
 import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
-import { useIcaDvqData } from './useIcaDvqData';
+import { DirectionToggle, type ChargeDirection } from '@/components/DirectionToggle';
+import { useDifferentialData } from './useDifferentialData';
 import { useCellSelection } from '@/contexts/CellSelectionContext';
 import { useTreeFilter } from '@/contexts/TreeFilterContext';
 import { useProjectHierarchy } from '@/contexts/ProjectHierarchyContext';
 import { getColorForCell } from '@/lib/ratePerfAggregation';
 import { Surface3dPlot } from './plots/Surface3dPlot';
 import { PeakAnalysisPlot } from './plots/PeakAnalysisPlot';
-import { buildIcaFigure, type Dataset } from '@/cellviz-lib';
+import { buildDqDvFigure, type Dataset } from '@/cellviz-lib';
 
 type ViewMode = 'baseline' | 'range';
 
@@ -18,17 +19,17 @@ interface Props {
   separatorFilter: string;
 }
 
-const IcaDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) => {
+const DqDvDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) => {
   const { multiselectionMode, selectedCellIds } = useCellSelection();
   const { treeFilterPath } = useTreeFilter();
-  const [direction, setDirection] = useState<'discharge' | 'charge'>('discharge');
-  const { icaData, cells, loading, error, noIcaDvqHint } = useIcaDvqData(
+  const [direction, setDirection] = useState<ChargeDirection>('discharge');
+  const { dqdvData, cells, loading, error, noDifferentialHint } = useDifferentialData(
     cathodeFilter,
     spacerFilter,
     separatorFilter,
     direction,
   );
-  const data = icaData;
+  const data = dqdvData;
   const { apiData, matchPathToIdNos } = useProjectHierarchy();
   const activeAnalysis = apiData?.analysis ?? null;
 
@@ -139,11 +140,11 @@ const IcaDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) =
   }, [data, filteredCellIds, cells, treeFilterPath, hierCols, pathToColorMap]);
 
   const { data: traces3d, layout: layout3D } = useMemo(
-    () => buildIcaFigure(datasets, { mode: '3d' }),
+    () => buildDqDvFigure(datasets, { mode: '3d' }),
     [datasets]
   );
   const { data: traces2d, layout: layout2D } = useMemo(
-    () => buildIcaFigure(datasets, {
+    () => buildDqDvFigure(datasets, {
       mode: '2d',
       viewMode,
       cycleIndex,
@@ -162,30 +163,13 @@ const IcaDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) =
     <div className="rounded-lg border border-border bg-card p-3 shadow-sm flex flex-col gap-3">
       {loading && <p className="text-sm text-muted-foreground">Loading cell data from database…</p>}
       {error && !loading && <p className="text-sm text-amber-600">Database unavailable: {error}</p>}
-      {noIcaDvqHint && !loading && <p className="text-sm text-muted-foreground">{noIcaDvqHint}</p>}
+      {noDifferentialHint && !loading && <p className="text-sm text-muted-foreground">{noDifferentialHint}</p>}
       <div className="flex items-center justify-end gap-3 shrink-0 flex-wrap">
-        <div className="inline-flex items-center rounded-full border border-border bg-muted/60 p-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            className={`rounded-full px-4 ${direction === 'discharge' ? 'bg-background shadow-sm hover:bg-background' : 'text-muted-foreground'}`}
-            onClick={() => setDirection('discharge')}
-          >
-            Discharge
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className={`rounded-full px-4 ${direction === 'charge' ? 'bg-background shadow-sm hover:bg-background' : 'text-muted-foreground'}`}
-            onClick={() => setDirection('charge')}
-          >
-            Charge
-          </Button>
-        </div>
+        <DirectionToggle value={direction} onChange={setDirection} />
       </div>
       <div className="grid grid-cols-1 gap-3 min-h-[520px] lg:grid-cols-2">
         <div className="min-w-0 rounded-lg border border-border bg-card p-4 overflow-hidden flex justify-center items-center">
-          <Surface3dPlot traces={traces3d} xValues={data?.voltages ?? []} xLabel="Voltage (V)" zLabel="dQ/dV (Ah/V)" title={`Incremental Capacity Analysis (ICA) — ${directionLabel}`} uirevision="ica-3d" layoutOverride={layout3D} />
+          <Surface3dPlot traces={traces3d} xValues={data?.voltages ?? []} xLabel="Voltage (V)" zLabel="dQ/dV (Ah/V)" title={`Incremental Capacity Analysis (dQ/dV) — ${directionLabel}`} uirevision="dqdv-3d" layoutOverride={layout3D} />
         </div>
         <div className="min-w-0 rounded-lg border border-border bg-card p-4 flex flex-col gap-2 overflow-hidden">
           <div className="flex items-center gap-2 shrink-0">
@@ -207,7 +191,7 @@ const IcaDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) =
               </div>
             )}
           </div>
-          <PeakAnalysisPlot traces={traces2d} xLabel="Voltage (V)" yLabel="Incremental Capacity (Ah/V)" title={title2d} uirevision="ica-2d" layoutOverride={layout2D} />
+          <PeakAnalysisPlot traces={traces2d} xLabel="Voltage (V)" yLabel="Incremental Capacity (Ah/V)" title={title2d} uirevision="dqdv-2d" layoutOverride={layout2D} />
           <div className="flex items-center gap-3 pt-1 shrink-0">
             <span className="text-xs text-muted-foreground whitespace-nowrap">Cycle:</span>
             <Slider value={[cycleIndex]} onValueChange={([v]) => { setCycleIndex(v); setCycleInput(String(cycles[v])); }} min={0} max={Math.max(0, cycles.length - 1)} step={1} className="flex-1" />
@@ -219,4 +203,4 @@ const IcaDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) =
   );
 };
 
-export default IcaDashboard;
+export default DqDvDashboard;

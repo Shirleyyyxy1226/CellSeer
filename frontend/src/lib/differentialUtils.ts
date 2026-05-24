@@ -1,6 +1,8 @@
 /**
- * Utilities for ICA/DVQ display. Backend computes ICA/DVQ; this module provides
- * cellColor, cycleFadeColor, and interpolateOntoGrid for resampling API data onto shared grids.
+ * Utilities for differential analysis display (dQ/dV and dV/dQ).
+ * Backend computes both derivatives; this module provides cellColor,
+ * cycleFadeColor, and interpolateOntoGrid for resampling API data
+ * onto shared grids.
  */
 
 const COLORS = [
@@ -103,7 +105,7 @@ function lerp(x: number, x0: number, y0: number, x1: number, y1: number): number
   return y0 + ((x - x0) * (y1 - y0)) / (x1 - x0);
 }
 
-/** Interpolate (x, y) data onto a regular grid. Used when backend provides pre-computed ica/dvq. */
+/** Interpolate (x, y) data onto a regular grid. Used when backend provides pre-computed dQ/dV or dV/dQ. */
 export function interpolateOntoGrid(
   x: number[],
   y: number[],

@@ -5,14 +5,14 @@ What are dQ/dV and dV/dQ?
 --------------------------
 These are standard electrochemical analysis techniques for battery degradation:
 
-dQ/dV  (Incremental Capacity Analysis, ICA)
+dQ/dV  (Incremental Capacity Analysis)
   - Plot of dQ/dV vs V
   - Peaks correspond to phase transitions in the electrode materials
   - Peak shift / area change → mode of degradation (LLI, LAM_pe, LAM_ne)
 
 dV/dQ  (Differential Voltage Analysis, DVA)
   - Plot of dV/dQ vs Q
-  - Features correspond to the same phase transitions as ICA
+  - Features correspond to the same phase transitions as dQ/dV
   - Complementary view — often easier to interpret for full-cell data
 
 Both require numerical differentiation of noisy experimental data.

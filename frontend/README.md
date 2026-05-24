@@ -1,10 +1,10 @@
 # CellSeer Frontend
 
-Battery cell cycling visualization dashboard. View ICA (dQ/dV), dV/dQ, rate performance, GCD curves, and hierarchy-based filtering.
+Battery cell cycling visualization dashboard. View dQ/dV, dV/dQ, rate performance, GCD curves, and hierarchy-based filtering.
 
 ## Features
 
-- **ICA / dV/dQ** — Incremental capacity and differential voltage analysis
+- **dQ/dV / dV/dQ** — Incremental capacity and differential voltage analysis
 - **Rate Performance** — Capacity vs C-rate
 - **GCD plot** — Voltage vs capacity (galvanostatic charge/discharge)
 - **Hierarchy Tree** — Filter cells by metadata hierarchy
@@ -66,7 +66,7 @@ src/
 │   ├── tree/         # HierarchyEditor, TreeSvg, PublicTreeFilterSidebar
 │   └── ui/           # shadcn components
 ├── contexts/         # ProjectHierarchy, TreeFilter, CellSelection
-├── features/         # Dashboards per tab (icaDvq, gcdPlot, ratePerformance, …)
+├── features/         # Dashboards per tab (differential, gcdPlot, ratePerformance, …)
 ├── hooks/
 ├── lib/              # analyseApi, treeUtils, plot helpers
 └── pages/            # Index (main app)

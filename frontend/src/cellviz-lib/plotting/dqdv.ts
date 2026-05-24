@@ -1,5 +1,5 @@
 import { cellColor, cycleFadeColor } from '../style';
-import type { BuildIcaOpts, Dataset, Ica2DViewMode, IcaFigure } from '../types';
+import type { BuildDqDvOpts, Dataset, DqDv2DViewMode, DqDvFigure } from '../types';
 
 function hexToRgba(hex: string, opacity: number): string {
   const r = parseInt(hex.slice(1, 3), 16);
@@ -44,7 +44,7 @@ function smallFont(): { size: number; family: 'Inter' } {
   return { size: 10, family: 'Inter' };
 }
 
-function build3D(datasets: Dataset[]): IcaFigure {
+function build3D(datasets: Dataset[]): DqDvFigure {
   const traces: Plotly.Data[] = [];
   datasets.forEach((dataset, i) => {
     const color = baseColor(dataset, i);
@@ -82,9 +82,9 @@ function build3D(datasets: Dataset[]): IcaFigure {
   };
 }
 
-function build2D(datasets: Dataset[], opts: BuildIcaOpts): IcaFigure {
+function build2D(datasets: Dataset[], opts: BuildDqDvOpts): DqDvFigure {
   const cycleIndex = opts.cycleIndex ?? 0;
-  const viewMode: Ica2DViewMode = opts.viewMode ?? 'baseline';
+  const viewMode: DqDv2DViewMode = opts.viewMode ?? 'baseline';
   const baselineCycle = opts.baselineCycle;
   const baselineCycleIndex = opts.baselineCycleIndex ?? 1;
   const traces: Plotly.Data[] = [];
@@ -201,7 +201,7 @@ function build2D(datasets: Dataset[], opts: BuildIcaOpts): IcaFigure {
   };
 }
 
-export function buildIcaFigure(datasets: Dataset[], opts: BuildIcaOpts = {}): IcaFigure {
+export function buildDqDvFigure(datasets: Dataset[], opts: BuildDqDvOpts = {}): DqDvFigure {
   const mode = opts.mode ?? '3d';
   return mode === '2d' ? build2D(datasets, opts) : build3D(datasets);
 }
