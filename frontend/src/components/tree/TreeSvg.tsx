@@ -189,7 +189,8 @@ function truncateLabel(text: string, maxChars: number): string {
 }
 
 function displayHeader(header: string): string {
-  if (header.trim().toLowerCase() === 'repeat') return 'Cell';
+  const h = header.trim().toLowerCase().replace(/[\s_]+/g, ' ');
+  if (h === 'repeat' || h === 'cell' || h === 'cell id' || h === 'cell_id') return 'Cell';
   return header;
 }
 
@@ -314,7 +315,7 @@ export function TreeSvg({ analysis, rows, onNodeClick, compact, tree: treeProp, 
     hierCols.forEach((c, i) => addColHeader(m.PAD_L + (i + 1) * m.COL_SP, displayHeader(c.header), true));
     addColHeader(
       m.PAD_L + (hierCols.length + 1) * m.COL_SP,
-      leafCol >= 0 ? headers[leafCol] : 'ID',
+      displayHeader(leafCol >= 0 ? headers[leafCol] : 'Cell'),
       true,
     );
 
@@ -981,10 +982,11 @@ export function TreeSvg({ analysis, rows, onNodeClick, compact, tree: treeProp, 
   const padding = compact ? '12px 8px 20px' : '24px 16px 60px';
   const frame = layout.frame;
   const fitVerticalPriority = compact && !fitContent && frame.stretchToFrame;
+  const scrollOverflow = compact && !fitContent ? 'overflow-auto' : 'overflow-visible';
 
   return (
     <div
-      className={`relative flex flex-col ${fitContent ? 'overflow-visible' : 'overflow-auto'} ${compact ? 'bg-card rounded-md border border-border' : ''}`}
+      className={`relative flex flex-col ${scrollOverflow} ${compact ? 'bg-card rounded-md border border-border' : ''}`}
       style={{ minHeight: fitContent ? undefined : (compact ? 200 : '100%'), padding }}
     >
       {/* Dot-grid background - subtle when compact */}

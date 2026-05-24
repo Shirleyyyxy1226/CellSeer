@@ -26,7 +26,7 @@ cell.save(db)
 
 Persistence
 -----------
-cell.save(db)   # metadata → cell table, all datasets → dataset table as BLOBs
+cell.save(db)   # metadata → cell table, datasets → parquet files + dataset refs
 Cell.load(db, cell_id)
 """
 from __future__ import annotations

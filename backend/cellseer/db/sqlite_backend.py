@@ -4,24 +4,22 @@ SQLiteBackend — DBBackend implementation backed by the existing CellSeer SQLit
 Storage model
 -------------
 - Cell metadata → `cell` table (one row per cell)
-- Time-series data → `dataset` table as Parquet-encoded BLOBs
-  (cell_id, name, data) — no files on disk, everything in one DB file
+- Time-series data → Parquet files under data-lake storage, referenced by
+  `dataset.storage_uri` and companion metadata columns.
 
-Reading back is lazy: BLOB bytes → io.BytesIO → pl.read_parquet().lazy()
+Reading back is lazy: storage URI → pl.read_parquet(...).lazy()
 """
 from __future__ import annotations
 
-import io
 import json
 import sqlite3
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional
 
-import polars as pl
-
 from cellseer.db.base import DBBackend
 from cellseer.analysis.metadata import CellMetadata
 from project_scope import DEFAULT_PROJECT_ID, ensure_project_exists, ensure_project_schema, normalize_project_id
+from dataset_store import read_dataset_parquet, write_dataset_parquet
 
 if TYPE_CHECKING:
     from cellseer.cell import Cell
@@ -77,9 +75,8 @@ class SQLiteBackend(DBBackend):
         """
         Write cell metadata and all datasets into the DB.
 
-        Metadata goes to the `cell` table; each dataset is collected,
-        encoded as Parquet bytes, and stored as a BLOB in the `dataset` table.
-        No files are written to disk.
+        Metadata goes to the `cell` table; each dataset is written to Parquet
+        in the configured data-lake storage and referenced in the `dataset` table.
         """
         m = cell.metadata
         pid = normalize_project_id(getattr(self, "project_id", DEFAULT_PROJECT_ID))
@@ -126,11 +123,14 @@ class SQLiteBackend(DBBackend):
             ),
         )
 
-        # 2. Write each dataset as a Parquet BLOB
+        # 2. Write each dataset to data-lake storage and persist reference metadata.
         for name, raw in cell.datasets.items():
-            buf = io.BytesIO()
-            raw.collect().write_parquet(buf, compression="lz4")
-            blob = buf.getvalue()
+            dataset_ref = write_dataset_parquet(
+                raw,
+                project_id=pid,
+                cell_id=m.cell_id,
+                dataset_name=name,
+            )
             # Serialise protocol if present on CyclingData
             from cellseer.data.cycling_data import CyclingData as _CyclingData
             meta_json: Optional[str] = None
@@ -138,15 +138,33 @@ class SQLiteBackend(DBBackend):
                 meta_json = json.dumps({"protocol": raw.protocol.to_list()})
             conn.execute(
                 """
-                INSERT INTO dataset (project_id, cell_id, name, data, meta)
-                VALUES (?, ?, ?, ?, ?)
-                ON CONFLICT(cell_id, name) DO UPDATE SET
+                INSERT INTO dataset (
+                    project_id, cell_id, name,
+                    storage_kind, storage_uri, data_format, size_bytes, checksum_sha256,
+                    meta
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(project_id, cell_id, name) DO UPDATE SET
                     project_id=excluded.project_id,
-                    data=excluded.data,
+                    storage_kind=excluded.storage_kind,
+                    storage_uri=excluded.storage_uri,
+                    data_format=excluded.data_format,
+                    size_bytes=excluded.size_bytes,
+                    checksum_sha256=excluded.checksum_sha256,
                     meta=excluded.meta,
                     created_at=datetime('now')
                 """,
-                (pid, m.cell_id, name, blob, meta_json),
+                (
+                    pid,
+                    m.cell_id,
+                    name,
+                    dataset_ref["storage_kind"],
+                    dataset_ref["storage_uri"],
+                    dataset_ref["data_format"],
+                    dataset_ref["size_bytes"],
+                    dataset_ref["checksum_sha256"],
+                    meta_json,
+                ),
             )
 
         conn.commit()
@@ -156,8 +174,8 @@ class SQLiteBackend(DBBackend):
         """
         Reconstruct a Cell from the DB.
 
-        Metadata is read from `cell`; each dataset BLOB is decoded from
-        Parquet bytes and wrapped in a LazyFrame — lazy until .data is called.
+        Metadata is read from `cell`; each dataset path is resolved from
+        `dataset.storage_uri` and loaded as a LazyFrame.
         """
         from cellseer.cell import Cell
         from cellseer.data.cycling_data import CyclingData
@@ -177,7 +195,11 @@ class SQLiteBackend(DBBackend):
         cell = Cell(metadata=meta)
 
         ds_rows = conn.execute(
-            "SELECT name, data, meta FROM dataset WHERE project_id = ? AND cell_id = ?",
+            """
+            SELECT name, storage_uri, data_format, meta
+            FROM dataset
+            WHERE project_id = ? AND cell_id = ?
+            """,
             (pid, cell_id),
         ).fetchall()
         conn.close()
@@ -185,7 +207,12 @@ class SQLiteBackend(DBBackend):
         # cycling → CyclingData, everything else (dqdv, dvdq, future types) → Result
         for ds_row in ds_rows:
             name = ds_row["name"]
-            lf = pl.read_parquet(io.BytesIO(ds_row["data"])).lazy()
+            storage_uri = ds_row["storage_uri"]
+            if not storage_uri:
+                continue
+            if ds_row["data_format"] not in (None, "parquet"):
+                continue
+            lf = read_dataset_parquet(storage_uri).lazy()
             protocol = _parse_protocol_meta(ds_row["meta"] if "meta" in ds_row.keys() else None)
             if name == "cycling":
                 try:

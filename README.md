@@ -2,6 +2,8 @@
 
 Simple battery-cell dashboard with a React frontend and FastAPI backend.
 
+Licensed under the [BSD 3-Clause License](LICENSE).
+
 ## What it can do
 
 - Show hierarchy tree and filter cells by metadata
@@ -72,11 +74,13 @@ Frontend dev server proxies `/api` to `http://127.0.0.1:8000`.
 By default, backend reads:
 
 - `backend/cellseer.db`
+- `data_lake/` (dataset parquet files)
 
-To use another DB file, set env var before starting backend:
+To use another DB file and storage location, set env vars before starting backend:
 
 ```bash
 export CELLSEER_DB_PATH="/absolute/path/to/your.db"
+export CELLSEER_DATA_LAKE_DIR="/absolute/path/to/data_lake"
 python -m uvicorn backend.api:app --host 127.0.0.1 --port 8000 --reload
 ```
 
@@ -109,7 +113,10 @@ These are enough for the main dashboard to load data.
 - `project_id` (TEXT)
 - `cell_id` (TEXT)
 - `name` (TEXT)
-- `data` (BLOB, Parquet bytes)
+- `storage_kind` (TEXT, e.g. `local`)
+- `storage_uri` (TEXT, parquet path relative to `CELLSEER_DATA_LAKE_DIR` or absolute)
+- `data_format` (TEXT, `parquet`)
+- optional: `size_bytes` (INTEGER), `checksum_sha256` (TEXT)
 - optional:  (TEXT JSON, used for protocol segments)
 
 ### Required dataset names
@@ -132,6 +139,7 @@ Legacy fallback names also work for discharge:
 
 ```bash
 export CELLSEER_DB_PATH="/absolute/path/to/your.db"
+export CELLSEER_DATA_LAKE_DIR="/absolute/path/to/data_lake"
 python -m uvicorn backend.api:app --host 127.0.0.1 --port 8000 --reload
 ```
 
@@ -158,6 +166,12 @@ After backend starts:
 
 If this endpoint returns OK, frontend should be able to load API data.
 
+## License
+
+CellSeer is distributed under the **BSD 3-Clause License**. You are free to use, copy, modify, and redistribute it (including in closed-source / commercial products), provided you keep the copyright notice and disclaimer, and do not use the CellSeer name to endorse derivative works without permission. See the [LICENSE](LICENSE) file for the full text.
+
+Copyright (c) 2026 CellSeer.
+
 ## Useful frontend commands
 
 ```bash
@@ -167,3 +181,22 @@ npm run build
 npm run test
 npm run lint
 ```
+
+## Import from datalab collections (session auth)
+
+You can map datalab collections to CellSeer projects with:
+
+```bash
+export DIGIBAT_SESSION_COOKIE="your_session_cookie_value"
+python backend/scripts/import_datalab_collections.py \
+  --base-url "https://digibat.dept.ic.ac.uk" \
+  --collections "Discovery-Benchmark-v0,Your-Second-Collection" \
+  --db-path "backend/cellseer.db" \
+  --data-lake-dir "data_lake"
+```
+
+Notes:
+- One collection is imported as one CellSeer project.
+- Metadata is imported for each child item.
+- Cycling ingest is attempted from cycle block/file URLs when available.
+- Use `--no-cycling` to import metadata only.

@@ -72,7 +72,7 @@ def ingest_metadata(
     filepath : Path | str
         Path to an Excel (.xlsx, .xls) or CSV file.
     db : DBBackend
-        Open database backend (SQLiteBackend or DuckDBBackend).
+        Open database backend (SQLiteBackend).
 
     Returns
     -------

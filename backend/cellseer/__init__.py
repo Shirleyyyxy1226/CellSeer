@@ -49,7 +49,6 @@ from cellseer.ingest import ingest_metadata, ingest_cycling_file
 
 # Database backends
 from cellseer.db.sqlite_backend import SQLiteBackend
-from cellseer.db.duckdb_backend import DuckDBBackend
 
 # Utilities
 from cellseer.utils import set_log_level
@@ -68,7 +67,7 @@ __all__ = [
     # Ingest
     "ingest_metadata", "ingest_cycling_file",
     # DB
-    "SQLiteBackend", "DuckDBBackend",
+    "SQLiteBackend",
     # Utils
     "set_log_level",
 ]

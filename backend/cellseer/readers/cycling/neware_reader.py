@@ -13,7 +13,7 @@ from pathlib import Path
 
 import polars as pl
 
-from cellseer.readers.cycling.cycler_reader import CyclerReader
+from cellseer.readers.cycling.cycler_reader import CyclerReader, _raise_pyprobe_import_error
 
 
 class NewareReader(CyclerReader):
@@ -23,7 +23,10 @@ class NewareReader(CyclerReader):
         return "neware"
 
     def _extra_kwargs(self, fp: Path) -> dict:  # noqa: ARG002
-        from pyprobe.cyclers.column_maps import CastAndRenameMap
+        try:
+            from pyprobe.cyclers.column_maps import CastAndRenameMap
+        except ImportError as exc:
+            _raise_pyprobe_import_error(exc)
         return {
             "extra_column_importers": [
                 CastAndRenameMap("Cycle", "Cycle Index", pl.UInt64),
