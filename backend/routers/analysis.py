@@ -149,6 +149,7 @@ def analyse_default_from_db(maxLevels: int = 4, projectId: Optional[str] = None)
                     separator_type, spacer_mm, repeat, electrolyte, notes
                 FROM cell
                 WHERE project_id = ?
+                  AND deleted_at IS NULL
                 ORDER BY COALESCE(id_no, 2147483647), cell_id
                 """
                 ,
@@ -197,8 +198,8 @@ def _ensure_preference_table(conn: sqlite3.Connection):
 
 
 @router.get("/api/hierarchy-order")
-def get_hierarchy_order(projectKey: Optional[str] = None):
-    pref_key = _preference_storage_key("hierarchy_order_js", projectKey)
+def get_hierarchy_order(projectId: Optional[str] = None, projectKey: Optional[str] = None):
+    pref_key = _preference_storage_key("hierarchy_order_js", projectId or projectKey)
     with get_db() as conn:
         _ensure_preference_table(conn)
         row = conn.execute(
@@ -217,9 +218,9 @@ def get_hierarchy_order(projectKey: Optional[str] = None):
 
 
 @router.put("/api/hierarchy-order")
-def save_hierarchy_order(req: HierarchyOrderRequest, projectKey: Optional[str] = None):
+def save_hierarchy_order(req: HierarchyOrderRequest, projectId: Optional[str] = None, projectKey: Optional[str] = None):
     clean = [x for x in req.order if isinstance(x, int) and x >= 0]
-    pref_key = _preference_storage_key("hierarchy_order_js", projectKey)
+    pref_key = _preference_storage_key("hierarchy_order_js", projectId or projectKey)
     with get_db() as conn:
         _ensure_preference_table(conn)
         conn.execute(
@@ -237,8 +238,8 @@ def save_hierarchy_order(req: HierarchyOrderRequest, projectKey: Optional[str] =
 
 
 @router.delete("/api/hierarchy-order")
-def clear_hierarchy_order(projectKey: Optional[str] = None):
-    pref_key = _preference_storage_key("hierarchy_order_js", projectKey)
+def clear_hierarchy_order(projectId: Optional[str] = None, projectKey: Optional[str] = None):
+    pref_key = _preference_storage_key("hierarchy_order_js", projectId or projectKey)
     with get_db() as conn:
         _ensure_preference_table(conn)
         conn.execute("DELETE FROM ui_preference WHERE key = ?", (pref_key,))
