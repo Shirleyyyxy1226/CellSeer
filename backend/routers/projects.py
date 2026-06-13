@@ -30,6 +30,7 @@ def _project_summary(conn: sqlite3.Connection, project_id: str) -> dict:
           GROUP_CONCAT(DISTINCT cathode) AS cathodes
         FROM cell
         WHERE project_id = ?
+          AND deleted_at IS NULL
         """,
         (project_id,),
     ).fetchone()
@@ -145,9 +146,9 @@ def project_readiness(project_id: str):
 
         cycling_row = conn.execute(
             """
-            SELECT COALESCE(SUM(item_count), 0) AS cnt
-            FROM upload_task
-            WHERE project_id = ? AND file_type = 'cycling' AND status = 'done'
+            SELECT COUNT(DISTINCT cell_id) AS cnt
+            FROM dataset
+            WHERE project_id = ? AND name = 'cycling'
             """,
             (pid,),
         ).fetchone()
