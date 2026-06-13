@@ -52,14 +52,17 @@ class CyclerReader(BaseReader):
         for fp in self.input_paths:
             with tempfile.NamedTemporaryFile(suffix=".parquet", delete=False) as tmp:
                 out_path = tmp.name
-            process_cycler_data(
-                cycler=self._cycler_name_for(fp),
-                input_data_path=str(fp),
-                output_data_path=out_path,
-                overwrite_existing=True,
-                **self._extra_kwargs(fp),
-            )
-            lf = pl.scan_parquet(out_path)
+            try:
+                process_cycler_data(
+                    cycler=self._cycler_name_for(fp),
+                    input_data_path=str(fp),
+                    output_data_path=out_path,
+                    overwrite_existing=True,
+                    **self._extra_kwargs(fp),
+                )
+                lf = pl.read_parquet(out_path).lazy()
+            finally:
+                Path(out_path).unlink(missing_ok=True)
             lf, cycle_offset = _reindex_cycles(lf, cycle_offset)
             frames.append(lf)
 
