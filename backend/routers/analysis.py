@@ -1,4 +1,4 @@
-"""Hierarchy analysis endpoints: DB-backed hierarchy and ad-hoc table analysis."""
+"""Hierarchy analysis endpoints."""
 
 import json
 import re
@@ -53,10 +53,7 @@ def _cell_number_token(cell_id: Optional[str]) -> Optional[int]:
 
 
 def _dedupe_rows_for_hierarchy(rows: list[sqlite3.Row]) -> list[sqlite3.Row]:
-    """
-    Collapse duplicate logical cells caused by mixed key schemes.
-    Prefer rows with non-null id_no, then rows with project-prefixed names.
-    """
+    """Remove duplicate cells, preferring rows with id_no set."""
     out: dict[object, sqlite3.Row] = {}
 
     def score(r: sqlite3.Row) -> tuple[int, int]:
@@ -125,7 +122,7 @@ def _preference_storage_key(pref_name: str, project_key: Optional[str]) -> str:
 
 @router.get("/api/hierarchy")
 def analyse_default_from_db(maxLevels: int = 4, projectId: Optional[str] = None):
-    """Build hierarchy directly from DB `cell` metadata, no CSV file dependency."""
+    """Build and return the hierarchy tree from cell metadata in the DB."""
     project_id = normalize_project_id(projectId)
     headers = [
         "ID no.",
@@ -149,6 +146,7 @@ def analyse_default_from_db(maxLevels: int = 4, projectId: Optional[str] = None)
                     separator_type, spacer_mm, repeat, electrolyte, notes
                 FROM cell
                 WHERE project_id = ?
+                  AND deleted_at IS NULL
                 ORDER BY COALESCE(id_no, 2147483647), cell_id
                 """
                 ,
@@ -197,8 +195,8 @@ def _ensure_preference_table(conn: sqlite3.Connection):
 
 
 @router.get("/api/hierarchy-order")
-def get_hierarchy_order(projectKey: Optional[str] = None):
-    pref_key = _preference_storage_key("hierarchy_order_js", projectKey)
+def get_hierarchy_order(projectId: Optional[str] = None, projectKey: Optional[str] = None):
+    pref_key = _preference_storage_key("hierarchy_order_js", projectId or projectKey)
     with get_db() as conn:
         _ensure_preference_table(conn)
         row = conn.execute(
@@ -217,9 +215,9 @@ def get_hierarchy_order(projectKey: Optional[str] = None):
 
 
 @router.put("/api/hierarchy-order")
-def save_hierarchy_order(req: HierarchyOrderRequest, projectKey: Optional[str] = None):
+def save_hierarchy_order(req: HierarchyOrderRequest, projectId: Optional[str] = None, projectKey: Optional[str] = None):
     clean = [x for x in req.order if isinstance(x, int) and x >= 0]
-    pref_key = _preference_storage_key("hierarchy_order_js", projectKey)
+    pref_key = _preference_storage_key("hierarchy_order_js", projectId or projectKey)
     with get_db() as conn:
         _ensure_preference_table(conn)
         conn.execute(
@@ -237,8 +235,8 @@ def save_hierarchy_order(req: HierarchyOrderRequest, projectKey: Optional[str] =
 
 
 @router.delete("/api/hierarchy-order")
-def clear_hierarchy_order(projectKey: Optional[str] = None):
-    pref_key = _preference_storage_key("hierarchy_order_js", projectKey)
+def clear_hierarchy_order(projectId: Optional[str] = None, projectKey: Optional[str] = None):
+    pref_key = _preference_storage_key("hierarchy_order_js", projectId or projectKey)
     with get_db() as conn:
         _ensure_preference_table(conn)
         conn.execute("DELETE FROM ui_preference WHERE key = ?", (pref_key,))

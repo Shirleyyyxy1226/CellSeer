@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "cellseer"
 version = "0.1.0"
 requires-python = ">=3.10"
+license = "MIT"
 dependencies = [
     "polars>=0.20",
     "pydantic>=2.0",
@@ -13,8 +14,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-pyprobe = ["pyprobe"]
-duckdb = ["duckdb>=0.10"]
+pyprobe = ["PyProBE-Data>=2.6.0"]
 
 [project.scripts]
 cellseer = "cellseer.cli:main"

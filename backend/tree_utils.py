@@ -113,20 +113,12 @@ class AnalysisResult:
 
 
 # ── CSV parser ────────────────────────────────────────────────────────
+import csv as _csv
+import io as _io
+
+
 def _parse_csv_line(line: str) -> list[str]:
-    out: list[str] = []
-    cur = ""
-    in_q = False
-    for ch in line:
-        if ch == '"':
-            in_q = not in_q
-        elif ch == "," and not in_q:
-            out.append(cur.strip())
-            cur = ""
-        else:
-            cur += ch
-    out.append(cur.strip())
-    return out
+    return next(_csv.reader(_io.StringIO(line)), [])
 
 
 def parse_csv(raw: str) -> ParsedCSV:

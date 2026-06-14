@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { fetchRatePerformance, fetchCellRecordIndex, fetchIcaDvq } from '@/lib/api';
+import { fetchRatePerformance, fetchCellRecordIndex, fetchDifferential } from '@/lib/api';
 import { useCellSelection } from '@/contexts/CellSelectionContext';
 import { useDataRefresh } from '@/contexts/DataRefreshContext';
 import { useMasterPlotBridgeOptional } from '@/contexts/MasterPlotBridgeContext';
@@ -35,7 +35,7 @@ import {
   layoutForce1D,
   shapeForCategory,
 } from '@/lib/masterPlot1Metrics';
-import { peakVoltagePerCycle, shiftSeriesVsRef } from '@/lib/icaPeaks';
+import { peakVoltagePerCycle, shiftSeriesVsRef } from '@/lib/dqdvPeaks';
 import { MASTER_PLOT_CHART_HEIGHT_PX } from '@/lib/masterPlotLayout';
 
 interface RatePerfData {
@@ -548,7 +548,7 @@ export default function MasterPlot1Panel({
           await Promise.all(
             chunk.map(async (row) => {
               try {
-                const data = await fetchIcaDvq(row.idNo);
+                const data = await fetchDifferential(row.idNo);
                 const peaks = peakVoltagePerCycle(data, row.cycles);
                 let refStep = 0;
                 if (row.protocolSegments.length >= 2) {
@@ -565,7 +565,7 @@ export default function MasterPlot1Panel({
         }
         if (!cancelled) setDqdvByIdNo(acc);
       } catch {
-        if (!cancelled) setDqdvError('ICA / dQ/dV request failed');
+        if (!cancelled) setDqdvError('dQ/dV request failed');
       } finally {
         if (!cancelled) setDqdvLoading(false);
       }
@@ -1898,7 +1898,7 @@ export default function MasterPlot1Panel({
         {modeCount === 0 && <p className="text-sm text-muted-foreground">Select at least one dimension to draw the plot.</p>}
 
         {selectedDims.includes('dqdv_shift') && dqdvLoading && (
-          <p className="text-xs text-muted-foreground">Loading ICA / dQ/dV data for dQ/dV shift…</p>
+          <p className="text-xs text-muted-foreground">Loading dQ/dV data for dQ/dV shift…</p>
         )}
         {dqdvError && <p className="text-xs text-destructive">{dqdvError}</p>}
 

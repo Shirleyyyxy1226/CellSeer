@@ -176,6 +176,10 @@ def _read_headers(filepath: Path) -> List[str]:
     """
     suffix = filepath.suffix.lower()
 
+    # BioLogic binary/text formats — detect by extension; header parsing is unreliable
+    if suffix in (".mpt", ".mpr"):
+        return ["ox_red", "ecell", "capacitycharge", "capacitydischarge", "time"]
+
     if suffix in (".xlsx", ".xls"):
         import openpyxl
         wb = openpyxl.load_workbook(filepath, data_only=True)

@@ -16,7 +16,8 @@ interface HierarchyEditorProps {
 }
 
 function displayHeader(header: string): string {
-  if (header.trim().toLowerCase() === 'repeat') return 'Cell';
+  const h = header.trim().toLowerCase().replace(/[\s_]+/g, ' ');
+  if (h === 'repeat' || h === 'cell' || h === 'cell id' || h === 'cell_id') return 'Cell';
   return header;
 }
 

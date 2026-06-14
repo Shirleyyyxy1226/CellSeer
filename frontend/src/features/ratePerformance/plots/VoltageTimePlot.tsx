@@ -1,8 +1,6 @@
 import { useMemo } from 'react';
 import PlotlyChart from '@/components/PlotlyChart';
-
-const COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b'];
-const MAX_CYCLES = 5;
+import { buildVoltageTimeFigure, type RecordDataset } from '@/cellviz-lib';
 
 export interface VoltageTimeCellRecord {
   cellName: string;
@@ -28,44 +26,18 @@ interface Props {
 }
 
 export function VoltageTimePlot({ cellRecords, config, width, height }: Props) {
-  const traces = useMemo((): Plotly.Data[] => {
-    const result: Plotly.Data[] = [];
-    cellRecords.forEach((record) => {
-      const curveKeys = Object.keys(record.curves).slice(0, 200);
-      const cycles = curveKeys
-        .map((k) => parseInt(k, 10))
-        .filter((x) => !isNaN(x))
-        .sort((a, b) => a - b)
-        .slice(0, MAX_CYCLES);
-      for (const cyc of cycles) {
-        const curve = record.curves[String(cyc)];
-        if (!curve) continue;
-        const vKey = 'Voltage [V]' in curve ? 'Voltage [V]' : 'voltage';
-        const tKey = 'Time [s]' in curve ? 'Time [s]' : null;
-        const v = (curve[vKey] ?? []) as (number | null)[];
-        const tRaw = tKey ? (curve[tKey] ?? []) as (number | null)[] : null;
-        const times: number[] = [];
-        const volts: number[] = [];
-        for (let j = 0; j < v.length; j++) {
-          const vv = v[j];
-          if (vv == null) continue;
-          times.push(tRaw && tRaw[j] != null ? (tRaw[j] as number) : j);
-          volts.push(vv);
-        }
-        if (times.length >= 2) {
-          const traceColor = record.color ?? COLORS[result.length % COLORS.length];
-          result.push({
-            x: times, y: volts,
-            type: 'scatter', mode: 'lines',
-            name: `${record.cellName} — Cycle ${cyc}`,
-            line: { width: 1.5, color: traceColor },
-            hovertemplate: `${record.cellName} Cycle ${cyc}<br>Time: %{x:.1f} s<br>Voltage: %{y:.3f} V<extra></extra>`,
-          });
-        }
-      }
-    });
-    return result;
-  }, [cellRecords]);
+  const datasets = useMemo<RecordDataset[]>(
+    () =>
+      cellRecords.map((record, idx) => ({
+        id: `${record.cellName ?? 'cell'}-${idx}`,
+        label: record.cellName,
+        color: record.color,
+        curves: record.curves,
+      })),
+    [cellRecords],
+  );
+
+  const { data: traces } = useMemo(() => buildVoltageTimeFigure(datasets, { maxCycles: 5 }), [datasets]);
 
   const { titleFontSize: tfs, labelFontSize: lfs, legendFontSize: lgfs, fontFamily: ff } = config;
 

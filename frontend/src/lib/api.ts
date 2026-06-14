@@ -73,16 +73,16 @@ export const fetchRatePerformance = (): Promise<{ cells: RatePerfCellRaw[]; prot
 export const fetchCellRecord = (idNo: number): Promise<unknown> =>
   apiFetch(`/api/cell-record/${idNo}`);
 
-export const fetchIcaDvq = (
+export const fetchDifferential = (
   idNo: number,
   direction: 'discharge' | 'charge' = 'discharge',
 ): Promise<unknown> =>
-  apiFetch(`/api/cell-record/${idNo}/ica-dvq?direction=${encodeURIComponent(direction)}`);
+  apiFetch(`/api/cell-record/${idNo}/differential?direction=${encodeURIComponent(direction)}`);
 
-export const fetchIcaCells = (
+export const fetchDifferentialCells = (
   direction: 'discharge' | 'charge' = 'discharge',
 ): Promise<{ idNos: number[] }> =>
-  apiFetch(`/api/ica-cells?direction=${encodeURIComponent(direction)}`);
+  apiFetch(`/api/differential-cells?direction=${encodeURIComponent(direction)}`);
 
 export const fetchCellAnnotations = (): Promise<{ annotations: Record<number, CellAnnotation> }> =>
   apiFetch('/api/cell-annotations');

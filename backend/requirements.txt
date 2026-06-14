@@ -4,9 +4,13 @@ matplotlib>=3.3.0
 fastapi>=0.100.0
 uvicorn[standard]>=0.22.0
 python-multipart>=0.0.9
+requests>=2.31.0
 
 # cellseer library core dependencies
 numpy>=1.24.0
 polars>=0.20.0
 pydantic>=2.0.0
 pyyaml>=6.0
+
+# Correct PyProBE distribution used by cycling readers
+PyProBE-Data>=2.6.0

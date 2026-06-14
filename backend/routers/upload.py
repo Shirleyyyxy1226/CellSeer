@@ -1,4 +1,4 @@
-"""File upload endpoints: POST /api/upload, status polling, history, loader manifest."""
+"""File upload endpoints."""
 
 import json
 import sqlite3
@@ -14,9 +14,7 @@ from project_scope import ensure_project_exists, ensure_project_schema, normaliz
 router = APIRouter()
 
 
-# ---------------------------------------------------------------------------
-# Internal DB helper — WAL mode keeps the connection open for progress updates
-# ---------------------------------------------------------------------------
+# Opens a DB connection for tracking upload task progress.
 
 def _upload_db() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
@@ -129,9 +127,7 @@ def _run_upload_batch(task_id: str, files_payload: list[tuple[bytes, str]], load
         write_status("error", 100, str(exc))
 
 
-# ---------------------------------------------------------------------------
 # Routes
-# ---------------------------------------------------------------------------
 
 @router.get("/api/upload/loaders")
 def upload_loaders():
@@ -163,12 +159,15 @@ async def upload_file(
             )
         raise HTTPException(status_code=415, detail=f"No loader for '{suffix}'")
 
+    MAX_UPLOAD_BYTES = 512 * 1024 * 1024  # 512 MB
     file_bytes = await file.read()
+    if len(file_bytes) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File too large (max 512 MB)")
     project_id = normalize_project_id(projectId)
     conn = _upload_db()
     ensure_project_exists(conn, project_id)
 
-    # Deduplication: reuse an in-progress task for the same filename.
+    # Reuse an existing in-progress task for the same filename.
     existing = conn.execute(
         """
         SELECT id
@@ -250,7 +249,11 @@ async def upload_files_batch(
                 status_code=415,
                 detail=f"File '{filename}' with suffix '{suffix}' is not compatible with fileType '{loader.FILE_TYPE}'",
             )
-        file_payload.append((await f.read(), filename))
+        MAX_UPLOAD_BYTES = 512 * 1024 * 1024  # 512 MB
+        file_bytes_data = await f.read()
+        if len(file_bytes_data) > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail=f"File '{filename}' too large (max 512 MB)")
+        file_payload.append((file_bytes_data, filename))
 
     conn = _upload_db()
     ensure_project_exists(conn, project_id)
@@ -312,6 +315,86 @@ async def metadata_upload_options(file: UploadFile = File(...)):
         "displayNameTemplate": info.get(
             "display_name_template", "{cathode}_{anode}_R{repeat}_ID{id_no}"
         ),
+    }
+
+
+@router.post("/api/cells/{cell_id}/files/{test_type}")
+async def upload_cell_test_file(
+    cell_id: str,
+    test_type: str,
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    projectId: str | None = Form(default=None),
+):
+    """Attach a test file to a specific cell by cell_id."""
+    project_id = normalize_project_id(projectId)
+    test_type_key = (test_type or "").strip().lower()
+    if not test_type_key:
+        raise HTTPException(status_code=400, detail="test_type is required")
+
+    # Only cycling files are supported for per-cell upload.
+    SUPPORTED_PER_CELL_TEST_TYPES = {"cycling"}
+    if test_type_key not in SUPPORTED_PER_CELL_TEST_TYPES:
+        raise HTTPException(
+            status_code=415,
+            detail=(
+                f"test_type '{test_type_key}' is not yet supported for per-cell upload. "
+                f"Supported: {sorted(SUPPORTED_PER_CELL_TEST_TYPES)}"
+            ),
+        )
+
+    filename = file.filename or ""
+    loader = get_loader(filename, preferred_file_type=test_type_key)
+    if loader is None:
+        suffix = Path(filename).suffix
+        raise HTTPException(
+            status_code=415,
+            detail=f"No loader for '{suffix}' under test_type '{test_type_key}'",
+        )
+
+    # Check cell exists before queuing the background task.
+    conn = _upload_db()
+    ensure_project_exists(conn, project_id)
+    cell_row = conn.execute(
+        "SELECT id_no FROM cell WHERE project_id = ? AND cell_id = ? AND deleted_at IS NULL",
+        (project_id, cell_id),
+    ).fetchone()
+    if cell_row is None:
+        conn.close()
+        raise HTTPException(
+            status_code=404,
+            detail=f"Cell '{cell_id}' not found in project '{project_id}'",
+        )
+    resolved_id_no = cell_row["id_no"]
+
+    file_bytes = await file.read()
+
+    task_id = str(uuid.uuid4())
+    conn.execute(
+        "INSERT INTO upload_task(id, project_id, filename, file_type, item_count, status) "
+        "VALUES(?,?,?,?,?, 'queued')",
+        (task_id, project_id, filename, loader.FILE_TYPE, 1),
+    )
+    conn.commit()
+    conn.close()
+
+    ingest_options = {
+        "projectId": project_id,
+        "cellId": cell_id,
+        "idNo": resolved_id_no,
+        # Pass both camelCase and snake_case so all loaders can read it.
+        "cell_id": cell_id,
+        "id_no": resolved_id_no,
+    }
+    background_tasks.add_task(_run_upload, task_id, file_bytes, filename, loader, ingest_options)
+    return {
+        "taskId": task_id,
+        "filename": filename,
+        "fileType": loader.FILE_TYPE,
+        "cellId": cell_id,
+        "testType": test_type_key,
+        "status": "queued",
+        "projectId": project_id,
     }
 
 

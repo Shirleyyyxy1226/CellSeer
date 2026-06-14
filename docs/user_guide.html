@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>User guide — CellSeer</title>
+<link rel="stylesheet" href="assets/docs.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="logo" href="index.html"><span class="mark">&#11041;</span> CellSeer</a>
+  <nav>
+    <a href="first_steps.html">First steps</a>
+    <a href="user_guide.html" class="active">User guide</a>
+    <a href="gallery.html">Gallery</a>
+    <a href="reference.html">Reference</a>
+    <a href="developer.html">Developer guide</a>
+  </nav>
+  <span class="spacer"></span>
+</header>
+<div class="shell">
+<aside class="sidebar">
+  <div class="group">Getting in</div>
+  <a href="#projects">Projects &amp; the home screen</a>
+  <a href="#ingest">Loading data</a>
+  <a href="#digibat">DIGIBAT integration</a>
+  <div class="group">The dashboard</div>
+  <a href="#layout">Dashboard layout</a>
+  <a href="#tree">Hierarchy Tree</a>
+  <a href="#masterplot">Master Plot</a>
+  <a href="#rateperf">Rate Performance</a>
+  <a href="#gcd">GCD Plot</a>
+  <a href="#dvdq">dV/dQ 3D</a>
+  <a href="#dqdv">dQ/dV 3D</a>
+  <div class="group">Working with cells</div>
+  <a href="#select">Selecting &amp; filtering</a>
+  <a href="#protocols">Protocols</a>
+  <a href="#annotations">Annotations &amp; metadata</a>
+  <a href="#export">Exporting figures</a>
+</aside>
+<main>
+<div class="content">
+
+<h1>User guide</h1>
+<p class="lede">Everything the CellSeer web app does, screen by screen &mdash; from creating a project
+and loading cycler files to every dashboard tab, protocols, annotations and reproducible export.</p>
+
+<div class="callout tip">New here? The <a href="first_steps.html">First steps</a> guide gets you to a
+first figure fastest. This page is the complete reference for the running app.</div>
+
+<h2 id="projects">Projects &amp; the home screen</h2>
+<figure>
+  <img src="assets/app/home.png" alt="CellSeer home: a gallery of project cards">
+  <figcaption>The home screen is a gallery of projects. Each card shows cell and dataset counts,
+  the chemistries present, and a Dashboard button (greyed until the project has data).</figcaption>
+</figure>
+<p>A <strong>project</strong> is one cycling campaign &mdash; a set of cells with shared metadata.
+The home screen lists every project with live counts across the top (projects, cells, datasets,
+chemistries). Search by name or chemistry, sort by recency, or hit <strong>+ New project</strong>.
+Click a card's title to open its detail/upload page, or <strong>Dashboard</strong> to jump straight
+into analysis.</p>
+
+<h2 id="ingest">Loading data</h2>
+<p>Each project's detail page has two upload tiles. CellSeer separates the two kinds of input a
+campaign needs:</p>
+<table>
+  <tr><th>Tile</th><th>Accepts</th><th>What it carries</th></tr>
+  <tr><td><strong>Metadata</strong></td><td>spreadsheet (.xlsx / .csv)</td><td>One row per cell: chemistry, separator, spacer, masses, batch, electrolyte &mdash; the experimental conditions</td></tr>
+  <tr><td><strong>Cycling data</strong></td><td>cycler exports (Neware .xlsx, &hellip;) &middot; multi-file</td><td>The time-series voltage / current / capacity traces, one file per cell</td></tr>
+</table>
+<p>Drag files onto a tile or click to browse. For metadata, CellSeer detects the key columns and may
+ask you to confirm which column is the primary key and which is the cell ID &mdash; this is how
+cycling files get matched to metadata rows. A <strong>readiness</strong> indicator shows when a
+project has enough (metadata + at least one cycling file) to enter the dashboard. Supported cycler
+formats are advertised by the backend at <code>GET /api/upload/loaders</code>; add new ones in
+<code>backend/loaders/</code> (see the <a href="developer.html#extend">Developer guide</a>).</p>
+<p>Supported cycler file formats include Neware (.xlsx), BioLogic (.mpt, .mpr), Arbin, and CSV exports.
+Files up to <strong>512 MB</strong> are accepted per upload.</p>
+<div class="callout">Every dataset is stored as Parquet in the data lake with a SHA-256 checksum, and
+deletes are soft (a tombstone, never destructive) &mdash; so re-ingesting or correcting data never
+loses the original.</div>
+
+<h2 id="digibat">DIGIBAT integration</h2>
+<figure>
+  <img src="assets/app/digibat.png" alt="DIGIBAT connection screen">
+  <figcaption>The DIGIBAT page connects CellSeer to a robot-assembly lab and syncs cell collections
+  incrementally.</figcaption>
+</figure>
+<p>If your cells come from a DIGIBAT robotic lab, CellSeer can pull them directly instead of manual
+upload. Connect once, browse the lab's collections, and map a collection into a CellSeer project.
+Sync is <strong>incremental at the file level</strong> &mdash; re-syncing only fetches cells and
+datasets that changed, so a large evolving campaign stays cheap to keep current. Sync status and run
+history are shown per project.</p>
+<p>Each project has its own DIGIBAT connection and sync history. Cell counts shown on the home screen
+reflect only active cells &mdash; cells removed from a DIGIBAT collection are hidden automatically
+after the next sync.</p>
+
+<h2 id="layout">Dashboard layout</h2>
+<p>The dashboard is a single screen with a tab strip across the top. Tabs progress from broad to
+narrow:</p>
+<table>
+  <tr><th>Tab</th><th>Scope</th><th>Answers</th></tr>
+  <tr><td><a href="#tree">Hierarchy Tree</a></td><td>whole library, structural</td><td>How is my library organised? What conditions exist?</td></tr>
+  <tr><td><a href="#masterplot">Master Plot</a></td><td>whole campaign, at a glance</td><td>Which condition wins? Which cells failed?</td></tr>
+  <tr><td><a href="#rateperf">Rate Performance</a></td><td>cells, capacity vs cycle</td><td>How does capacity fade across C-rates?</td></tr>
+  <tr><td><a href="#gcd">GCD Plot</a></td><td>cell(s), voltage vs capacity</td><td>What's the curve shape and polarisation?</td></tr>
+  <tr><td><a href="#dvdq">dV/dQ 3D</a></td><td>cell(s), differential</td><td>How is the electrode balance changing?</td></tr>
+  <tr><td><a href="#dqdv">dQ/dV 3D</a></td><td>cell(s), differential</td><td>Where are the phase transitions, and are they drifting?</td></tr>
+</table>
+<p>A cell you select in any tab stays selected as you move between tabs, so a typical workflow is:
+spot an outlier in the Master Plot &rarr; open it in GCD to see the curve &rarr; check dQ/dV for the
+mechanism. The active tab lives in the URL (<code>?tab=</code>), so any view is shareable and
+survives a reload.</p>
+
+<div class="callout tip">The hierarchy column order you set is saved per project and restored automatically next time you open the dashboard.</div>
+
+<h2 id="tree">Hierarchy Tree</h2>
+<figure>
+  <img src="assets/app/tree.png" alt="Hierarchy tree with draggable level ordering">
+  <figcaption>Cells grouped into a tree whose levels you choose and reorder. Here Cathode &rarr; Anode;
+  counts (&times;N) show how many cells sit under each node.</figcaption>
+</figure>
+<p>The tree is CellSeer's first-class navigational object. The <strong>hierarchy order</strong> bar at
+the top lets you drag metadata fields (Cathode, Anode, Separator, Electrolyte, Spacer, Batch&hellip;)
+to define how cells nest &mdash; the tree rebuilds live. Search to jump to a node or serial, expand /
+collapse levels, and click a leaf to select that cell across the app. This is how you carve a 5,000-cell
+library into the structure that matches your experiment.</p>
+
+<h2 id="masterplot">Master Plot</h2>
+<figure>
+  <img src="assets/app/masterplot.png" alt="Master Plot condition heatmap">
+  <figcaption>The campaign overview. Four linked views (Heatmap, Ranking, Library map, Parallel
+  coordinates) over a shared metric selector and KPI strip.</figcaption>
+</figure>
+<p>The bird's-eye view: every experimental condition and its replicates on one screen, coloured by a
+metric you choose (peak capacity, coulombic efficiency, cycles, retention). Switch between the four
+views with the buttons top-right; the KPI strip summarises the filtered set; click any cell to open
+an Inspector with its sparkline, quality flags, and buttons to drill into the detail tabs.</p>
+<p>Because it's the analytical heart of CellSeer, the Master Plot has its own chapter:</p>
+<div class="cards c2">
+  <a class="card" href="master-plot.html"><h3>Master Plot in depth &rarr;</h3><p>The four views, what each colour and flag means, the data semantics (capacity basis, metric scoring, protocol locking) and the colour system.</p></a>
+</div>
+
+<h2 id="rateperf">Rate Performance</h2>
+<figure>
+  <img src="assets/app/rateperf.png" alt="Rate performance: capacity vs cycle">
+  <figcaption>Discharge capacity versus cycle number, with protocol C-rate segments shaded. Multiple
+  cells overlay for comparison.</figcaption>
+</figure>
+<p>The classic capacity-retention plot: how much capacity a cell delivers each cycle, with C-rate
+steps shaded when a protocol is attached. Use the hierarchy sidebar to pick which cells appear; the
+charge/discharge toggle switches direction. This is the quickest read on whether a cell is fading,
+recovering after a rate test, or dead.</p>
+
+<h2 id="gcd">GCD Plot</h2>
+<figure>
+  <img src="assets/app/gcd.png" alt="GCD plot: voltage vs capacity per cycle">
+  <figcaption>Galvanostatic charge&ndash;discharge curves &mdash; voltage against capacity, one trace
+  per cycle, with a cycle-number colour scale.</figcaption>
+</figure>
+<p>The fundamental electrochemistry view. Each cycle is a voltage-vs-capacity trace; the colour scale
+encodes cycle number so you can see the curve evolve with ageing. Below the main chart, a cumulative
+all-cycles panel and a voltage-vs-time panel (for formation checks) share the same cells. A cycle
+filter (e.g. <code>1, 5, 10-20</code>) trims the traces; the capacity axis switches to specific
+capacity (mAh&nbsp;g&#8315;&sup1;) automatically when cathode mass is known. Edit titles, labels,
+fonts and the legend via the chart's edit popover &mdash; your text always wins over the smart defaults.</p>
+
+<h2 id="dvdq">dV/dQ 3D</h2>
+<figure>
+  <img src="assets/app/dvdq.png" alt="dV/dQ surface and peak overlay">
+  <figcaption>Differential voltage (dV/dQ vs capacity). Left: a 3D surface stacking cycles; right: a
+  2D peak overlay across cycles.</figcaption>
+</figure>
+<p>Differential voltage analysis surfaces electrode-balance features that raw GCD curves hide. The 3D
+view stacks every cycle so drift is visible as a moving ridge; the 2D peak panel overlays cycles for
+precise peak tracking. Axes are in publication units (Capacity in mAh, dV/dQ in V&nbsp;mAh&#8315;&sup1;).
+Pick cells from the hierarchy sidebar; toggle charge/discharge.</p>
+
+<h2 id="dqdv">dQ/dV 3D</h2>
+<figure>
+  <img src="assets/app/dqdv.png" alt="dQ/dV surface and peak overlay">
+  <figcaption>Incremental capacity (dQ/dV vs voltage). Phase-transition peaks and how they shift with
+  cycling &mdash; a fingerprint of degradation mechanisms.</figcaption>
+</figure>
+<p>Incremental-capacity analysis maps phase transitions as peaks against voltage. Peak height,
+position and broadening track specific ageing mechanisms, so watching them drift across cycles is a
+standard diagnostic. Same controls as dV/dQ: 3D surface plus 2D overlay, hierarchy-driven cell
+selection, direction toggle, units in mAh&nbsp;V&#8315;&sup1;.</p>
+
+<h2 id="select">Selecting &amp; filtering cells</h2>
+<p>CellSeer keeps one selection across the whole app. You can drive it from anywhere:</p>
+<ul>
+  <li><strong>Hierarchy Tree</strong> &mdash; click a node or leaf.</li>
+  <li><strong>Master Plot</strong> &mdash; click a heatmap tile, ranking dot, or treemap cell; shift-drag to lasso in the Explorer/parcoords.</li>
+  <li><strong>Filters</strong> &mdash; cathode / separator / spacer selectors in the toolbar narrow every view at once; the Master Plot's ranking and heatmap labels are click-to-filter.</li>
+</ul>
+<p>Multi-select mode lets you overlay several cells in the GCD and differential tabs for direct
+comparison. The detail side-panel (right edge) shows the selected cell's metadata and annotations.</p>
+
+<h2 id="protocols">Protocols</h2>
+<p>A <strong>protocol</strong> segments a cell's cycles into phases (formation, rate test, main
+cycling) with their C-rates. This matters because raw cycle indices mix those phases &mdash; without
+segmentation, a capacity step-down might be a rate change, not degradation. Attach protocols by
+editing a cycling dataset's metadata, or author and reuse <strong>protocol templates</strong> and
+apply them in bulk. Once attached, retention-class metrics unlock in the Master Plot and C-rate bands
+appear in Rate Performance. Until then, those metrics show a lock with an explanation rather than a
+misleading number.</p>
+
+<h2 id="annotations">Annotations &amp; metadata</h2>
+<p>Open the detail panel for any cell to add a <strong>note</strong> and <strong>tags</strong> (preset
+tags include Review, Exclude, Best, Anomaly, Repeat). Tagging a cell <em>Exclude</em> drops it from
+the differential views; tags persist per cell and are visible wherever the cell appears. You can also
+edit cell metadata inline (an allow-listed set of fields &mdash; chemistry, masses, separator, etc.);
+edits immediately recompute the derived metrics that depend on them, such as specific capacity.</p>
+
+<h2 id="export">Exporting figures</h2>
+<p>Right-click any chart for export options. Beyond PNG / CSV / Plotly-JSON, the
+<strong>Export ZIP</strong> option produces a self-contained reproducible bundle:</p>
+<table>
+  <tr><th>In the ZIP</th><th>What it's for</th></tr>
+  <tr><td>the PNG</td><td>the figure as you see it</td></tr>
+  <tr><td>trace data (CSV + Plotly JSON)</td><td>the exact points drawn</td></tr>
+  <tr><td><code>manifest.json</code></td><td>provenance: source cells, full-resolution API endpoints, view settings, timestamp</td></tr>
+  <tr><td><code>reproduce.py</code></td><td>regenerates the figure; <code>--fetch-original</code> re-downloads the original full-resolution data</td></tr>
+</table>
+<p>So a colleague (or a reviewer) can rebuild the figure from the original file, not just look at
+pixels. The same plots are available outside the app entirely through the
+<a href="gallery.html"><code>cellviz</code> Python library</a>.</p>
+
+<div class="pager">
+  <a class="prev" href="first_steps.html"><div class="dir">&larr; Previous</div><div class="ttl">First steps</div></a>
+  <a class="next" href="master-plot.html"><div class="dir">Next &rarr;</div><div class="ttl">Master Plot in depth</div></a>
+</div>
+
+</div>
+</main>
+</div>
+</body>
+</html>

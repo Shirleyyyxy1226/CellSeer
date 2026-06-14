@@ -139,13 +139,20 @@ function assignPositions(
   return leafIndex;
 }
 
+/** Left extent for root constants panel (text-anchor:end labels extend left of the node). */
+const ROOT_PANEL_LEFT_PAD = 260;
+
 function computeHorizontalBounds(root: TreeNode, hierColCount: number, metrics: LayoutMetrics): { minX: number; maxX: number } {
-  let minX = metrics.PAD_L;
+  let minX = metrics.PAD_L - ROOT_PANEL_LEFT_PAD;
   let maxX = metrics.PAD_L + (hierColCount + 1) * metrics.COL_SP + 50;
 
   function walk(node: TreeNode): void {
     if (node.x != null) {
-      const pad = node.isLeaf ? Math.max(140, metrics.COL_SP * 1.5) : 14;
+      const pad = node.isLeaf
+        ? Math.max(140, metrics.COL_SP * 1.5)
+        : node.depth === 0
+          ? ROOT_PANEL_LEFT_PAD
+          : 14;
       minX = Math.min(minX, node.x - pad);
       maxX = Math.max(maxX, node.x + pad);
     }
@@ -153,8 +160,7 @@ function computeHorizontalBounds(root: TreeNode, hierColCount: number, metrics: 
   }
 
   walk(root);
-  // Keep negative minX so left-side root/constants are never clipped.
-  return { minX: minX - 8, maxX: maxX + 12 };
+  return { minX: minX - 12, maxX: maxX + 16 };
 }
 
 export function useTreeLayout(input: UseTreeLayoutInput): TreeLayoutResult | null {
@@ -178,12 +184,12 @@ export function useTreeLayout(input: UseTreeLayoutInput): TreeLayoutResult | nul
     const placedLeaves = assignPositions(workTree, metrics, collapsed);
 
     const svgH = metrics.PAD_T + placedLeaves * metrics.ROW_H + 60;
-    const fullSvgW = metrics.PAD_L + (hierColCount + 2) * metrics.COL_SP + 260;
 
-    const crop = compact ? computeHorizontalBounds(workTree, hierColCount, metrics) : null;
-    const viewMinX = crop ? crop.minX : 0;
-    const viewW = crop ? crop.maxX - crop.minX : fullSvgW;
-    const displayW = fullSvgW;
+    const crop = computeHorizontalBounds(workTree, hierColCount, metrics);
+    const viewMinX = crop.minX;
+    const viewW = crop.maxX - crop.minX;
+    const fullSvgW = viewW;
+    const displayW = viewW;
     const displayH = compact && fitContent ? svgH : svgH;
     const stretchToWidth = containerWidth > 0;
     const stretchToFrame = containerWidth > 0 && containerHeight > 0;

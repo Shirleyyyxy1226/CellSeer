@@ -1,8 +1,8 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import IcaDashboard from '@/features/icaDvq/IcaDashboard';
-import DvqDashboard from '@/features/icaDvq/DvqDashboard';
-import RatePerformanceHierarchyDashboard from '@/features/ratePerformance/RatePerformanceHierarchyDashboard';
+import DqDvDashboard from '@/features/differential/DqDvDashboard';
+import DvDqDashboard from '@/features/differential/DvDqDashboard';
+import RatePerformanceDashboard from '@/features/ratePerformance/RatePerformanceDashboard';
 import GcdDashboard from '@/features/gcdPlot/GcdDashboard';
 import MasterPlot1Panel from '@/features/masterPlot/MasterPlot1Dashboard';
 import MasterPlot2Panel from '@/features/masterPlot/MasterPlot2Dashboard';
@@ -19,8 +19,8 @@ import { House, Menu } from 'lucide-react';
 import { type ImperativePanelHandle, Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 
 type Tab =
-  | 'ica'
-  | 'dvq'
+  | 'dqdv'
+  | 'dvdq'
   | 'rateperf-hier'
   | 'voltagecap'
   | 'particle-master'
@@ -31,8 +31,8 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'particle-master', label: 'Master Plot' },
   { key: 'rateperf-hier', label: 'Rate Performance' },
   { key: 'voltagecap', label: 'GCD Plot' },
-  { key: 'dvq', label: 'dV/dQ 3D' },
-  { key: 'ica', label: 'ICA 3D' },
+  { key: 'dvdq', label: 'dV/dQ 3D' },
+  { key: 'dqdv', label: 'dQ/dV 3D' },
 ];
 
 interface TreeCell {
@@ -137,14 +137,14 @@ const Index = () => {
   }, [treeCells, cathodeFilter, spacerFilter, separatorFilter]);
 
   const tabsWithHierarchy =
-    activeTab === 'ica' ||
-    activeTab === 'dvq' ||
+    activeTab === 'dqdv' ||
+    activeTab === 'dvdq' ||
     activeTab === 'voltagecap' ||
     activeTab === 'rateperf-hier' ||
     activeTab === 'tree';
   const tabsWithCellFilter =
-    activeTab !== 'ica' &&
-    activeTab !== 'dvq' &&
+    activeTab !== 'dqdv' &&
+    activeTab !== 'dvdq' &&
     activeTab !== 'voltagecap' &&
     activeTab !== 'rateperf-hier' &&
     activeTab !== 'particle-master' &&
@@ -308,22 +308,22 @@ const Index = () => {
         {/* Main content */}
         <Panel order={2} minSize={25} className="flex flex-col min-w-0 overflow-hidden">
             <div className="flex-1 overflow-y-auto p-4">
-              {activeTab === 'ica' && (
-                <IcaDashboard
+              {activeTab === 'dqdv' && (
+                <DqDvDashboard
                   cathodeFilter={cathodeFilter}
                   spacerFilter={spacerFilter}
                   separatorFilter={separatorFilter}
                 />
               )}
-              {activeTab === 'dvq' && (
-                <DvqDashboard
+              {activeTab === 'dvdq' && (
+                <DvDqDashboard
                   cathodeFilter={cathodeFilter}
                   spacerFilter={spacerFilter}
                   separatorFilter={separatorFilter}
                 />
               )}
               {activeTab === 'rateperf-hier' && (
-                <RatePerformanceHierarchyDashboard
+                <RatePerformanceDashboard
                   visibleCells={visibleCells}
                   cathodeFilter={cathodeFilter}
                   spacerFilter={spacerFilter}

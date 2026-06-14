@@ -1,24 +1,24 @@
 /**
- * Parse ICA dQ/dV peaks per cycle for Master Plot 1 (dQ/dV shift metric).
+ * Parse dQ/dV peaks per cycle for Master Plot 1 (dQ/dV shift metric).
  */
 
-export interface IcaDvqPayload {
+export interface DifferentialPayload {
   idNo?: number;
   cycles?: Record<
     string,
     {
-      ica?: { v?: number[]; dqdv?: number[] };
+      dqdv?: { v?: number[]; dqdv?: number[] };
     }
   >;
 }
 
 /** Voltage at dominant |dQ/dV| peak for each instrument cycle in cycleOrder. */
-export function peakVoltagePerCycle(payload: IcaDvqPayload | null, cycleOrder: number[]): number[] {
+export function peakVoltagePerCycle(payload: DifferentialPayload | null, cycleOrder: number[]): number[] {
   if (!payload?.cycles || !cycleOrder.length) return cycleOrder.map(() => NaN);
   return cycleOrder.map((c) => {
     const entry = payload.cycles![String(c)];
-    const v = entry?.ica?.v;
-    const dq = entry?.ica?.dqdv;
+    const v = entry?.dqdv?.v;
+    const dq = entry?.dqdv?.dqdv;
     if (!v?.length || !dq?.length || v.length !== dq.length) return NaN;
     let im = 0;
     let mx = Math.abs(dq[0] ?? 0);

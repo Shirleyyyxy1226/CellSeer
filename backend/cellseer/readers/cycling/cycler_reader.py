@@ -20,6 +20,22 @@ from cellseer.data.cycling_data import CyclingData
 from cellseer.readers.base import BaseReader
 
 
+def _raise_pyprobe_import_error(exc: Exception) -> None:
+    try:
+        import pyprobe  # type: ignore  # noqa: F401
+        extra = (
+            "Detected a 'pyprobe' module, but it does not expose the required "
+            "PyProBE APIs (for example 'pyprobe.cell')."
+        )
+    except Exception:
+        extra = "No compatible PyProBE module was found."
+    raise ImportError(
+        "PyProBE is required to read cycling data files. "
+        f"{extra} Install or upgrade the correct package with: "
+        "pip install -U PyProBE-Data"
+    ) from exc
+
+
 class CyclerReader(BaseReader):
     """PyProBE-backed base reader. Subclasses only need to supply the cycler name."""
 
@@ -28,10 +44,7 @@ class CyclerReader(BaseReader):
         try:
             from pyprobe.cell import process_cycler_data
         except ImportError as exc:
-            raise ImportError(
-                "PyProBE is required to read cycling data files. "
-                "Install it with: pip install pyprobe"
-            ) from exc
+            _raise_pyprobe_import_error(exc)
 
         frames: List[pl.LazyFrame] = []
         cycle_offset = 0
@@ -39,14 +52,17 @@ class CyclerReader(BaseReader):
         for fp in self.input_paths:
             with tempfile.NamedTemporaryFile(suffix=".parquet", delete=False) as tmp:
                 out_path = tmp.name
-            process_cycler_data(
-                cycler=self._cycler_name_for(fp),
-                input_data_path=str(fp),
-                output_data_path=out_path,
-                overwrite_existing=True,
-                **self._extra_kwargs(fp),
-            )
-            lf = pl.scan_parquet(out_path)
+            try:
+                process_cycler_data(
+                    cycler=self._cycler_name_for(fp),
+                    input_data_path=str(fp),
+                    output_data_path=out_path,
+                    overwrite_existing=True,
+                    **self._extra_kwargs(fp),
+                )
+                lf = pl.read_parquet(out_path).lazy()
+            finally:
+                Path(out_path).unlink(missing_ok=True)
             lf, cycle_offset = _reindex_cycles(lf, cycle_offset)
             frames.append(lf)
 

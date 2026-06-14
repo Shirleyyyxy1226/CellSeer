@@ -72,7 +72,7 @@ def ingest_metadata(
     filepath : Path | str
         Path to an Excel (.xlsx, .xls) or CSV file.
     db : DBBackend
-        Open database backend (SQLiteBackend or DuckDBBackend).
+        Open database backend (SQLiteBackend).
 
     Returns
     -------
@@ -240,7 +240,7 @@ def ingest_cycling_file(
                 output_prefix=f"{direction}_",
             )
         except ValueError as exc:
-            print(f"  Warning: ICA/DVQ ({direction}) skipped for cell '{cell_id}': {exc}")
+            print(f"  Warning: dQ/dV and dV/dQ ({direction}) skipped for cell '{cell_id}': {exc}")
 
     # 6. Persist everything in one write
     cell.save(db)

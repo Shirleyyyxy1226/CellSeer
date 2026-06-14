@@ -94,7 +94,7 @@ export const DIMENSION_CATALOG: {
     key: 'dqdv_shift',
     label: 'dQ/dV shift',
     kind: 'per_cycle',
-    hint: 'ΔV of dominant |dQ/dV| peak vs reference; loads /api/cell-record/{id}/ica-dvq.',
+    hint: 'ΔV of dominant |dQ/dV| peak vs reference; loads /api/cell-record/{id}/differential.',
   },
   { key: 'cathode', label: 'Cathode', kind: 'categorical' },
   { key: 'separator', label: 'Separator', kind: 'categorical' },
