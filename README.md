@@ -1,31 +1,31 @@
 # CellSeer
 
-Simple battery-cell dashboard with a React frontend and FastAPI backend.
+Battery cell dashboard — React frontend + FastAPI backend.
 
-Licensed under the [BSD 3-Clause License](LICENSE).
+Licensed under the [MIT License](LICENSE). Copyright (c) 2026 Shirley Xiong.
 
-## What it can do
+## Features
 
-- Show hierarchy tree and filter cells by metadata
-- Plot ICA / dVdQ, rate performance, and GCD curves
-- Read data from backend API (DB-backed)
-- Support notes/tags (cell annotations)
+- Hierarchy tree with metadata filtering
+- dQ/dV, dV/dQ, rate performance, and GCD plots
+- Cell annotations (notes + tags)
+- File upload and ingest
+- DIGIBAT sync (mirror remote collections to local cache)
 
 ## Project structure
 
-```text
+```
 .
 ├── frontend/   # React + Vite UI
-├── backend/    # FastAPI API + SQLite access
-└── data/       # optional raw input files (for ingest pipeline)
+├── backend/    # FastAPI + SQLite
+└── data/       # raw input files (optional)
 ```
 
-## Quick start (local)
+## Quick start
 
-### 1) Install dependencies
+### 1. Install dependencies
 
 ```bash
-# from repo root
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r backend/requirements.txt
@@ -34,169 +34,139 @@ cd frontend
 npm install
 ```
 
-### 2) Run backend
-
-Open terminal A at repo root:
+### 2. Run backend
 
 ```bash
 source .venv/bin/activate
 python -m uvicorn backend.api:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-### 3) Run frontend
-
-Open terminal B:
+### 3. Run frontend
 
 ```bash
 cd frontend
 npm run dev
 ```
 
-Then open: [http://localhost:8080](http://localhost:8080)
+Open [http://localhost:8080](http://localhost:8080). The frontend proxies `/api` to `http://127.0.0.1:8000`.
 
-Frontend dev server proxies `/api` to `http://127.0.0.1:8000`.
+## API endpoints
 
-## Essential API endpoints
+| Area | Method | Endpoint |
+|---|---|---|
+| Health | GET | `/api/health` |
+| Hierarchy | GET | `/api/hierarchy` |
+| Cells | GET | `/api/cell-record-index` |
+| Cells | GET | `/api/cell-record/{cell_id}` |
+| Annotations | GET / PUT | `/api/cell-annotation/{cell_id}` |
+| Upload | POST | `/api/upload` |
+| Upload status | GET | `/api/upload/status/{task_id}` |
+| Projects | GET | `/api/projects` |
+| DIGIBAT | GET | `/api/digibat/collections` |
+| DIGIBAT sync | POST | `/api/projects/{project_id}/digibat/sync` |
+| DIGIBAT status | GET | `/api/projects/{project_id}/digibat/status` |
 
-| Area | Method | Endpoint | Description |
-|---|---|---|---|
-| Health | GET | `/api/health` | Verify backend is running |
-| Hierarchy | GET | `/api/hierarchy` | Load hierarchy tree data from DB |
-| Cells | GET | `/api/cell-record-index` | List available cells for dashboards |
-| Cells | GET | `/api/cell-record/{id_no}` | Get cycling curve data for one cell |
-| ICA / dVdQ | GET | `/api/cell-record/{id_no}/ica-dvq` | Get ICA and dV/dQ payload for one cell |
-| Upload | POST | `/api/upload` | Upload and ingest one file |
-| Upload | GET | `/api/upload/status/{task_id}` | Check upload task progress |
-| Projects | GET | `/api/projects` | List projects |
+## Custom database
 
-## Connect to database
-
-By default, backend reads:
-
-- `backend/cellseer.db`
-- `data_lake/` (dataset parquet files)
-
-To use another DB file and storage location, set env vars before starting backend:
+By default the backend uses `backend/cellseer.db` and `data_lake/`. To use your own:
 
 ```bash
-export CELLSEER_DB_PATH="/absolute/path/to/your.db"
-export CELLSEER_DATA_LAKE_DIR="/absolute/path/to/data_lake"
+export CELLSEER_DB_PATH="/path/to/your.db"
+export CELLSEER_DATA_LAKE_DIR="/path/to/data_lake"
 python -m uvicorn backend.api:app --host 127.0.0.1 --port 8000 --reload
 ```
 
+### Minimum required tables and columns
 
-## If you already have your own DB
+**project:** `id` (TEXT), `name` (TEXT)
 
-If you want to connect an existing SQLite DB to this website, the easiest way is to make your DB compatible with the backend schema used by CellSeer.
+**cell:** `project_id`, `cell_id` (unique), `id_no` (integer label), optional: `cathode`, `anode`, `electrolyte`, `separator_type`, `spacer_mm`, `deleted_at`
 
-### Required tables (minimum)
+**dataset:** `project_id`, `cell_id`, `name`, `storage_kind`, `storage_uri`, `data_format`
 
-- `project`
-- `cell`
-- `dataset`
+Required dataset names: `cycling` (for rate performance), `discharge_dqdv`, `discharge_dvdq` (for differential plots).
 
-These are enough for the main dashboard to load data.
-
-### Required columns (minimum)
-
-`project`:
-- `id` (TEXT, primary key)
-- `name` (TEXT)
-
-`cell`:
-- `project_id` (TEXT)
-- `cell_id` (TEXT, unique id for each cell)
-- `id_no` (INTEGER, numeric cell id used by API routes)
-- optional but recommended for filters: `cathode`, `separator_type`, `spacer_mm`, `cathode_mass`, `electrolyte`
-
-`dataset`:
-- `project_id` (TEXT)
-- `cell_id` (TEXT)
-- `name` (TEXT)
-- `storage_kind` (TEXT, e.g. `local`)
-- `storage_uri` (TEXT, parquet path relative to `CELLSEER_DATA_LAKE_DIR` or absolute)
-- `data_format` (TEXT, `parquet`)
-- optional: `size_bytes` (INTEGER), `checksum_sha256` (TEXT)
-- optional:  (TEXT JSON, used for protocol segments)
-
-### Required dataset names
-
-At minimum, insert rows in `dataset` with:
-
-- `name = 'cycling'` (needed for rate performance + cell record APIs)
-
-For ICA / dVdQ views, also include:
-
-- `name = 'discharge_dqdv'`
-- `name = 'discharge_dvdq'`
-
-Legacy fallback names also work for discharge:
-
-- `name = 'dqdv'`
-- `name = 'dvdq'`
-
-### How to point the app to your DB
+### Check your DB is compatible
 
 ```bash
-export CELLSEER_DB_PATH="/absolute/path/to/your.db"
-export CELLSEER_DATA_LAKE_DIR="/absolute/path/to/data_lake"
-python -m uvicorn backend.api:app --host 127.0.0.1 --port 8000 --reload
-```
-
-### Quick DB compatibility check
-
-Run this before starting backend:
-
-```bash
-sqlite3 "/absolute/path/to/your.db" "
+sqlite3 "/path/to/your.db" "
 .tables
-SELECT 'project_rows', COUNT(*) FROM project;
-SELECT 'cell_rows', COUNT(*) FROM cell;
-SELECT 'cycling_rows', COUNT(*) FROM dataset WHERE name='cycling';
+SELECT COUNT(*) FROM project;
+SELECT COUNT(*) FROM cell;
+SELECT COUNT(*) FROM dataset WHERE name='cycling';
 "
 ```
 
-If these queries work and counts are non-zero, the website should be able to load core dashboards.
+## DIGIBAT sync
 
-## Health check
+CellSeer can mirror DIGIBAT collections into local SQLite + parquet so dashboards work offline.
 
-After backend starts:
+### Configuration
 
-- [http://127.0.0.1:8000/api/health](http://127.0.0.1:8000/api/health)
-
-If this endpoint returns OK, frontend should be able to load API data.
-
-## License
-
-CellSeer is distributed under the **BSD 3-Clause License**. You are free to use, copy, modify, and redistribute it (including in closed-source / commercial products), provided you keep the copyright notice and disclaimer, and do not use the CellSeer name to endorse derivative works without permission. See the [LICENSE](LICENSE) file for the full text.
-
-Copyright (c) 2026 CellSeer.
-
-## Useful frontend commands
+Add credentials to `backend/.env`:
 
 ```bash
-cd frontend
-npm run dev
-npm run build
-npm run test
-npm run lint
+DATALAB_BASE_URL=https://digibat.dept.ic.ac.uk
+DATALAB_API_KEY=your_api_key
+DATALAB_TIMEOUT=60
 ```
 
-## Import from datalab collections (session auth)
-
-You can map datalab collections to CellSeer projects with:
+### CLI sync
 
 ```bash
-export DIGIBAT_SESSION_COOKIE="your_session_cookie_value"
-python backend/scripts/import_datalab_collections.py \
-  --base-url "https://digibat.dept.ic.ac.uk" \
-  --collections "Discovery-Benchmark-v0,Your-Second-Collection" \
+python backend/scripts/sync_digibat.py \
+  --project "your-project-name" \
+  --collections "your-collection-name" \
   --db-path "backend/cellseer.db" \
   --data-lake-dir "data_lake"
 ```
 
-Notes:
-- One collection is imported as one CellSeer project.
-- Metadata is imported for each child item.
-- Cycling ingest is attempted from cycle block/file URLs when available.
-- Use `--no-cycling` to import metadata only.
+Useful flags:
+
+- `--dry-run` — preview changes without writing anything
+- `--full-resync` — re-download all files, ignoring version cache
+- `--no-cycling` — import metadata only, skip cycling files
+- `--max-items N` — limit cells processed (useful for testing)
+- `--purge` — hard-delete rows soft-deleted more than `--purge-days` days ago (default 30)
+- `--verbose` — show per-file progress
+
+### Cron example (every 30 minutes)
+
+```bash
+*/30 * * * * cd /path/to/CellSeer && \
+  . .venv/bin/activate && \
+  python backend/scripts/sync_digibat.py \
+    --project "your-project-name" \
+    --collections "your-collection-name" \
+    --db-path "backend/cellseer.db" \
+    --data-lake-dir "data_lake" \
+  >> backend/logs/digibat-sync.log 2>&1
+```
+
+### Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| `DATALAB_API_KEY is not configured` | Add `DATALAB_API_KEY` to `backend/.env` |
+| `Unauthorized` even though your key works elsewhere | Use `DATALAB-API-KEY: <key>` header, not `Authorization: Bearer` |
+| Two collections with the same name in dropdown | DIGIBAT allows duplicate names — the dropdown shows the raw `collection_id` to tell them apart |
+| Status stuck at `running` | Restart the server — stale sync jobs are reset on startup |
+| `Cached datasets: 0` but parquets exist | Old datasets imported before provenance tracking. Re-sync to tag them correctly |
+| Ghost cells in hierarchy (separator, spacer, etc.) | Run: `DELETE FROM cell WHERE source_system='digibat' AND cathode IS NULL AND anode IS NULL AND electrolyte IS NULL;` |
+| `.mpr` file fails cycling import | BioLogic PEIS (impedance) files are not cycling files and are correctly rejected |
+| Cell disappeared after re-sync | It was soft-deleted. Re-import its refcode to restore it, or wait for `--purge` |
+| `/api/cell-record/CEL-245` returns 404 | URL-encode the cell ID if it contains special characters |
+
+## Frontend commands
+
+```bash
+cd frontend
+npm run dev      # start dev server
+npm run build    # build for production
+npm run test     # run tests
+npm run lint     # lint
+```
+
+## License
+
+MIT License — see [LICENSE](LICENSE).

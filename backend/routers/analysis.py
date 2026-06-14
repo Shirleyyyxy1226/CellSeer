@@ -1,4 +1,4 @@
-"""Hierarchy analysis endpoints: DB-backed hierarchy and ad-hoc table analysis."""
+"""Hierarchy analysis endpoints."""
 
 import json
 import re
@@ -53,10 +53,7 @@ def _cell_number_token(cell_id: Optional[str]) -> Optional[int]:
 
 
 def _dedupe_rows_for_hierarchy(rows: list[sqlite3.Row]) -> list[sqlite3.Row]:
-    """
-    Collapse duplicate logical cells caused by mixed key schemes.
-    Prefer rows with non-null id_no, then rows with project-prefixed names.
-    """
+    """Remove duplicate cells, preferring rows with id_no set."""
     out: dict[object, sqlite3.Row] = {}
 
     def score(r: sqlite3.Row) -> tuple[int, int]:
@@ -125,7 +122,7 @@ def _preference_storage_key(pref_name: str, project_key: Optional[str]) -> str:
 
 @router.get("/api/hierarchy")
 def analyse_default_from_db(maxLevels: int = 4, projectId: Optional[str] = None):
-    """Build hierarchy directly from DB `cell` metadata, no CSV file dependency."""
+    """Build and return the hierarchy tree from cell metadata in the DB."""
     project_id = normalize_project_id(projectId)
     headers = [
         "ID no.",

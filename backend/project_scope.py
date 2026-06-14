@@ -1,4 +1,4 @@
-"""Project-scoping helpers for API routers and ingest flow."""
+"""Helpers for project scoping — used by routers and ingest."""
 
 from __future__ import annotations
 
@@ -139,7 +139,7 @@ def ensure_project_schema(conn: sqlite3.Connection) -> None:
                 if not _has_column(conn, table, column):
                     conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
             except sqlite3.OperationalError:
-                # Table may not exist yet; a later bootstrap will create it with project_id.
+                # Table may not exist yet; schema will be created on next boot.
                 pass
 
     conn.execute(
@@ -215,15 +215,11 @@ def ensure_project_exists(conn: sqlite3.Connection, project_id: str, name: Optio
         (pid, pname),
     )
     conn.commit()
-    # Seed read-only builtin templates so every project sees the same
-    # "FORM-3 | 1C" / "FORM-5 | 0.5C" starter pair, even if the project
-    # was created before the protocol-template feature existed.
+    # Add default protocol templates if not already present.
     _seed_builtin_protocol_templates(conn, pid)
 
 
-# A protocol "segment" stored on disk has shape:
-#   {"name": "formation", "cycleStart": 1, "cycleEnd": 3, "cRate": 0.1}
-# cycleEnd may be null to mean "to end of test".
+# Built-in protocol templates shown in every project by default.
 _BUILTIN_PROTOCOL_TEMPLATES: list[dict] = [
     {
         "id_suffix": "form3-1c",
@@ -247,12 +243,7 @@ _BUILTIN_PROTOCOL_TEMPLATES: list[dict] = [
 
 
 def _seed_builtin_protocol_templates(conn: sqlite3.Connection, project_id: str) -> None:
-    """Insert the read-only starter templates for ``project_id`` if missing.
-
-    Idempotent: re-running on an existing project is a no-op. Existing
-    builtins are NOT overwritten so user edits to a builtin's row (if we ever
-    add such a flow) survive subsequent boots.
-    """
+    """Insert default protocol templates for a project if they don't exist yet."""
     pid = normalize_project_id(project_id)
     try:
         for tmpl in _BUILTIN_PROTOCOL_TEMPLATES:
@@ -279,8 +270,7 @@ def _seed_builtin_protocol_templates(conn: sqlite3.Connection, project_id: str) 
             )
         conn.commit()
     except sqlite3.OperationalError:
-        # protocol_template table not yet present (older partial schema);
-        # ensure_project_schema will create it on the next boot.
+        # Table not yet created; will be set up on next boot.
         pass
 
 

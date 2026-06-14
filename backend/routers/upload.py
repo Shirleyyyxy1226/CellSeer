@@ -1,4 +1,4 @@
-"""File upload endpoints: POST /api/upload, status polling, history, loader manifest."""
+"""File upload endpoints."""
 
 import json
 import sqlite3
@@ -14,9 +14,7 @@ from project_scope import ensure_project_exists, ensure_project_schema, normaliz
 router = APIRouter()
 
 
-# ---------------------------------------------------------------------------
-# Internal DB helper — WAL mode keeps the connection open for progress updates
-# ---------------------------------------------------------------------------
+# Opens a DB connection for tracking upload task progress.
 
 def _upload_db() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
@@ -129,9 +127,7 @@ def _run_upload_batch(task_id: str, files_payload: list[tuple[bytes, str]], load
         write_status("error", 100, str(exc))
 
 
-# ---------------------------------------------------------------------------
 # Routes
-# ---------------------------------------------------------------------------
 
 @router.get("/api/upload/loaders")
 def upload_loaders():
@@ -171,7 +167,7 @@ async def upload_file(
     conn = _upload_db()
     ensure_project_exists(conn, project_id)
 
-    # Deduplication: reuse an in-progress task for the same filename.
+    # Reuse an existing in-progress task for the same filename.
     existing = conn.execute(
         """
         SELECT id
@@ -330,21 +326,13 @@ async def upload_cell_test_file(
     file: UploadFile = File(...),
     projectId: str | None = Form(default=None),
 ):
-    """Attach a test file (currently ``cycling``) to a specific cell.
-
-    Unlike :func:`upload_file`, this route bypasses filename-based ``id_no``
-    matching by forwarding the resolved ``cell_id`` / ``id_no`` to the loader.
-    The path is shaped as ``/api/cells/{cell_id}/files/{test_type}`` so future
-    test artifacts (e.g. ``formation``, ``eis``, ``dqdv``) can register their
-    own loaders and reuse the same endpoint without a route migration.
-    """
+    """Attach a test file to a specific cell by cell_id."""
     project_id = normalize_project_id(projectId)
     test_type_key = (test_type or "").strip().lower()
     if not test_type_key:
         raise HTTPException(status_code=400, detail="test_type is required")
 
-    # Today we only ingest cycling files per-cell; surface a clear 415 for
-    # other test types so the frontend can fall back gracefully.
+    # Only cycling files are supported for per-cell upload.
     SUPPORTED_PER_CELL_TEST_TYPES = {"cycling"}
     if test_type_key not in SUPPORTED_PER_CELL_TEST_TYPES:
         raise HTTPException(
@@ -364,8 +352,7 @@ async def upload_cell_test_file(
             detail=f"No loader for '{suffix}' under test_type '{test_type_key}'",
         )
 
-    # Verify the cell exists in this project so the user gets a 404 up-front
-    # instead of an opaque error inside the background task.
+    # Check cell exists before queuing the background task.
     conn = _upload_db()
     ensure_project_exists(conn, project_id)
     cell_row = conn.execute(
@@ -395,7 +382,7 @@ async def upload_cell_test_file(
         "projectId": project_id,
         "cellId": cell_id,
         "idNo": resolved_id_no,
-        # Forward in both casings so loaders that read snake_case still work.
+        # Pass both camelCase and snake_case so all loaders can read it.
         "cell_id": cell_id,
         "id_no": resolved_id_no,
     }

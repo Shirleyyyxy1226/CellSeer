@@ -27,6 +27,7 @@ from routers import (
     annotations,
     cells,
     digibat,
+    master_plot,
     projects,
     protocols,
     upload,
@@ -99,6 +100,7 @@ app.include_router(upload.router)
 app.include_router(projects.router)
 app.include_router(digibat.router)
 app.include_router(protocols.router)
+app.include_router(master_plot.router)
 
 
 # Serve the built SPA from the same origin when frontend/dist is present
