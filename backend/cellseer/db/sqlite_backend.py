@@ -59,8 +59,9 @@ class SQLiteBackend(DBBackend):
 
     def _ensure_schema(self) -> None:
         schema_path = Path(__file__).resolve().parents[2] / "schema.sql"
+        db_is_new = (not self.db_path.exists()) or self.db_path.stat().st_size == 0
         conn = self._connect()
-        if schema_path.exists():
+        if db_is_new and schema_path.exists():
             conn.executescript(schema_path.read_text())
         ensure_project_schema(conn)
         ensure_project_exists(conn, self.project_id)
@@ -81,94 +82,97 @@ class SQLiteBackend(DBBackend):
         m = cell.metadata
         pid = normalize_project_id(getattr(self, "project_id", DEFAULT_PROJECT_ID))
         conn = self._connect()
-        ensure_project_exists(conn, pid)
+        try:
+            ensure_project_exists(conn, pid)
 
-        # 1. Upsert metadata row
-        conn.execute(
-            """
-            INSERT INTO cell (
-                project_id, cell_id, id_no, batch, category, cathode, cathode_diameter_mm,
-                anode, anode_diameter_mm, np_ratio, separator_type,
-                separator_diameter_mm, electrolyte, electrolyte_volume_ul,
-                spacer_mm, repeat, do_formation, do_ratetest, do_eis,
-                anode_mass, cathode_mass, notes
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-            ON CONFLICT(cell_id) DO UPDATE SET
-                project_id=excluded.project_id,
-                id_no=excluded.id_no, batch=excluded.batch,
-                category=excluded.category, cathode=excluded.cathode,
-                cathode_diameter_mm=excluded.cathode_diameter_mm,
-                anode=excluded.anode,
-                anode_diameter_mm=excluded.anode_diameter_mm,
-                np_ratio=excluded.np_ratio,
-                separator_type=excluded.separator_type,
-                separator_diameter_mm=excluded.separator_diameter_mm,
-                electrolyte=excluded.electrolyte,
-                electrolyte_volume_ul=excluded.electrolyte_volume_ul,
-                spacer_mm=excluded.spacer_mm, repeat=excluded.repeat,
-                do_formation=excluded.do_formation,
-                do_ratetest=excluded.do_ratetest, do_eis=excluded.do_eis,
-                anode_mass=excluded.anode_mass, cathode_mass=excluded.cathode_mass,
-                notes=excluded.notes
-            """,
-            (
-                pid, m.cell_id, m.id_no, m.batch, m.category,
-                m.cathode, m.cathode_diameter_mm,
-                m.anode, m.anode_diameter_mm, m.np_ratio,
-                m.separator_type, m.separator_diameter_mm,
-                m.electrolyte, m.electrolyte_volume_ul,
-                m.spacer_mm, m.repeat,
-                m.do_formation, m.do_ratetest, m.do_eis,
-                m.anode_mass_g, m.cathode_mass_g, m.notes,
-            ),
-        )
-
-        # 2. Write each dataset to data-lake storage and persist reference metadata.
-        for name, raw in cell.datasets.items():
-            dataset_ref = write_dataset_parquet(
-                raw,
-                project_id=pid,
-                cell_id=m.cell_id,
-                dataset_name=name,
-            )
-            # Serialise protocol if present on CyclingData
-            from cellseer.data.cycling_data import CyclingData as _CyclingData
-            meta_json: Optional[str] = None
-            if isinstance(raw, _CyclingData) and raw.protocol is not None:
-                meta_json = json.dumps({"protocol": raw.protocol.to_list()})
+            # 1. Upsert metadata row
             conn.execute(
                 """
-                INSERT INTO dataset (
-                    project_id, cell_id, name,
-                    storage_kind, storage_uri, data_format, size_bytes, checksum_sha256,
-                    meta
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(project_id, cell_id, name) DO UPDATE SET
+                INSERT INTO cell (
+                    project_id, cell_id, id_no, batch, category, cathode, cathode_diameter_mm,
+                    anode, anode_diameter_mm, np_ratio, separator_type,
+                    separator_diameter_mm, electrolyte, electrolyte_volume_ul,
+                    spacer_mm, repeat, do_formation, do_ratetest, do_eis,
+                    anode_mass, cathode_mass, notes
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(cell_id) DO UPDATE SET
                     project_id=excluded.project_id,
-                    storage_kind=excluded.storage_kind,
-                    storage_uri=excluded.storage_uri,
-                    data_format=excluded.data_format,
-                    size_bytes=excluded.size_bytes,
-                    checksum_sha256=excluded.checksum_sha256,
-                    meta=excluded.meta,
-                    created_at=datetime('now')
+                    id_no=excluded.id_no, batch=excluded.batch,
+                    category=excluded.category, cathode=excluded.cathode,
+                    cathode_diameter_mm=excluded.cathode_diameter_mm,
+                    anode=excluded.anode,
+                    anode_diameter_mm=excluded.anode_diameter_mm,
+                    np_ratio=excluded.np_ratio,
+                    separator_type=excluded.separator_type,
+                    separator_diameter_mm=excluded.separator_diameter_mm,
+                    electrolyte=excluded.electrolyte,
+                    electrolyte_volume_ul=excluded.electrolyte_volume_ul,
+                    spacer_mm=excluded.spacer_mm, repeat=excluded.repeat,
+                    do_formation=excluded.do_formation,
+                    do_ratetest=excluded.do_ratetest, do_eis=excluded.do_eis,
+                    anode_mass=excluded.anode_mass, cathode_mass=excluded.cathode_mass,
+                    notes=excluded.notes,
+                    deleted_at=NULL
                 """,
                 (
-                    pid,
-                    m.cell_id,
-                    name,
-                    dataset_ref["storage_kind"],
-                    dataset_ref["storage_uri"],
-                    dataset_ref["data_format"],
-                    dataset_ref["size_bytes"],
-                    dataset_ref["checksum_sha256"],
-                    meta_json,
+                    pid, m.cell_id, m.id_no, m.batch, m.category,
+                    m.cathode, m.cathode_diameter_mm,
+                    m.anode, m.anode_diameter_mm, m.np_ratio,
+                    m.separator_type, m.separator_diameter_mm,
+                    m.electrolyte, m.electrolyte_volume_ul,
+                    m.spacer_mm, m.repeat,
+                    m.do_formation, m.do_ratetest, m.do_eis,
+                    m.anode_mass_g, m.cathode_mass_g, m.notes,
                 ),
             )
 
-        conn.commit()
-        conn.close()
+            # 2. Write each dataset to data-lake storage and persist reference metadata.
+            from cellseer.data.cycling_data import CyclingData as _CyclingData
+            for name, raw in cell.datasets.items():
+                dataset_ref = write_dataset_parquet(
+                    raw,
+                    project_id=pid,
+                    cell_id=m.cell_id,
+                    dataset_name=name,
+                )
+                meta_json: Optional[str] = None
+                if isinstance(raw, _CyclingData) and raw.protocol is not None:
+                    meta_json = json.dumps({"protocol": raw.protocol.to_list()})
+                conn.execute(
+                    """
+                    INSERT INTO dataset (
+                        project_id, cell_id, name,
+                        storage_kind, storage_uri, data_format, size_bytes, checksum_sha256,
+                        meta
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(project_id, cell_id, name) DO UPDATE SET
+                        project_id=excluded.project_id,
+                        storage_kind=excluded.storage_kind,
+                        storage_uri=excluded.storage_uri,
+                        data_format=excluded.data_format,
+                        size_bytes=excluded.size_bytes,
+                        checksum_sha256=excluded.checksum_sha256,
+                        meta=excluded.meta,
+                        created_at=datetime('now'),
+                        deleted_at=NULL
+                    """,
+                    (
+                        pid,
+                        m.cell_id,
+                        name,
+                        dataset_ref["storage_kind"],
+                        dataset_ref["storage_uri"],
+                        dataset_ref["data_format"],
+                        dataset_ref["size_bytes"],
+                        dataset_ref["checksum_sha256"],
+                        meta_json,
+                    ),
+                )
+
+            conn.commit()
+        finally:
+            conn.close()
 
     def load_cell(self, cell_id: str) -> "Cell":
         """
@@ -185,7 +189,8 @@ class SQLiteBackend(DBBackend):
 
         pid = normalize_project_id(getattr(self, "project_id", DEFAULT_PROJECT_ID))
         row = conn.execute(
-            "SELECT * FROM cell WHERE project_id = ? AND cell_id = ?", (pid, cell_id)
+            "SELECT * FROM cell WHERE project_id = ? AND cell_id = ? AND deleted_at IS NULL",
+            (pid, cell_id),
         ).fetchone()
         if row is None:
             conn.close()
@@ -198,7 +203,7 @@ class SQLiteBackend(DBBackend):
             """
             SELECT name, storage_uri, data_format, meta
             FROM dataset
-            WHERE project_id = ? AND cell_id = ?
+            WHERE project_id = ? AND cell_id = ? AND deleted_at IS NULL
             """,
             (pid, cell_id),
         ).fetchall()
@@ -228,7 +233,8 @@ class SQLiteBackend(DBBackend):
         pid = normalize_project_id(getattr(self, "project_id", DEFAULT_PROJECT_ID))
         conn = self._connect()
         rows = conn.execute(
-            "SELECT cell_id FROM cell WHERE project_id = ? ORDER BY cell_id", (pid,)
+            "SELECT cell_id FROM cell WHERE project_id = ? AND deleted_at IS NULL ORDER BY cell_id",
+            (pid,),
         ).fetchall()
         conn.close()
         return [r["cell_id"] for r in rows]
