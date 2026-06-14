@@ -434,6 +434,8 @@ def import_collection(
                 continue
 
             try:
+                # ingest_cycling_file must remain synchronous: the finally block
+                # below deletes downloaded_paths immediately after this returns.
                 ingest_cycling_file(
                     downloaded_paths if len(downloaded_paths) > 1 else downloaded_paths[0],
                     db,
