@@ -1,8 +1,20 @@
-import type { RatePerfCellRaw, IndexCellRaw } from '@/lib/cellTypes';
+import type {
+  RatePerfCellRaw,
+  IndexCellRaw,
+  CellDatasetSummary,
+  ProtocolSegment,
+  OpenEndedProtocolSegment,
+} from '@/lib/cellTypes';
 import type { CellAnnotation } from '@/contexts/CellSelectionContext';
-import { withProjectQuery } from '@/lib/projectScope';
+import { currentProjectIdFromLocation, withProjectQuery } from '@/lib/projectScope';
 
-export type { RatePerfCellRaw, IndexCellRaw };
+export type {
+  RatePerfCellRaw,
+  IndexCellRaw,
+  CellDatasetSummary,
+  ProtocolSegment,
+  OpenEndedProtocolSegment,
+};
 
 export interface UploadTaskStatus {
   id: string;
@@ -67,34 +79,121 @@ async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
 export const fetchCellRecordIndex = (): Promise<{ cells: IndexCellRaw[] }> =>
   apiFetch('/api/cell-record-index');
 
-export const fetchRatePerformance = (): Promise<{ cells: RatePerfCellRaw[]; protocols?: string[] }> =>
-  apiFetch('/api/rate-performance');
+/**
+ * Condition scope for the rate-performance fetch (05 · FR-2). Narrows the
+ * payload to one cohort (the active dropdown filters) so cell-level views pull
+ * only what they draw. `'All'` / empty values are treated as "no constraint".
+ */
+export interface RateScope {
+  cathode?: string;
+  separator?: string;
+  spacer?: string;
+}
 
-export const fetchCellRecord = (idNo: number): Promise<unknown> =>
-  apiFetch(`/api/cell-record/${idNo}`);
+export const fetchRatePerformance = (
+  scope?: RateScope,
+): Promise<{ cells: RatePerfCellRaw[]; protocols?: string[] }> => {
+  const params = new URLSearchParams();
+  if (scope?.cathode && scope.cathode !== 'All') params.set('cathode', scope.cathode);
+  if (scope?.separator && scope.separator !== 'All') params.set('separator', scope.separator);
+  if (scope?.spacer && scope.spacer !== 'All') params.set('spacer', scope.spacer);
+  const qs = params.toString();
+  return apiFetch(`/api/rate-performance${qs ? `?${qs}` : ''}`);
+};
+
+/**
+ * Master Plot overview aggregate (05 · FR-1). Per-condition stats + a compact
+ * per-cell *scalar* table — no per-cycle arrays — for the condition views at
+ * scale, where shipping the full rate-performance payload would freeze the tab.
+ * Mirror of the client metric pipeline; see backend/master_plot_overview.py.
+ */
+export interface OverviewCondStat {
+  mean: number | null;
+  sd: number | null;
+  cv: number | null;
+  sem: number | null;
+  ciHalf: number | null;
+  n: number;
+}
+
+export interface OverviewCondition {
+  key: string;
+  cathode: string;
+  separatorType: string;
+  spacerMm: number | null;
+  n: number;
+  flaggedCount: number;
+  metrics: Record<string, OverviewCondStat>;
+}
+
+export interface OverviewCell {
+  cellId: string;
+  condKey: string;
+  flags: string[];
+  peakCapacitySpec: number | null;
+  peakCapacityRaw: number | null;
+  medianCE: number | null;
+  retention: number | null;
+  fadeRatePctPer100: number | null;
+  ceTrendPctPer100: number | null;
+  cycleLife80: number | null;
+  healthScore: number | null;
+  cycleCount: number;
+  capacityBasis: 'mAh/g' | 'mAh';
+}
+
+export interface MasterPlotOverview {
+  projectId: string | null;
+  cellCount: number;
+  conditionCount: number;
+  /** Number of cells with a resolved protocol — gates protocol-locked metrics. */
+  protocolCellCount: number;
+  conditions: Record<string, OverviewCondition>;
+  cells: OverviewCell[];
+}
+
+export const fetchMasterPlotOverview = (): Promise<MasterPlotOverview> =>
+  apiFetch('/api/master-plot/overview');
+
+/**
+ * Per-cell cycling curves. Dashboards request stride-downsampled traces
+ * (default 500 points/cycle — visually identical, ~20× smaller than the
+ * ~9 MB full payload); pass `maxPointsPerCycle: null` for full resolution
+ * (e.g. for data export).
+ */
+export const fetchCellRecord = (
+  cellId: string,
+  opts?: { maxPointsPerCycle?: number | null },
+): Promise<unknown> => {
+  const maxPts = opts?.maxPointsPerCycle === undefined ? 500 : opts.maxPointsPerCycle;
+  const qs = maxPts != null ? `?maxPointsPerCycle=${maxPts}` : '';
+  return apiFetch(`/api/cell-record/${encodeURIComponent(cellId)}${qs}`);
+};
 
 export const fetchDifferential = (
-  idNo: number,
+  cellId: string,
   direction: 'discharge' | 'charge' = 'discharge',
 ): Promise<unknown> =>
-  apiFetch(`/api/cell-record/${idNo}/differential?direction=${encodeURIComponent(direction)}`);
+  apiFetch(
+    `/api/cell-record/${encodeURIComponent(cellId)}/differential?direction=${encodeURIComponent(direction)}`,
+  );
 
 export const fetchDifferentialCells = (
   direction: 'discharge' | 'charge' = 'discharge',
-): Promise<{ idNos: number[] }> =>
+): Promise<{ cellIds: string[] }> =>
   apiFetch(`/api/differential-cells?direction=${encodeURIComponent(direction)}`);
 
-export const fetchCellAnnotations = (): Promise<{ annotations: Record<number, CellAnnotation> }> =>
+export const fetchCellAnnotations = (): Promise<{ annotations: Record<string, CellAnnotation> }> =>
   apiFetch('/api/cell-annotations');
 
-export const fetchCellAnnotation = (idNo: number): Promise<CellAnnotation> =>
-  apiFetch(`/api/cell-annotation/${idNo}`);
+export const fetchCellAnnotation = (cellId: string): Promise<CellAnnotation> =>
+  apiFetch(`/api/cell-annotation/${encodeURIComponent(cellId)}`);
 
 export const putCellAnnotation = (
-  idNo: number,
+  cellId: string,
   body: { note?: string; tags?: string[] },
 ): Promise<CellAnnotation> =>
-  apiFetch(`/api/cell-annotation/${idNo}`, {
+  apiFetch(`/api/cell-annotation/${encodeURIComponent(cellId)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -116,9 +215,8 @@ export async function uploadFile(
 ): Promise<{ taskId: string; filename: string; fileType: string; status: string }> {
   const form = new FormData();
   form.append('file', file);
-  const scopedUploadUrl = withProjectQuery('/api/upload', options?.projectId);
-  const scopedProjectId = new URLSearchParams(scopedUploadUrl.split('?')[1] ?? '').get('projectId');
-  if (scopedProjectId) form.append('projectId', scopedProjectId);
+  const effectivePid = options?.projectId ?? currentProjectIdFromLocation();
+  if (effectivePid) form.append('projectId', effectivePid);
   if (options?.fileType) form.append('fileType', options.fileType);
   if (options?.primaryKeyHeader) form.append('primaryKeyHeader', options.primaryKeyHeader);
   if (options?.idNoHeader) form.append('idNoHeader', options.idNoHeader);
@@ -145,15 +243,88 @@ export async function uploadFiles(
 ): Promise<{ taskId: string; filename: string; fileType: string; status: string; itemCount: number }> {
   const form = new FormData();
   for (const f of files) form.append('files', f);
-  const scopedUploadUrl = withProjectQuery('/api/upload/batch', options?.projectId);
-  const scopedProjectId = new URLSearchParams(scopedUploadUrl.split('?')[1] ?? '').get('projectId');
-  if (scopedProjectId) form.append('projectId', scopedProjectId);
+  const effectivePid = options?.projectId ?? currentProjectIdFromLocation();
+  if (effectivePid) form.append('projectId', effectivePid);
   if (options?.fileType) form.append('fileType', options.fileType);
   if (options?.primaryKeyHeader) form.append('primaryKeyHeader', options.primaryKeyHeader);
   if (options?.idNoHeader) form.append('idNoHeader', options.idNoHeader);
   if (options?.displayNameTemplate) form.append('displayNameTemplate', options.displayNameTemplate);
   if (options?.metadataSheet) form.append('metadataSheet', options.metadataSheet);
   const res = await fetch('/api/upload/batch', { method: 'POST', body: form });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error((err as { detail?: string }).detail ?? `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+export type CellTestType = 'cycling';
+
+export interface CellMetadataPatch {
+  batch?: number | null;
+  category?: string | null;
+  repeat?: number | null;
+  cathode?: string | null;
+  cathodeDiameterMm?: number | null;
+  cathodeMassG?: number | null;
+  anode?: string | null;
+  anodeDiameterMm?: number | null;
+  anodeMassG?: number | null;
+  npRatio?: number | null;
+  separatorType?: string | null;
+  separatorDiameterMm?: number | null;
+  electrolyte?: string | null;
+  electrolyteVolumeUl?: number | null;
+  spacerMm?: number | null;
+  doFormation?: string | null;
+  doRateTest?: string | null;
+  doEis?: string | null;
+  notes?: string | null;
+}
+
+export async function updateCellMetadata(
+  cellId: string,
+  patch: CellMetadataPatch,
+): Promise<{ cell: IndexCellRaw | null; updated: string[] }> {
+  if (!cellId) throw new Error('cellId is required');
+  const url = withProjectQuery(`/api/cells/${encodeURIComponent(cellId)}`);
+  const res = await fetch(url, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error((err as { detail?: string }).detail ?? `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function uploadCellTestFile(
+  cellId: string,
+  testType: CellTestType,
+  file: File,
+  options?: { projectId?: string },
+): Promise<{
+  taskId: string;
+  filename: string;
+  fileType: string;
+  cellId: string;
+  testType: string;
+  status: string;
+}> {
+  if (!cellId) {
+    throw new Error('cellId is required');
+  }
+  const form = new FormData();
+  form.append('file', file);
+  const url = withProjectQuery(
+    `/api/cells/${encodeURIComponent(cellId)}/files/${encodeURIComponent(testType)}`,
+    options?.projectId,
+  );
+  const scopedProjectId = new URLSearchParams(url.split('?')[1] ?? '').get('projectId');
+  if (scopedProjectId) form.append('projectId', scopedProjectId);
+  const res = await fetch(url, { method: 'POST', body: form });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error((err as { detail?: string }).detail ?? `HTTP ${res.status}`);
@@ -198,6 +369,79 @@ export const renameProject = (id: string, name: string): Promise<{ ok: boolean }
 export const deleteProject = (id: string): Promise<{ ok: boolean }> =>
   apiFetch(`/api/projects/${encodeURIComponent(id)}`, {
     method: 'DELETE',
+  });
+
+// ---------------------------------------------------------------------------
+// Protocol templates + per-cell protocol attach
+// ---------------------------------------------------------------------------
+
+export interface ProtocolTemplate {
+  id: string;
+  projectId: string;
+  name: string;
+  description: string;
+  segments: OpenEndedProtocolSegment[];
+  isBuiltin: boolean;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+export const fetchProtocolTemplates = (): Promise<{ templates: ProtocolTemplate[] }> =>
+  apiFetch('/api/protocol-templates');
+
+export interface ProtocolTemplateCreate {
+  name: string;
+  description?: string | null;
+  segments: OpenEndedProtocolSegment[];
+}
+
+export const createProtocolTemplate = (
+  body: ProtocolTemplateCreate,
+): Promise<{ template: ProtocolTemplate }> =>
+  apiFetch('/api/protocol-templates', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+export const deleteProtocolTemplate = (templateId: string): Promise<{ deleted: string }> =>
+  apiFetch(`/api/protocol-templates/${encodeURIComponent(templateId)}`, {
+    method: 'DELETE',
+  });
+
+export interface SetCellProtocolBody {
+  protocolName?: string | null;
+  segments: OpenEndedProtocolSegment[];
+}
+
+export const setCellProtocol = (
+  cellId: string,
+  body: SetCellProtocolBody,
+): Promise<{ cell: IndexCellRaw | null; protocolName: string }> =>
+  apiFetch(`/api/cells/${encodeURIComponent(cellId)}/protocol`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+export interface BulkSetCellProtocolBody {
+  cellIds: string[];
+  protocolName?: string | null;
+  segments: OpenEndedProtocolSegment[];
+}
+
+export const setCellProtocolBulk = (
+  body: BulkSetCellProtocolBody,
+): Promise<{
+  applied: string[];
+  missing: string[];
+  protocolName: string;
+  segments: OpenEndedProtocolSegment[];
+}> =>
+  apiFetch('/api/cells/protocol/bulk', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
   });
 
 export async function fetchProjectReadiness(projectId: string): Promise<ProjectReadiness> {
