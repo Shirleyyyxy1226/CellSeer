@@ -4,30 +4,27 @@
  */
 
 import type { TreeFilterPath } from '@/components/tree/treeTypes';
-import { stringToColor, formatNodeLabel } from './treeUtils';
+import { formatNodeLabel } from './treeUtils';
 import type { ColStats, LabelDecoration } from './treeUtils';
+import {
+  buildCellColorMap,
+  cellIdentityColor,
+  conditionHue,
+  fallbackPathColor,
+  pathColorFromHues,
+} from './cellColorScheme';
 
 export type { RatePerfCellRaw as NewareCellLike } from '@/lib/cellTypes';
 
 const DEFAULT_COLOR = '#6b7280';
 
 function colorFromCellIdentity(cell: NewareCellLike): string {
-  const identity = (cell.cellName ?? cell.cellId ?? `Cell ${cell.idNo}`).trim();
-  const match = identity.match(/(\d+)/);
-  if (match) {
-    return stringToColor(`x|y|z|Cell ${match[1]}`);
-  }
-  return stringToColor(identity);
+  return cellIdentityColor(cell);
 }
 
-/** Build cell name → color map. Same cell path always gets same color (string-based, perceptually uniform). */
+/** Build cell name → color map. Canonical scheme: fixed per cell, condition-similar hues. */
 export function buildCanonicalCellColorMap(allCells: NewareCellLike[]): Map<string, string> {
-  const map = new Map<string, string>();
-  allCells.forEach((c) => {
-    const cellKey = c.cellName ?? `Cell ${c.idNo}`;
-    map.set(cellKey, colorFromCellIdentity(c));
-  });
-  return map;
+  return buildCellColorMap(allCells);
 }
 
 /** Path key format: cathode, cathode|separator, cathode|separator|spacer, or cathode|separator|spacer|cellName. */
@@ -38,7 +35,7 @@ export function pathKeyForCell(cell: NewareCellLike, upToLevel: 0 | 1 | 2 | 3): 
     String(cell.spacerMm ?? ''),
     cell.cellName ?? `Cell ${cell.idNo}`,
   ];
-  return parts.slice(0, upToLevel + 1).filter(Boolean).join('|');
+  return parts.slice(0, upToLevel + 1).join('|');
 }
 
 /** Get color for a cell from the canonical map. */
@@ -50,30 +47,38 @@ export function getCellColorFromMap(
   return cellColorMap.get(key) ?? colorFromCellIdentity(cell);
 }
 
-/** Build path→color map. With hierCols, uses hierarchy order so chart colors match tree nodes. */
+/**
+ * Build path→color map. Each path prefix is coloured by the circular-mean hue
+ * of its member cells, so branch colours match the cells beneath them no
+ * matter how the hierarchy levels are ordered.
+ */
 export function buildPathToColorMap(
   allCells: NewareCellLike[],
   hierCols?: ColStats[],
 ): Map<string, string> {
-  const seen = new Set<string>();
+  const huesByPath = new Map<string, number[]>();
+  const add = (key: string, cell: NewareCellLike) => {
+    if (!key) return;
+    const hues = huesByPath.get(key) ?? [];
+    hues.push(conditionHue(cell.cathode, cell.separatorType, cell.spacerMm));
+    huesByPath.set(key, hues);
+  };
   if (hierCols && hierCols.length > 0) {
     allCells.forEach((c) => {
       const vals = hierCols.map((col) => getCellVal(c, col.header));
       for (let i = 0; i < vals.length; i++) {
-        const key = vals.slice(0, i + 1).filter(Boolean).join('|');
-        if (key) seen.add(key);
+        add(vals.slice(0, i + 1).join('|'), c);
       }
     });
   } else {
     allCells.forEach((c) => {
       for (const level of [0, 1, 2] as const) {
-        const key = pathKeyForCell(c, level);
-        if (key) seen.add(key);
+        add(pathKeyForCell(c, level), c);
       }
     });
   }
   const map = new Map<string, string>();
-  seen.forEach((key) => map.set(key, stringToColor(key)));
+  huesByPath.forEach((hues, key) => map.set(key, pathColorFromHues(hues)));
   return map;
 }
 
@@ -106,33 +111,69 @@ function normalizeHeaderKey(value: string): string {
     .replace(/^_+|_+$/g, '');
 }
 
-function getCellVal(cell: NewareCellLike, field: GroupField): string {
+function headerVariants(normalized: string): string[] {
+  const out = new Set<string>([normalized]);
+  const stripLeadingIndexed = normalized.replace(/^[a-z]\d+_/, '');
+  if (stripLeadingIndexed && stripLeadingIndexed !== normalized) out.add(stripLeadingIndexed);
+  const tokens = stripLeadingIndexed.split('_').filter(Boolean);
+  if (tokens.length > 1) {
+    out.add(tokens.slice(1).join('_'));
+    out.add(tokens[tokens.length - 1]);
+  }
+  // Map decorated headers like "A2:ANODE" / "B5_separator_type" to semantic keys.
+  Object.keys(HEADER_ALIAS_FIELDS).forEach((k) => {
+    const parts = k.split('_').filter(Boolean);
+    if (parts.length && parts.every((p) => tokens.includes(p))) out.add(k);
+  });
+  return Array.from(out);
+}
+
+function resolveValueFromRecord(record: Record<string, unknown>, field: GroupField): string {
   const normalized = normalizeHeaderKey(field);
-  const aliasFields = HEADER_ALIAS_FIELDS[normalized] ?? [];
+  const variants = headerVariants(normalized);
+  const aliasFields = variants.flatMap((v) => HEADER_ALIAS_FIELDS[v] ?? []);
   const dynamicFields = [
     field,
-    normalized,
-    normalized.replace(/_/g, ''),
+    ...variants,
+    ...variants.map((v) => v.replace(/_/g, '')),
     field.replace(/\s+/g, ''),
   ];
   const candidates = [...new Set([...aliasFields, ...dynamicFields])];
-  const cellRecord = cell as Record<string, unknown>;
   const keyMap = new Map<string, string>();
-  Object.keys(cellRecord).forEach((k) => keyMap.set(normalizeHeaderKey(k), k));
+  Object.keys(record).forEach((k) => keyMap.set(normalizeHeaderKey(k), k));
   for (const key of candidates) {
-    if (key in cellRecord) {
-      const raw = cellRecord[key];
+    if (key in record) {
+      const raw = record[key];
       if (raw != null && String(raw).trim() !== '') return String(raw).trim();
     }
     const mapped = keyMap.get(normalizeHeaderKey(key));
     if (!mapped) continue;
-    const raw = cellRecord[mapped];
+    const raw = record[mapped];
     if (raw != null && String(raw).trim() !== '') return String(raw).trim();
   }
+  return '';
+}
+
+export function resolveHierarchyCellValue(
+  cell: NewareCellLike,
+  field: GroupField,
+  metadataRow?: Record<string, unknown>,
+): string {
+  if (metadataRow) {
+    const fromMeta = resolveValueFromRecord(metadataRow, field);
+    if (fromMeta) return fromMeta;
+  }
+  const fromCell = resolveValueFromRecord(cell as Record<string, unknown>, field);
+  if (fromCell) return fromCell;
+  const normalized = normalizeHeaderKey(field);
   if (normalized === 'cell' || normalized === 'cell_id' || normalized === 'id_no' || normalized === 'idno') {
     return cell.cellName ?? `Cell ${cell.idNo}`;
   }
   return '';
+}
+
+function getCellVal(cell: NewareCellLike, field: GroupField): string {
+  return resolveHierarchyCellValue(cell, field);
 }
 
 /** Path key in hierarchy order – matches tree pathFromRoot for color alignment. */
@@ -145,7 +186,7 @@ function pathKeyInOrder(cell: NewareCellLike, hierCols: ColStats[], upToLevel: n
   if (upToLevel >= hierCols.length) {
     parts.push(cell.cellName ?? `Cell ${cell.idNo}`);
   }
-  return parts.filter(Boolean).join('|');
+  return parts.join('|');
 }
 
 /** Effective group level: show (path.length+1)th level + detailDepth. Max = hierCols.length + 1 (last = cell). */
@@ -233,16 +274,16 @@ function aggregateCapacity(
   let errorMinus: number[] | undefined;
   let errorPlus: number[] | undefined;
   if (cells.length > 1) {
-    errorMinus = cycles.map((cy) => {
+    errorMinus = cycles.map((cy, i) => {
       const arr = valsByCycle.get(cy) ?? [];
-      const mean = values[cycles.indexOf(cy)];
+      const mean = values[i];
       if (arr.length < 2) return 0;
       const min = Math.min(...arr);
       return mean - min;
     });
-    errorPlus = cycles.map((cy) => {
+    errorPlus = cycles.map((cy, i) => {
       const arr = valsByCycle.get(cy) ?? [];
-      const mean = values[cycles.indexOf(cy)];
+      const mean = values[i];
       if (arr.length < 2) return 0;
       const max = Math.max(...arr);
       return max - mean;
@@ -312,10 +353,12 @@ export interface TraceOptions {
   /** Format trace names to match hierarchy labels (e.g. "1" → "Sp 1.0 mm"). */
   labelDecorations?: LabelDecoration[];
   annotations?: Array<{ map: Record<string, string>; unit?: string } | null>;
+  /** Optional hierarchy metadata row keyed by idNo (diagnosed from parsed metadata). */
+  metadataByIdNo?: Map<number, Record<string, string>>;
 }
 
 function colorForPath(pathKey: string, pathToColorMap?: Map<string, string>): string {
-  return pathToColorMap?.get(pathKey) ?? stringToColor(pathKey);
+  return pathToColorMap?.get(pathKey) ?? fallbackPathColor(pathKey);
 }
 
 function colorForIndividualCell(cell: NewareCellLike): string {
@@ -350,6 +393,7 @@ export function buildTraces(opts: TraceOptions): AggregatedTrace[] {
     pathToColorMap,
     labelDecorations,
     annotations,
+    metadataByIdNo,
   } = opts;
   const path = treeFilterPath;
   const pathPrefix = path.map((p) => p.val).filter(Boolean).join('|');
@@ -361,6 +405,9 @@ export function buildTraces(opts: TraceOptions): AggregatedTrace[] {
     }
     return useSpecificCapacity ? cell.specificCapacityMahG ?? cell.dischargeCapacityMah : cell.dischargeCapacityMah;
   };
+
+  const valueForCell = (cell: NewareCellLike, field: GroupField): string =>
+    resolveHierarchyCellValue(cell, field, metadataByIdNo?.get(cell.idNo));
 
   if (!hasSelection) {
     return filteredCells.map((row) => {
@@ -399,7 +446,15 @@ export function buildTraces(opts: TraceOptions): AggregatedTrace[] {
   }
 
   if (composite && parentField) {
-    const { groups } = groupCellsByComposite(filteredCells, parentField, field);
+    const groups = new Map<string, NewareCellLike[]>();
+    filteredCells.forEach((c) => {
+      const pk = valueForCell(c, parentField);
+      const ck = valueForCell(c, field);
+      const displayKey = `${pk} · ${ck}`;
+      const arr = groups.get(displayKey) ?? [];
+      arr.push(c);
+      groups.set(displayKey, arr);
+    });
     const sortedKeys = Array.from(groups.keys()).sort();
     const traces: AggregatedTrace[] = [];
     sortedKeys.forEach((displayKey) => {
@@ -432,7 +487,13 @@ export function buildTraces(opts: TraceOptions): AggregatedTrace[] {
     return traces;
   }
 
-  const groups = groupCells(filteredCells, field);
+  const groups = new Map<string, NewareCellLike[]>();
+  filteredCells.forEach((c) => {
+    const key = valueForCell(c, field);
+    const arr = groups.get(key) ?? [];
+    arr.push(c);
+    groups.set(key, arr);
+  });
   const sortedKeys = Array.from(groups.keys()).filter(Boolean).sort();
   const traces: AggregatedTrace[] = [];
 

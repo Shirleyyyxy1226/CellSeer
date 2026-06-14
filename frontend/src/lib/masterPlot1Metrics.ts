@@ -8,16 +8,18 @@ export type { ProtocolSegment, RatePerfCellRaw, IndexCellRaw } from '@/lib/cellT
 /** Longest protocol segment by cycle span — used as "main cycling" window per cell. */
 export function mainCyclingSegment(segments: ProtocolSegment[] | undefined): ProtocolSegment | null {
   if (!segments?.length) return null;
-  let best = segments[0];
+  let best: ProtocolSegment | null = null;
   let bestLen = -1;
   for (const s of segments) {
-    const len = s.cycleEnd - s.cycleStart + 1;
+    const end = (s.cycleEnd as number | null);
+    if (end == null) continue;
+    const len = end - s.cycleStart + 1;
     if (len > bestLen) {
       bestLen = len;
       best = s;
     }
   }
-  return best;
+  return best ?? segments[0];
 }
 
 function meanSeriesInMainCyclingPhase(
@@ -31,7 +33,7 @@ function meanSeriesInMainCyclingPhase(
   let n = 0;
   for (let i = 0; i < nSteps; i++) {
     const cy = cycles[i];
-    if (seg && (cy < seg.cycleStart || cy > seg.cycleEnd)) continue;
+    if (seg && (cy < seg.cycleStart || ((seg.cycleEnd as number | null) != null && cy > seg.cycleEnd))) continue;
     const v = series[i];
     if (!Number.isFinite(v)) continue;
     sum += v;
@@ -94,7 +96,7 @@ export const DIMENSION_CATALOG: {
     key: 'dqdv_shift',
     label: 'dQ/dV shift',
     kind: 'per_cycle',
-    hint: 'ΔV of dominant |dQ/dV| peak vs reference; loads /api/cell-record/{id}/differential.',
+    hint: 'ΔV of dominant |dQ/dV| peak vs reference; loads /api/cell-record/{cellId}/differential.',
   },
   { key: 'cathode', label: 'Cathode', kind: 'categorical' },
   { key: 'separator', label: 'Separator', kind: 'categorical' },
@@ -136,11 +138,12 @@ export interface CellMetricRow {
   retentionMeanMain: number;
   /** Mean CE % over the same main-segment steps. */
   ceMeanMain: number;
+  /** Unit of specificMahG / capacityScalar — raw mAh when cathode mass is missing project-wide. */
+  capacityBasis: 'mAh/g' | 'mAh';
 }
 
-function baselineMeanFirstSegment(cell: RatePerfCellRaw): number {
-  const spec = cell.specificCapacityMahG;
-  if (!spec?.length) return 1;
+function baselineMeanFirstSegment(cell: RatePerfCellRaw, spec: number[]): number {
+  if (!spec.length) return 1;
   const seg = cell.protocolSegments?.[0];
   if (seg && cell.cycles?.length) {
     let sum = 0;
@@ -157,10 +160,9 @@ function baselineMeanFirstSegment(cell: RatePerfCellRaw): number {
   return spec[0]! > 0 ? spec[0]! : 1;
 }
 
-function retentionSeries(cell: RatePerfCellRaw): number[] {
-  const spec = cell.specificCapacityMahG;
-  if (!spec?.length) return [];
-  const base = baselineMeanFirstSegment(cell);
+function retentionSeries(cell: RatePerfCellRaw, spec: number[]): number[] {
+  if (!spec.length) return [];
+  const base = baselineMeanFirstSegment(cell, spec);
   return spec.map((v) => (base > 0 ? (100 * v) / base : 0));
 }
 
@@ -225,10 +227,10 @@ function ceSeriesDischargeProxy(cell: RatePerfCellRaw): number[] {
     if (ratio < 75) ratio = NaN;
     out[i] = ratio;
   }
-  let last = 100;
+  let last = NaN;
   for (let i = 0; i < n; i++) {
-    if (!Number.isNaN(out[i])) last = out[i]!;
-    else out[i] = last;
+    if (!Number.isNaN(out[i])) { last = out[i]!; }
+    else if (!Number.isNaN(last)) { out[i] = last; }
   }
   return out;
 }
@@ -293,12 +295,21 @@ export function buildMetricRows(
   rateCells: RatePerfCellRaw[],
   indexByIdNo: Map<number, IndexCellRaw>,
 ): CellMetricRow[] {
+  // DIGIBAT exports often lack cathode mass, so specific capacity can be missing
+  // project-wide. Pick ONE capacity basis for all cells (axes must stay comparable):
+  // mAh/g when most cells have it, otherwise raw discharge mAh.
+  const withSpec = rateCells.filter((c) => c.specificCapacityMahG?.length).length;
+  const useSpec = rateCells.length > 0 && withSpec / rateCells.length > 0.5;
+  const capacityBasis: 'mAh/g' | 'mAh' = useSpec ? 'mAh/g' : 'mAh';
   return rateCells
-    .filter((c) => c.specificCapacityMahG && c.specificCapacityMahG.length > 0)
-    .map((c) => {
+    .map((c) => ({
+      c,
+      series: useSpec ? (c.specificCapacityMahG ?? []) : (c.dischargeCapacityMah ?? []),
+    }))
+    .filter(({ series }) => series.length > 0)
+    .map(({ c, series: spec }) => {
       const idx = indexByIdNo.get(c.idNo);
-      const spec = c.specificCapacityMahG!;
-      const retSeries = retentionSeries(c);
+      const retSeries = retentionSeries(c, spec);
       const lastSpec = spec[spec.length - 1] ?? 0;
       const dch = c.dischargeCapacityMah ?? [];
       const trueCe = ceSeriesFromCharge(c);
@@ -338,6 +349,7 @@ export function buildMetricRows(
         confTierCE: ceConfidenceTier(ceSeries, trueCe != null),
         retentionMeanMain,
         ceMeanMain,
+        capacityBasis,
       };
     })
     .sort((a, b) => a.idNo - b.idNo);
@@ -459,7 +471,33 @@ const CAT_PALETTE = [
   '#DDCC77',
 ];
 
+/**
+ * Chemistry-meaningful cathode hues, matched by name. Families share a hue:
+ * layered Ni oxides (NMC/NCA) = purples (darker = more Ni), phosphates
+ * (LFP/LMFP) = greens/teals, cobalt oxide (LCO) = red, Mn spinel (LMO) = orange.
+ * First matching rule wins, so specific patterns come before family catch-alls.
+ */
+const CHEM_COLOUR_RULES: [RegExp, string][] = [
+  [/nmc\s*-?9|lini0?\.?9/i, '#5b21b6'],
+  [/nmc\s*-?8|811|lini0?\.?8/i, '#6d28d9'],
+  [/nmc\s*-?6|622|lini0?\.?6/i, '#a855f7'],
+  [/nmc|nca|li[\s-]*ni/i, '#8b5cf6'],
+  [/lmfp|mn[\d.\s]*fe[\d.\s]*po4?/i, '#0d9488'],
+  [/lfp|fe\s*po4?|iron\s*phosphate/i, '#16a34a'],
+  [/lco|li\s*coo2|cobalt/i, '#dc2626'],
+  [/lmo|mn2o4|manganese\s*oxide/i, '#ea580c'],
+];
+
+export function chemColour(name: string): string | null {
+  for (const [re, colour] of CHEM_COLOUR_RULES) {
+    if (re.test(name)) return colour;
+  }
+  return null;
+}
+
 export function colourForCategory(value: string, domain: string[]): string {
+  const chem = chemColour(value);
+  if (chem) return chem;
   const i = domain.indexOf(value);
   if (i < 0) return '#64748b';
   return CAT_PALETTE[i % CAT_PALETTE.length];
@@ -586,6 +624,30 @@ export function silhouetteScore(vectors: number[][], labels: number[]): number {
   return total / n;
 }
 
+/**
+ * Silhouette is O(n²) — at thousands of cells that blocks the main thread for
+ * seconds per candidate k. Score on a deterministic sample instead: standard
+ * practice, and the k-selection it drives is insensitive to subsampling.
+ */
+const SILHOUETTE_SAMPLE_MAX = 512;
+
+function silhouetteSample(vectors: number[][], labels: number[], seed: number): { v: number[][]; l: number[] } {
+  const n = vectors.length;
+  if (n <= SILHOUETTE_SAMPLE_MAX) return { v: vectors, l: labels };
+  const v: number[][] = [];
+  const l: number[] = [];
+  let h = seed >>> 0 || 1;
+  const stride = n / SILHOUETTE_SAMPLE_MAX;
+  for (let i = 0; i < SILHOUETTE_SAMPLE_MAX; i++) {
+    h = (Math.imul(h, 1664525) + 1013904223) >>> 0;
+    const base = Math.floor(i * stride);
+    const idx = Math.min(n - 1, base + (h % Math.max(1, Math.floor(stride))));
+    v.push(vectors[idx]);
+    l.push(labels[idx]);
+  }
+  return { v, l };
+}
+
 export function kmeansBestK(
   vectors: number[][],
   kMin: number,
@@ -593,15 +655,19 @@ export function kmeansBestK(
   seed: number,
 ): { k: number; labels: number[]; score: number } {
   const n = vectors.length;
+  const scoreOf = (labels: number[], s: number) => {
+    const sample = silhouetteSample(vectors, labels, s);
+    return silhouetteScore(sample.v, sample.l);
+  };
   if (n < kMin + 1) {
     const labels = kmeansFit(vectors, Math.min(kMin, Math.max(2, n)), seed);
-    return { k: Math.min(kMin, Math.max(2, n)), labels, score: silhouetteScore(vectors, labels) };
+    return { k: Math.min(kMin, Math.max(2, n)), labels, score: scoreOf(labels, seed) };
   }
   let best = { k: kMin, labels: kmeansFit(vectors, kMin, seed), score: -2 };
-  best.score = silhouetteScore(vectors, best.labels);
+  best.score = scoreOf(best.labels, seed);
   for (let k = kMin; k <= Math.min(kMax, n - 1); k++) {
     const labels = kmeansFit(vectors, k, seed + k);
-    const sc = silhouetteScore(vectors, labels);
+    const sc = scoreOf(labels, seed + k);
     if (sc > best.score) best = { k, labels, score: sc };
   }
   return best;
