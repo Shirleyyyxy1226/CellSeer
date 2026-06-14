@@ -111,7 +111,7 @@ def _get_cell_record_index(project_id: str) -> dict:
                 (project_id,),
             ).fetchall()
     except sqlite3.OperationalError:
-        # DB-only mode: if DB schema isn't initialized, return empty index (no JSON fallback).
+        # DB-only mode: if DB schema isn't initialised, return empty index (no JSON fallback).
         return {"cells": []}
     rows = _dedupe_index_rows(rows)
 

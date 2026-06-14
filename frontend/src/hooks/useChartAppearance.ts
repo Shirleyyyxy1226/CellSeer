@@ -17,13 +17,7 @@ export interface UseChartAppearanceReturn {
   setChartTitle: (s: string) => void;
 }
 
-/**
- * Centralised state for the small bundle of "chart appearance" knobs
- * (title, axis labels, fonts, legend, optional connected-line). Returns a
- * single `config` object ready to spread into `<ChartEditPopover>` plus a
- * matching `onConfigChange` callback, eliminating the ~50 lines of
- * `useState` + 9-way switch we used to duplicate per panel.
- */
+// Shared hook so panels don't each duplicate ~50 lines of useState + switch.
 export function useChartAppearance(
   initial: Partial<ChartAppearanceConfig> = {},
 ): UseChartAppearanceReturn {
