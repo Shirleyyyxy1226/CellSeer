@@ -10,13 +10,17 @@ import { flushSync } from 'react-dom';
 import { fetchCellAnnotations } from '@/lib/api';
 
 export interface CellAnnotation {
-  idNo: number;
+  /** String cell_id is now the canonical key returned by the backend. */
+  cellId: string;
+  /** Display number; may collide across DIGIBAT projects so DO NOT use for routing. */
+  idNo: number | null;
   note: string | null;
   tags: string[];
   updatedAt: string | null;
 }
 
 interface CellSelectionContextValue {
+  /** In-memory selection still keyed by id_no for backwards compat with hierarchy / chart filters. */
   selectedCellIds: number[];
   setSelectedCellIds: (ids: number[]) => void;
   addToSelection: (id: number) => void;
@@ -26,7 +30,20 @@ interface CellSelectionContextValue {
   multiselectionMode: boolean;
   setMultiselectionMode: (v: boolean) => void;
   handleCellSelect: (idNo: number, event?: MouseEvent) => void;
+  /**
+   * True when the user has explicitly dismissed the Cell Details panel for the
+   * current selection. Resets automatically when the selection changes so a new
+   * pick re-opens the panel. Use `dismissDetailPanel()` from Save/X handlers
+   * and `isDetailPanelDismissed` (or the convenience `detailPanelOpen` flag)
+   * to gate rendering of the panel and its surrounding chrome.
+   */
+  isDetailPanelDismissed: boolean;
+  detailPanelOpen: boolean;
+  dismissDetailPanel: () => void;
+  /** Annotations keyed by id_no (synthesised from the backend's cell_id-keyed response). */
   annotationsByCell: Record<number, CellAnnotation>;
+  /** Annotations keyed by cell_id — the authoritative shape from the backend. */
+  annotationsByCellId: Record<string, CellAnnotation>;
   refetchAnnotations: () => void;
 }
 
@@ -37,15 +54,38 @@ const CellSelectionContext = createContext<CellSelectionContextValue | null>(
 export function CellSelectionProvider({ children }: { children: React.ReactNode }) {
   const [selectedCellIds, setSelectedCellIdsState] = useState<number[]>([]);
   const [multiselectionMode, setMultiselectionMode] = useState(false);
+  // Detail-panel dismissal is keyed on the exact selection so that any change
+  // to the selection (different cell, more cells, fewer cells) auto-reopens it.
+  const [dismissedSelectionKey, setDismissedSelectionKey] = useState<string | null>(null);
   const [annotationsByCell, setAnnotationsByCell] = useState<
     Record<number, CellAnnotation>
   >({});
+  const [annotationsByCellId, setAnnotationsByCellId] = useState<
+    Record<string, CellAnnotation>
+  >({});
 
-  /** Wrapped setter that flushes synchronously so tree and chart update together */
+  const selectionKey = useMemo(
+    () => [...selectedCellIds].sort((a, b) => a - b).join(','),
+    [selectedCellIds],
+  );
+  const isDetailPanelDismissed = dismissedSelectionKey === selectionKey;
+  const detailPanelOpen =
+    selectedCellIds.length === 1 && !multiselectionMode && !isDetailPanelDismissed;
+  const dismissDetailPanel = useCallback(() => {
+    setDismissedSelectionKey(selectionKey);
+  }, [selectionKey]);
+
+  /**
+   * Wrapped setter that flushes synchronously so tree and chart update together.
+   * Every user-driven selection mutation also drops any prior detail-panel
+   * dismissal so the panel re-opens for the new (or repeated) pick, even when
+   * the resulting array is content-identical to the previous one.
+   */
   const setSelectedCellIds = useCallback(
-    (arg: number[] | ((prev: number[]) => number[])) => {
+    (ids: number[]) => {
       flushSync(() => {
-        setSelectedCellIdsState(arg);
+        setDismissedSelectionKey(null);
+        setSelectedCellIdsState(ids);
       });
     },
     []
@@ -53,6 +93,7 @@ export function CellSelectionProvider({ children }: { children: React.ReactNode 
 
   const addToSelection = useCallback((id: number) => {
     flushSync(() => {
+      setDismissedSelectionKey(null);
       setSelectedCellIdsState((prev) =>
         prev.includes(id) ? prev : [...prev, id]
       );
@@ -61,6 +102,7 @@ export function CellSelectionProvider({ children }: { children: React.ReactNode 
 
   const removeFromSelection = useCallback((id: number) => {
     flushSync(() => {
+      setDismissedSelectionKey(null);
       setSelectedCellIdsState((prev) => prev.filter((x) => x !== id));
     });
   }, []);
@@ -68,6 +110,7 @@ export function CellSelectionProvider({ children }: { children: React.ReactNode 
   const handleCellSelect = useCallback((idNo: number, event?: MouseEvent) => {
     const addOrToggle = event?.ctrlKey || event?.metaKey;
     flushSync(() => {
+      setDismissedSelectionKey(null);
       if (multiselectionMode || addOrToggle) {
         setSelectedCellIdsState((prev) =>
           prev.includes(idNo) ? prev.filter((x) => x !== idNo) : [...prev, idNo]
@@ -79,19 +122,28 @@ export function CellSelectionProvider({ children }: { children: React.ReactNode 
   }, [multiselectionMode]);
 
   const clearSelection = useCallback(() => {
-    flushSync(() => setSelectedCellIdsState([]));
+    flushSync(() => {
+      setDismissedSelectionKey(null);
+      setSelectedCellIdsState([]);
+    });
   }, []);
 
   const refetchAnnotations = useCallback(async () => {
     try {
       const data = await fetchCellAnnotations();
-      const out: Record<number, CellAnnotation> = {};
-      for (const [k, v] of Object.entries(data.annotations || {})) {
-        out[Number(k)] = v;
+      const byId: Record<number, CellAnnotation> = {};
+      const byCellId: Record<string, CellAnnotation> = {};
+      for (const [cellId, v] of Object.entries(data.annotations || {})) {
+        byCellId[cellId] = v;
+        if (v.idNo != null && Number.isFinite(v.idNo)) {
+          byId[Number(v.idNo)] = v;
+        }
       }
-      setAnnotationsByCell(out);
+      setAnnotationsByCell(byId);
+      setAnnotationsByCellId(byCellId);
     } catch {
       setAnnotationsByCell({});
+      setAnnotationsByCellId({});
     }
   }, []);
 
@@ -109,17 +161,26 @@ export function CellSelectionProvider({ children }: { children: React.ReactNode 
       multiselectionMode,
       setMultiselectionMode,
       handleCellSelect,
+      isDetailPanelDismissed,
+      detailPanelOpen,
+      dismissDetailPanel,
       annotationsByCell,
+      annotationsByCellId,
       refetchAnnotations,
     }),
     [
       selectedCellIds,
+      setSelectedCellIds,
       addToSelection,
       removeFromSelection,
       clearSelection,
       multiselectionMode,
       handleCellSelect,
+      isDetailPanelDismissed,
+      detailPanelOpen,
+      dismissDetailPanel,
       annotationsByCell,
+      annotationsByCellId,
       refetchAnnotations,
     ]
   );

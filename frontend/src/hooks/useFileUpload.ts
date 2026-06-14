@@ -8,6 +8,7 @@ export function useFileUpload(onSuccess?: (fileType: string) => void) {
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const mountedRef = useRef(true);
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) {
@@ -37,7 +38,9 @@ export function useFileUpload(onSuccess?: (fileType: string) => void) {
         }
       };
       await pollTask();
-      pollRef.current = setInterval(pollTask, 700);
+      if (mountedRef.current) {
+        pollRef.current = setInterval(pollTask, 700);
+      }
     },
     [onSuccess, stopPolling],
   );
@@ -117,7 +120,7 @@ export function useFileUpload(onSuccess?: (fileType: string) => void) {
     setMessage(null);
   }, [stopPolling]);
 
-  useEffect(() => () => stopPolling(), [stopPolling]);
+  useEffect(() => () => { mountedRef.current = false; stopPolling(); }, [stopPolling]);
 
   return { upload, uploadWithOptions, uploadManyWithOptions, status, progress, message, reset };
 }
