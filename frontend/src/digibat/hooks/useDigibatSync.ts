@@ -23,6 +23,7 @@ export function useDigibatSync(projectId: string | null) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const inFlightRef = useRef(false);
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) {
@@ -44,7 +45,9 @@ export function useDigibatSync(projectId: string | null) {
   const beginPolling = useCallback(() => {
     stopPolling();
     pollRef.current = setInterval(() => {
-      refreshStatus().catch(() => {});
+      if (inFlightRef.current) return;
+      inFlightRef.current = true;
+      refreshStatus().catch(() => {}).finally(() => { inFlightRef.current = false; });
     }, 1500);
   }, [refreshStatus, stopPolling]);
 
