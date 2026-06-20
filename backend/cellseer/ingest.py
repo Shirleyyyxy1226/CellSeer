@@ -120,6 +120,7 @@ def ingest_metadata(
         except Exception as exc:
             # Metadata sheets may contain decorative/header/footer rows; skip invalid rows.
             skipped_rows += 1
+            print(f"  Row {idx}: skipped — {exc}")
             continue
 
         cell = Cell(metadata=meta)
@@ -156,6 +157,8 @@ def ingest_cycling_file(
     dataset_name: str = "cycling",
     min_confidence: float = 0.4,
     project_id: Optional[str] = None,
+    cell_id: Optional[str] = None,
+    id_no: Optional[int] = None,
     **reader_kwargs,
 ) -> str:
     """
@@ -194,13 +197,19 @@ def ingest_cycling_file(
 
     primary = filepaths[0]
 
-    # 1. Extract id_no from the first filename
-    id_no = _id_no_from_filename(primary)
+    # 1. Resolve id_no: caller override > filename heuristic.
+    if id_no is None:
+        try:
+            id_no = _id_no_from_filename(primary)
+        except ValueError:
+            if cell_id is None:
+                raise
 
-    # 2. Find matching cell in DB (returns None if not found)
-    cell_id = _find_cell_id(id_no, db, project_id=project_id)
+    # 2. Resolve cell_id: caller override wins. Otherwise look up by id_no.
+    if cell_id is None:
+        cell_id = _find_cell_id(id_no, db, project_id=project_id)
 
-    # 3. Load or create cell
+    # 3. Load or create cell.
     if cell_id is None:
         cell_id = str(id_no)
         print(
@@ -296,10 +305,13 @@ def _find_cell_id(id_no: int, db: "DBBackend", project_id: Optional[str] = None)
     if hasattr(db, "_connect"):
         pid = project_id or getattr(db, "project_id", "default")
         conn = db._connect()
-        row = conn.execute(
-            "SELECT cell_id FROM cell WHERE project_id = ? AND id_no = ?", (pid, id_no)
-        ).fetchone()
-        conn.close()
+        try:
+            row = conn.execute(
+                "SELECT cell_id FROM cell WHERE project_id = ? AND id_no = ? AND deleted_at IS NULL",
+                (pid, id_no),
+            ).fetchone()
+        finally:
+            conn.close()
         if row is None:
             return None
         return row["cell_id"] if hasattr(row, "keys") else row[0]

@@ -45,9 +45,15 @@ const ProjectHierarchyContext = createContext<ProjectHierarchyContextValue>({
   matchPathToIdNos: () => null,
 });
 
+function csvEscape(v: string): string {
+  return v.includes(',') || v.includes('"') || v.includes('\n')
+    ? `"${v.replace(/"/g, '""')}"`
+    : v;
+}
+
 function toCsvText(headers: string[], rows: string[][]): string {
-  const headerLine = headers.join(',');
-  const rowLines = rows.map((r) => r.join(','));
+  const headerLine = headers.map(csvEscape).join(',');
+  const rowLines = rows.map((r) => r.map(csvEscape).join(','));
   return [headerLine, ...rowLines].join('\n');
 }
 
@@ -114,7 +120,10 @@ function extractIdNoFromRow(
 
 export function ProjectHierarchyProvider({ children }: { children: React.ReactNode }) {
   const { dataVersion } = useDataRefresh();
-  const [loading, setLoading] = useState(false);
+  // Initialise to `true` so consumers (e.g. PublicTreeFilterSidebar) don't
+  // briefly show a "No data yet." state on the first render before the
+  // mount-time `reloadHierarchy` effect has had a chance to flip loading on.
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [projectKey, setProjectKey] = useState<string>('db-default');
   const [parsed, setParsed] = useState<ParsedCSV | null>(null);

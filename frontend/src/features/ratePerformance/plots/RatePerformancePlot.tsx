@@ -1,9 +1,10 @@
 import { useMemo } from 'react';
 import PlotlyChart from '@/components/PlotlyChart';
+import type { ExportContext } from '@/lib/exportUtils';
 import {
   buildRatePerformanceFigure,
   type RatePerfTraceSpec,
-} from '@/cellviz-lib';
+} from 'cellseer-lib';
 import { buildTraces } from '@/lib/ratePerfAggregation';
 import type {
   RatePerfCellRaw as NewareCell,
@@ -13,6 +14,10 @@ import type { TreeFilterPath } from '@/components/tree/treeTypes';
 import type { AnalysisResult } from '@/lib/treeUtils';
 import type { ChartAppearanceConfig } from '@/components/ChartEditPopover';
 import type { ChargeDirection } from '@/components/DirectionToggle';
+
+// Above this many traces a discrete legend overflows the plot and becomes
+// unreadable; identity then reads from the hierarchy colours + hover instead.
+const RATE_LEGEND_MAX_ITEMS = 12;
 
 export interface RatePerformancePlotProps {
   /** Cells after upstream filters (cathode/spacer/separator/tree/protocol). */
@@ -24,6 +29,8 @@ export interface RatePerformancePlotProps {
   direction: ChargeDirection;
   /** 0 = first level below selected tree path; >0 = drill down. */
   detailDepth: number;
+  /** Optional hierarchy metadata rows keyed by idNo for non-hardcoded grouping. */
+  metadataByIdNo?: Map<number, Record<string, string>>;
   /** Connect points with lines when each cycle has a known C-rate. */
   showConnectedLine: boolean;
   /** Title / labels / fonts / legend; the Y-axis label is data-derived and overrides config.yAxisLabel. */
@@ -47,6 +54,7 @@ export function RatePerformancePlot({
   pathToColorMap,
   direction,
   detailDepth,
+  metadataByIdNo,
   showConnectedLine,
   config,
   width,
@@ -76,6 +84,7 @@ export function RatePerformancePlot({
       pathToColorMap,
       labelDecorations: analysis.labelDecorations,
       annotations: analysis.annotations,
+      metadataByIdNo,
     });
     const traceSpecs: RatePerfTraceSpec[] = agg.map((t) => {
       const cell = (t as { cell?: NewareCell }).cell;
@@ -105,6 +114,7 @@ export function RatePerformancePlot({
     useSpecificCapacity,
     direction,
     detailDepth,
+    metadataByIdNo,
     pathToColorMap,
     showConnectedLine,
     protocolSegments,
@@ -138,17 +148,36 @@ export function RatePerformancePlot({
         tickfont: { size: Math.max(9, labelFontSize - 1) },
         gridcolor: 'rgba(128,128,128,0.2)',
       },
-      showlegend: showLegend,
-      legend: showLegend
-        ? {
-            orientation: 'v',
-            font: { size: legendFontSize },
-            ...(legendPosition === 'in'
-              ? { x: 0.99, y: 1, xanchor: 'right', yanchor: 'top', bgcolor: 'rgba(255,255,255,0.9)' }
-              : { x: 1.02, y: 0, xanchor: 'left', yanchor: 'bottom' }),
-          }
+      // Past a small count a per-trace legend overflows and becomes unreadable;
+      // the hierarchy colours + hover convey identity, so the legend is omitted.
+      showlegend: showLegend && traces.length <= RATE_LEGEND_MAX_ITEMS,
+      legend: showLegend && traces.length <= RATE_LEGEND_MAX_ITEMS
+        ? legendPosition === 'in'
+          ? {
+              orientation: 'v' as const,
+              font: { size: legendFontSize },
+              x: 0.99,
+              y: 1,
+              xanchor: 'right' as const,
+              yanchor: 'top' as const,
+              bgcolor: 'rgba(255,255,255,0.9)',
+            }
+          : {
+              // Horizontal row below the x-axis, clear of the axis title.
+              orientation: 'h' as const,
+              font: { size: legendFontSize },
+              x: 0,
+              y: -0.28,
+              xanchor: 'left' as const,
+              yanchor: 'top' as const,
+            }
         : undefined,
-      margin: { t: 48, r: showLegend && legendPosition === 'right-bottom' ? 120 : 40, b: 80, l: 65 },
+      margin: {
+        t: 48,
+        r: 44,
+        b: showLegend && legendPosition !== 'in' && traces.length <= RATE_LEGEND_MAX_ITEMS ? 120 : 80,
+        l: 65,
+      },
       uirevision: 'rate-perf-hier',
       shapes,
       annotations,
@@ -167,7 +196,20 @@ export function RatePerformancePlot({
       legendPosition,
       shapes,
       annotations,
+      traces.length,
     ],
+  );
+
+  const exportContext = useMemo<ExportContext>(
+    () => ({
+      plotType: 'rate',
+      sourceCellIds: filteredCells.map((c) => c.cellId),
+      sourceEndpoints: filteredCells.map((c) =>
+        new URL(`/api/rate-performance?cellId=${encodeURIComponent(c.cellId)}`, window.location.origin).toString(),
+      ),
+      settings: { direction },
+    }),
+    [filteredCells, direction],
   );
 
   return (
@@ -178,6 +220,7 @@ export function RatePerformancePlot({
       config={{ responsive: true }}
       style={{ width, height }}
       traceIndexToCell={traceIndexToCell}
+      exportContext={exportContext}
       onContextMenu={(cell) => onCellSelect?.(cell)}
       onClick={(ev) => {
         const curveNumber = ev.points?.[0]?.curveNumber;

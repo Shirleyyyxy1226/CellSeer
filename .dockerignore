@@ -1,0 +1,57 @@
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# Editor / OS
+.DS_Store
+.vscode
+.idea
+*.swp
+
+# Python build artefacts
+**/__pycache__
+**/*.py[cod]
+**/*.egg-info
+.venv
+venv
+env
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+htmlcov
+
+# Node
+**/node_modules
+**/dist
+**/dist-ssr
+frontend/.vite
+# …but DO ship the production-built SPA. The Dockerfile copies it into
+# the runtime image. Build it on the host with `cd frontend && npm run build`.
+!frontend/dist
+!frontend/dist/**
+
+# Local data — these MUST live on the mounted volume, never in the image
+data
+data_lake
+backend/cellseer.db
+backend/cellseer.db-*
+backend/_backups
+
+# Secrets — sourced from the host's env / .env file at runtime
+.env
+.env.*
+!.env.example
+backend/.env
+
+# Local logs / scratch
+*.log
+backend/logs
+
+# Plans, agent transcripts, READMEs that are not needed at runtime
+.cursor
+agent-transcripts
+
+# Tests (the runtime image doesn't need them)
+**/tests

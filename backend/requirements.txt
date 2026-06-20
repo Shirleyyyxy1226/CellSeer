@@ -14,3 +14,4 @@ pyyaml>=6.0
 
 # Correct PyProBE distribution used by cycling readers
 PyProBE-Data>=2.6.0
+orjson>=3.9

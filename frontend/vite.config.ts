@@ -12,7 +12,9 @@ export default defineConfig(() => ({
     },
     proxy: {
       "/api": {
-        target: "http://127.0.0.1:8000",
+        // Override with CELLSEER_API_TARGET when the backend runs elsewhere
+        // (container, remote dev box) — no source edit needed.
+        target: process.env.CELLSEER_API_TARGET ?? "http://127.0.0.1:8000",
         changeOrigin: true,
       },
     },
@@ -21,6 +23,7 @@ export default defineConfig(() => ({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "cellseer-lib": path.resolve(__dirname, "../packages/cellseer-lib/src"),
     },
   },
 }));

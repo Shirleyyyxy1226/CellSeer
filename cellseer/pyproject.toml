@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cellseer"
+version = "0.1.0"
+description = "Plotly figure builders and Dash dashboards for battery cycling analysis — dQ/dV, dV/dQ, GCD, and rate performance — with multi-cell support and optional PyProBE compute."
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+license-files = ["LICENSE"]
+dependencies = [
+  "plotly",
+  "pandas",
+  "numpy",
+]
+
+[project.optional-dependencies]
+neware = ["openpyxl"]
+pyprobe = ["PyProBE-Data", "polars"]
+dash = ["dash"]
+test = ["pytest"]
+all = ["cellseer[neware,pyprobe,dash,test]"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cellseer"]
