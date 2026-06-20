@@ -1,38 +1,91 @@
 import { useMemo } from 'react';
 import PlotlyChart from '@/components/PlotlyChart';
+import type { ExportContext } from '@/lib/exportUtils';
+import type { ChartAppearanceConfig } from '@/components/ChartEditPopover';
 
 interface Props {
   traces: Plotly.Data[];
   xValues: number[];
-  xLabel: string;
-  zLabel: string;
-  title: string;
+  /** Hardcoded fallbacks; ignored when `appearance` is provided. */
+  xLabel?: string;
+  zLabel?: string;
+  title?: string;
   uirevision: string;
   layoutOverride?: Partial<Plotly.Layout>;
+  /**
+   * Optional appearance config from `useChartAppearance`. When set, the
+   * popover's title/axis labels/fonts/legend drive the layout. The 3D
+   * `yaxis` (cycle dimension) intentionally stays hardcoded — it is fixed
+   * by the plot type.
+   */
+  appearance?: ChartAppearanceConfig;
+  exportContext?: ExportContext;
+  /** Render size (passed both to the wrapping element and Plotly layout). */
+  width?: number;
+  height?: number;
 }
 
-const smallFont = { size: 10, family: 'Inter' as const };
+const FALLBACK_FONT_SIZE = 10;
+const FALLBACK_TITLE_FONT_SIZE = 11;
+const FALLBACK_FONT_FAMILY = 'Inter';
 
-export function Surface3dPlot({ traces, xValues, xLabel, zLabel, title, uirevision, layoutOverride }: Props) {
-  const layout = useMemo<Partial<Plotly.Layout>>(() => ({
-    uirevision,
-    title: { text: title, font: { size: 11, family: 'Inter' } },
-    font: smallFont,
-    scene: {
-      xaxis: {
-        title: { text: xLabel, font: smallFont },
-        range: xValues.length > 0 ? [Math.max(...xValues), Math.min(...xValues)] : undefined,
-        gridcolor: '#e0e0e0',
-        tickfont: smallFont,
+export function Surface3dPlot({
+  traces,
+  xValues,
+  xLabel,
+  zLabel,
+  title,
+  uirevision,
+  layoutOverride,
+  appearance,
+  width,
+  height,
+  exportContext,
+}: Props) {
+  const layout = useMemo<Partial<Plotly.Layout>>(() => {
+    const fontFamily = appearance?.fontFamily ?? FALLBACK_FONT_FAMILY;
+    const titleSize = appearance?.titleFontSize ?? FALLBACK_TITLE_FONT_SIZE;
+    const labelSize = appearance?.labelFontSize ?? FALLBACK_FONT_SIZE;
+    const legendSize = appearance?.legendFontSize ?? FALLBACK_FONT_SIZE;
+    const tickSize = Math.max(9, labelSize - 1);
+    const titleText = appearance?.chartTitle ?? title ?? '';
+    const xText = appearance?.xAxisLabel ?? xLabel ?? '';
+    const zText = appearance?.yAxisLabel ?? zLabel ?? '';
+    const showLegend = appearance?.showLegend ?? true;
+
+    const baseFont = { size: labelSize, family: fontFamily };
+    const tickFont = { size: tickSize, family: fontFamily };
+
+    return {
+      uirevision,
+      title: { text: titleText, font: { size: titleSize, family: fontFamily } },
+      font: baseFont,
+      scene: {
+        xaxis: {
+          title: { text: xText, font: baseFont },
+          range: xValues.length > 0 ? [Math.max(...xValues), Math.min(...xValues)] : undefined,
+          gridcolor: '#e0e0e0',
+          tickfont: tickFont,
+        },
+        yaxis: { title: { text: 'Cycle', font: baseFont }, gridcolor: '#e0e0e0', tickfont: tickFont },
+        zaxis: { title: { text: zText, font: baseFont }, gridcolor: '#e0e0e0', tickfont: tickFont },
+        camera: { eye: { x: 1.25, y: 1.25, z: 1.25 } },
       },
-      yaxis: { title: { text: 'Cycle', font: smallFont }, gridcolor: '#e0e0e0', tickfont: smallFont },
-      zaxis: { title: { text: zLabel, font: smallFont }, gridcolor: '#e0e0e0', tickfont: smallFont },
-      camera: { eye: { x: 1.25, y: 1.25, z: 1.25 } },
-    },
-    legend: { x: 0, y: -0.12, orientation: 'h', font: smallFont },
-    margin: { t: 36, r: 8, b: 8, l: 8 },
-    ...layoutOverride,
-  }), [uirevision, title, xLabel, zLabel, xValues, layoutOverride]);
+      showlegend: showLegend,
+      legend: showLegend
+        ? { x: 0, y: -0.12, orientation: 'h', font: { size: legendSize, family: fontFamily } }
+        : undefined,
+      margin: { t: 36, r: 8, b: 8, l: 8 },
+      ...(width != null ? { width } : {}),
+      ...(height != null ? { height } : {}),
+      ...layoutOverride,
+    };
+  }, [uirevision, title, xLabel, zLabel, xValues, layoutOverride, appearance, width, height]);
 
-  return <PlotlyChart data={traces} layout={layout} style={{ width: '100%', height: '500px' }} />;
+  const style: React.CSSProperties =
+    width != null && height != null
+      ? { width, height }
+      : { width: '100%', height: '500px' };
+
+  return <PlotlyChart data={traces} layout={layout} style={style} exportContext={exportContext} />;
 }

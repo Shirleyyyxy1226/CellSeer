@@ -1,0 +1,46 @@
+# Caddy reverse proxy for CellSeer.
+# - Terminates TLS automatically via Let's Encrypt (HTTP-01 challenge on :80).
+# - Forwards everything to the FastAPI app container on its internal port 8000.
+# - Adds sane security headers and gzip compression.
+#
+# Requires:
+#   - The CELLSEER_DOMAIN env var (set in .env / docker-compose.yml) e.g. cellseer.com
+#   - DNS A record for that domain pointing at this host.
+#   - If using Cloudflare: keep the record DNS-only (grey cloud) so Let's
+#     Encrypt can complete the HTTP challenge. You can flip it to proxied
+#     (orange cloud) afterwards.
+
+{$CELLSEER_DOMAIN} {
+	encode zstd gzip
+
+	header {
+		# HSTS: tell browsers to remember HTTPS for 6 months
+		Strict-Transport-Security "max-age=15552000; includeSubDomains"
+		# Tighten clickjacking / sniffing / referrer leakage defaults
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		# Don't leak the server software string
+		-Server
+	}
+
+	# Generous upload size so DIGIBAT batch imports and big NEWARE files
+	# don't get rejected at the proxy layer. Tune down if you don't want
+	# arbitrarily large bodies.
+	request_body {
+		max_size 1GB
+	}
+
+	reverse_proxy app:8000 {
+		# Pass the real client IP through so FastAPI sees it in request.client
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+	}
+}
+
+# Optional: a bare www.cellseer.com → cellseer.com redirect. Uncomment if you
+# also want www to resolve.
+# www.{$CELLSEER_DOMAIN} {
+# 	redir https://{$CELLSEER_DOMAIN}{uri} permanent
+# }

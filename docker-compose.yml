@@ -1,0 +1,108 @@
+# CellSeer production stack.
+#
+# Two deployment modes, selected with `docker compose --profile <name>`:
+#
+#   --profile caddy        Cloud VM with a public IP + your domain pointing at it.
+#                          Caddy terminates TLS via Let's Encrypt on ports 80/443.
+#
+#   --profile cloudflared  Anywhere with outbound internet (incl. a Mac at home).
+#                          Cloudflare Tunnel publishes the app to your domain;
+#                          TLS is handled at Cloudflare's edge. No inbound ports
+#                          on the host, no router config, no Let's Encrypt.
+#
+# The `app` service runs in both modes. SQLite + parquet cache live on a single
+# named volume so backups are one file tree.
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: cellseer:latest
+    restart: unless-stopped
+    environment:
+      # Shared bearer token for all clients. Required in production —
+      # if unset, the backend serves /api/* with no auth at all.
+      CELLSEER_API_TOKEN: ${CELLSEER_API_TOKEN:?CELLSEER_API_TOKEN must be set}
+
+      # Comma-separated list of full origins permitted by CORS.
+      # For same-origin deploys this can be just https://your-domain. Empty =
+      # dev defaults (localhost/127.0.0.1) which is NOT what you want in prod.
+      CELLSEER_ALLOWED_ORIGINS: ${CELLSEER_ALLOWED_ORIGINS:-}
+
+      # DIGIBAT integration (optional — leave empty to disable upstream sync)
+      DATALAB_BASE_URL: ${DATALAB_BASE_URL:-https://digibat.dept.ic.ac.uk}
+      DATALAB_API_KEY: ${DATALAB_API_KEY:-}
+      DATALAB_TIMEOUT: ${DATALAB_TIMEOUT:-60}
+    volumes:
+      # All mutable runtime state. The Dockerfile points
+      # CELLSEER_DB_PATH, CELLSEER_DATA_DIR and CELLSEER_DATA_LAKE_DIR
+      # into subpaths of /data so a single mount covers everything.
+      - cellseer-data:/data
+    # Not published to the host — Caddy / cloudflared reach it over the
+    # internal docker network on port 8000.
+    expose:
+      - "8000"
+    networks:
+      - cellseer
+
+  # -----------------------------------------------------------------------
+  # Profile: caddy
+  # Use for: a cloud VM (Hetzner / DO / etc.) with a public IPv4 and your
+  # domain's A-record pointing at that IP.
+  # -----------------------------------------------------------------------
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    profiles: ["caddy"]
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      # Used inside Caddyfile via {$CELLSEER_DOMAIN}; e.g. cellseer.com
+      CELLSEER_DOMAIN: ${CELLSEER_DOMAIN:?CELLSEER_DOMAIN must be set, e.g. cellseer.com}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - app
+    networks:
+      - cellseer
+
+  # -----------------------------------------------------------------------
+  # Profile: cloudflared
+  # Use for: any machine with outbound internet — including your laptop or
+  # a Mac mini at home. Cloudflare Tunnel opens an outbound connection from
+  # this container to Cloudflare's edge, then routes incoming requests for
+  # your domain back through it. No inbound ports on your host.
+  #
+  # Setup:
+  #   1. Cloudflare dashboard → Zero Trust → Networks → Tunnels → Create.
+  #   2. Copy the connector token shown to the host's .env as CF_TUNNEL_TOKEN.
+  #   3. Add a Public Hostname rule:
+  #        Subdomain:    (leave empty for the apex)
+  #        Domain:       cellseer.com
+  #        Service:      HTTP   →   app:8000
+  #   4. `docker compose --profile cloudflared up -d`
+  # -----------------------------------------------------------------------
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    profiles: ["cloudflared"]
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CF_TUNNEL_TOKEN:?CF_TUNNEL_TOKEN must be set when using the cloudflared profile}
+    depends_on:
+      - app
+    networks:
+      - cellseer
+
+volumes:
+  cellseer-data:
+  caddy-data:
+  caddy-config:
+
+networks:
+  cellseer:

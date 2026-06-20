@@ -1,0 +1,38 @@
+[
+  {
+    "name": "gcd",
+    "title": "GCD \u2014 voltage vs capacity",
+    "desc": "Galvanostatic charge\u2013discharge curves, one trace per cycle.",
+    "code": "import cellseer\ncell = cellseer.load(df, label=\"CEL-1\")\nfig = cellseer.gcd_plot(cell)"
+  },
+  {
+    "name": "gcd_multi",
+    "title": "GCD \u2014 multi-cell comparison",
+    "desc": "Replicate cells overlaid; labels carry through to the legend.",
+    "code": "cells = [cellseer.load(df, label=name)\n         for name, df in my_cells.items()]\nfig = cellseer.gcd_plot(cells, cycles=[2])"
+  },
+  {
+    "name": "dqdv",
+    "title": "Incremental capacity (dQ/dV)",
+    "desc": "Phase-transition peaks vs voltage, per cycle.",
+    "code": "fig = cellseer.dqdv_plot(cell)"
+  },
+  {
+    "name": "dvdq",
+    "title": "Differential voltage (dV/dQ)",
+    "desc": "Electrode-balance features vs capacity, per cycle.",
+    "code": "fig = cellseer.dvdq_plot(cell)"
+  },
+  {
+    "name": "voltage_time",
+    "title": "Voltage vs time",
+    "desc": "Raw protocol trace for the first cycles \u2014 formation checks.",
+    "code": "fig = cellseer.voltage_time_plot(cell)"
+  },
+  {
+    "name": "rate",
+    "title": "Rate performance",
+    "desc": "Per-cycle discharge capacity with C-rate segmentation.",
+    "code": "fig = cellseer.rate_plot(cell)"
+  }
+]
