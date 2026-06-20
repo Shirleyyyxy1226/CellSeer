@@ -43,7 +43,26 @@ class CyclingFileLoader(BaseTestTypeLoader):
                 db.set_project_scope(project_id)
             update_progress(20, "Detecting data format…")
             update_progress(30, "Parsing cycling file (large .xlsx may take a while)…")
-            cell_id = ingest_cycling_file(tmp_path, db, project_id=project_id)
+            # Caller-provided cellId / idNo bypass the filename-based heuristic
+            # used by ``ingest_cycling_file`` — required when the upload is
+            # routed via /api/cells/{cell_id}/files/cycling.
+            target_cell_id = options.get("cellId") or options.get("cell_id")
+            raw_id_no = options.get("idNo")
+            if raw_id_no is None:
+                raw_id_no = options.get("id_no")
+            target_id_no = None
+            if raw_id_no is not None:
+                try:
+                    target_id_no = int(raw_id_no)
+                except (TypeError, ValueError):
+                    target_id_no = None
+            cell_id = ingest_cycling_file(
+                tmp_path,
+                db,
+                project_id=project_id,
+                cell_id=target_cell_id,
+                id_no=target_id_no,
+            )
             update_progress(100, f"Done — cell {cell_id} updated")
             return {"cell_id": cell_id}
         finally:

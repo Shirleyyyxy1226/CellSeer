@@ -128,9 +128,6 @@ class CellMetadata(BaseModel):
             "do_formation": {"doformation"},
             "do_ratetest": {"doratetest"},
             "do_eis": {"doeis"},
-            # Mass aliases cover both the assembly-plan ("... weight (mg)") and the
-            # DIGIBAT sync ("... mass (mg)") / "(g)" header forms. The unit named
-            # in the matched header drives mg/g conversion (see _mass_to_grams).
             "anode_mass_g": {"anodemass", "anodeweightmg", "anodemassmg", "anodemassg"},
             "cathode_mass_g": {"cathodemass", "cathodeweightmg", "cathodemassmg", "cathodemassg"},
             "notes": {"notes"},
@@ -158,10 +155,6 @@ class CellMetadata(BaseModel):
             matched = next((by_norm[a] for a in sorted(aliases) if a in by_norm), None)
             val = data.get(matched) if matched is not None else None
             if val not in (None, ""):
-                # Mass fields are stored in grams. Source columns are often in
-                # milligrams (e.g. "Cathode weight (mg)") — convert by the unit
-                # named in the source header so specific capacity isn't off by
-                # 1000x. See _mass_to_grams.
                 if dst in ("cathode_mass_g", "anode_mass_g"):
                     val = _mass_to_grams(val, matched)
                 normalised[dst] = val
