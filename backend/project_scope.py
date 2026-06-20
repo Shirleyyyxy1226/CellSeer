@@ -196,6 +196,17 @@ def ensure_project_schema(conn: sqlite3.Connection) -> None:
         "ON protocol_template(project_id, is_builtin, name)"
     )
 
+    # Remove the legacy UNIQUE(project_id, id_no) constraint from the cell table.
+    # SQLite cannot DROP CONSTRAINT — requires table recreation. The constraint
+    # was removed intentionally: DIGIBAT imports from multiple collections may
+    # share the same display id_no across different cell_ids.
+    _migrate_drop_cell_id_no_unique(conn)
+
+    # Soft-delete any dataset rows with a null storage_uri — these are pre-migration
+    # rows that stored binary data in-DB and have no Parquet path. They cannot be
+    # read by the current loader and would silently return empty results if left alive.
+    _migrate_nullify_orphan_datasets(conn)
+
     conn.commit()
 
     ensure_project_exists(conn, DEFAULT_PROJECT_ID, "Default project")
@@ -271,6 +282,97 @@ def _seed_builtin_protocol_templates(conn: sqlite3.Connection, project_id: str) 
         conn.commit()
     except sqlite3.OperationalError:
         # Table not yet created; will be set up on next boot.
+        pass
+
+
+def _migrate_drop_cell_id_no_unique(conn: sqlite3.Connection) -> None:
+    """Remove the legacy UNIQUE(project_id, id_no) constraint from the cell table.
+
+    SQLite cannot ALTER TABLE ... DROP CONSTRAINT, so this recreates the table
+    without the constraint. Only runs when the old definition is detected.
+    """
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='cell'"
+    ).fetchone()
+    if row is None or "UNIQUE(project_id, id_no)" not in (row["sql"] or ""):
+        return
+
+    cols_info = conn.execute("PRAGMA table_info(cell)").fetchall()
+    col_names = ", ".join(r["name"] for r in cols_info)
+
+    conn.execute("PRAGMA foreign_keys = OFF")
+    conn.execute(
+        f"""
+        CREATE TABLE cell_migration_new AS
+        SELECT {col_names} FROM cell WHERE 0
+        """
+    )
+    # Recreate with proper definition: no UNIQUE(project_id, id_no).
+    conn.execute("DROP TABLE cell_migration_new")
+    conn.execute(
+        """
+        CREATE TABLE cell_new (
+          project_id TEXT NOT NULL DEFAULT 'default',
+          cell_id TEXT PRIMARY KEY,
+          id_no INTEGER,
+          batch INTEGER,
+          category TEXT,
+          cathode TEXT,
+          cathode_diameter_mm REAL,
+          anode TEXT,
+          anode_diameter_mm REAL,
+          np_ratio REAL,
+          separator_type TEXT,
+          separator_diameter_mm REAL,
+          electrolyte TEXT,
+          electrolyte_volume_ul REAL,
+          spacer_mm REAL,
+          repeat INTEGER,
+          do_formation TEXT,
+          do_ratetest TEXT,
+          do_eis TEXT,
+          anode_mass REAL,
+          cathode_mass REAL,
+          notes TEXT,
+          source_system TEXT,
+          source_refcode TEXT,
+          source_item_id TEXT,
+          last_seen_at TEXT,
+          protocol_name TEXT,
+          protocol_segments TEXT,
+          protocol_updated_at TEXT,
+          deleted_at TEXT
+        )
+        """
+    )
+    conn.execute(f"INSERT INTO cell_new ({col_names}) SELECT {col_names} FROM cell")
+    conn.execute("DROP TABLE cell")
+    conn.execute("ALTER TABLE cell_new RENAME TO cell")
+    conn.execute("PRAGMA foreign_keys = ON")
+    print("Migration: removed UNIQUE(project_id, id_no) constraint from cell table.")
+
+
+def _migrate_nullify_orphan_datasets(conn: sqlite3.Connection) -> None:
+    """Soft-delete dataset rows that have no storage_uri (pre-Parquet-migration rows).
+
+    These rows were created when datasets were stored as BLOBs in the DB.
+    The current loader skips them silently; making them deleted_at makes the
+    state explicit and prevents confusing empty-data results.
+    """
+    try:
+        result = conn.execute(
+            """
+            UPDATE dataset
+            SET deleted_at = datetime('now')
+            WHERE storage_uri IS NULL AND deleted_at IS NULL
+            """
+        )
+        if result.rowcount:
+            print(
+                f"Migration: soft-deleted {result.rowcount} dataset row(s) with no "
+                "storage_uri (pre-Parquet data). Re-ingest those cycling files to restore them."
+            )
+    except sqlite3.OperationalError:
         pass
 
 

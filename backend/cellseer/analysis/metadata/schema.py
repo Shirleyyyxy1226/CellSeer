@@ -121,14 +121,18 @@ class CellMetadata(BaseModel):
             "separator_type": {"separatortype"},
             "separator_diameter_mm": {"separatordiametermm"},
             "electrolyte": {"electrolyte"},
-            "electrolyte_volume_ul": {"electrolytevolumeul"},
+            # "electrolytevolumel": "(μL)" headers lose the µ under normalize_key.
+            "electrolyte_volume_ul": {"electrolytevolumeul", "electrolytevolumel"},
             "spacer_mm": {"spacermm"},
             "repeat": {"repeat"},
             "do_formation": {"doformation"},
             "do_ratetest": {"doratetest"},
             "do_eis": {"doeis"},
-            "anode_mass_g": {"anodemass", "anodeweightmg"},
-            "cathode_mass_g": {"cathodemass", "cathodeweightmg"},
+            # Mass aliases cover both the assembly-plan ("... weight (mg)") and the
+            # DIGIBAT sync ("... mass (mg)") / "(g)" header forms. The unit named
+            # in the matched header drives mg/g conversion (see _mass_to_grams).
+            "anode_mass_g": {"anodemass", "anodeweightmg", "anodemassmg", "anodemassg"},
+            "cathode_mass_g": {"cathodemass", "cathodeweightmg", "cathodemassmg", "cathodemassg"},
             "notes": {"notes"},
         }
 
@@ -149,8 +153,17 @@ class CellMetadata(BaseModel):
                 continue
             if dst == "id_no" and id_no_header:
                 continue
-            val = _find_value(data, by_norm, aliases)
+            # sorted() so a column matching multiple aliases resolves the same
+            # way every run (sets have no stable iteration order).
+            matched = next((by_norm[a] for a in sorted(aliases) if a in by_norm), None)
+            val = data.get(matched) if matched is not None else None
             if val not in (None, ""):
+                # Mass fields are stored in grams. Source columns are often in
+                # milligrams (e.g. "Cathode weight (mg)") — convert by the unit
+                # named in the source header so specific capacity isn't off by
+                # 1000x. See _mass_to_grams.
+                if dst in ("cathode_mass_g", "anode_mass_g"):
+                    val = _mass_to_grams(val, matched)
                 normalised[dst] = val
 
         display_name = _build_display_name(normalised, display_name_template)
@@ -187,6 +200,29 @@ def _find_value(data: Dict[str, Any], by_norm: Dict[str, str], aliases: set[str]
         if alias in by_norm:
             return data.get(by_norm[alias])
     return None
+
+
+def _mass_to_grams(value: Any, header: Optional[str]) -> Any:
+    """Convert a metadata mass to grams based on the unit in its source header.
+
+    Masses are stored in grams (``cathode_mass_g`` / ``anode_mass_g``), but
+    source spreadsheets usually give milligrams ("Cathode weight (mg)"). We key
+    off the unit named in the header: ``mg``/``µg`` are scaled down; ``g`` or an
+    unspecified unit is assumed to already be grams. A non-numeric value is
+    returned unchanged. Note: a bare header like "cathode mass" with no unit is
+    treated as grams — if such a column is actually in mg, rename it to include
+    "(mg)" so it converts correctly.
+    """
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return value
+    h = str(header or "").lower()
+    if "mg" in h or "milligram" in h:
+        return v / 1_000.0
+    if "µg" in h or "ug" in h or "microgram" in h:
+        return v / 1_000_000.0
+    return v
 
 
 def _build_display_name(normalised: Dict[str, Any], template: str) -> str:
