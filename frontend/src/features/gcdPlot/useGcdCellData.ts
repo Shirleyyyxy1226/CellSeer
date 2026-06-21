@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { fetchCellRecord, fetchCellRecordIndex, fetchRatePerformance } from '@/lib/api';
+import {
+  useCellRecordIndexQuery,
+  useCellRecordQueries,
+  useRatePerformanceQuery,
+} from '@/hooks/useCellData';
 import { useCellSelection } from '@/contexts/CellSelectionContext';
-import { useDataRefresh } from '@/contexts/DataRefreshContext';
 import { useProjectHierarchy } from '@/contexts/ProjectHierarchyContext';
 import { useTreeFilter } from '@/contexts/TreeFilterContext';
 
@@ -46,6 +49,8 @@ interface UseGcdCellDataOpts {
 
 interface UseGcdCellDataReturn {
   cellIndex: VQCellIndex[] | null;
+  /** True while the initial cell-index fetch is in flight (or being refetched). */
+  cellIndexLoading: boolean;
   /** Cell list after cathode/spacer/separator + multiselect + tree filtering. */
   filteredCells: VQCellIndex[];
   /** Subset actually rendered (multi-select / tree-filter / default-first-cell rules). */
@@ -87,49 +92,36 @@ export function useGcdCellData({
   separatorFilter,
 }: UseGcdCellDataOpts): UseGcdCellDataReturn {
   const { multiselectionMode, selectedCellIds } = useCellSelection();
-  const { dataVersion } = useDataRefresh();
   const { treeFilterPath } = useTreeFilter();
   const { matchPathToIdNos } = useProjectHierarchy();
 
-  const [cellIndex, setCellIndex] = useState<VQCellIndex[] | null>(null);
-  const [selectedCellData, setSelectedCellData] = useState<VQCell | null>(null);
-  const [cellRecordsByCell, setCellRecordsByCell] = useState<Record<number, VQCell>>({});
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [cellDataLoading, setCellDataLoading] = useState(false);
-  const [cellDataError, setCellDataError] = useState<string | null>(null);
   const [selectedCellId, setSelectedCellId] = useState<string>('');
   const [cycleFilter, setCycleFilter] = useState<string>('');
-  const [ratePerfCells, setRatePerfCells] = useState<RatePerfCell[] | null>(null);
 
-  useEffect(() => {
-    setLoadError(null);
-    setCellRecordsByCell({});
-    fetchCellRecordIndex()
-      .then((d) => {
-        if (d.cells.length) {
-          setCellIndex(d.cells as VQCellIndex[]);
-          setLoadError(null);
-          if (!selectedCellId && d.cells[0]) setSelectedCellId(d.cells[0].cellId);
-        } else {
-          setCellIndex([]);
-          setLoadError('Cell list is empty for this project. Upload metadata and cycling data first.');
-        }
-      })
-      .catch(() => {
-        setCellIndex(null);
-        setLoadError('Failed to load cell list.');
-      });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dataVersion]);
+  const indexQuery = useCellRecordIndexQuery();
+  const rateQuery = useRatePerformanceQuery();
 
+  const cellIndex = useMemo<VQCellIndex[] | null>(() => {
+    if (!indexQuery.data) return null;
+    return indexQuery.data.cells as VQCellIndex[];
+  }, [indexQuery.data]);
+  const cellIndexLoading = indexQuery.isLoading;
+  const loadError = indexQuery.isError
+    ? 'Failed to load cell list.'
+    : indexQuery.data && indexQuery.data.cells.length === 0
+      ? 'Cell list is empty for this project. Upload metadata and cycling data first.'
+      : null;
+  const ratePerfCells = useMemo<RatePerfCell[] | null>(() => {
+    const cells = rateQuery.data?.cells;
+    return cells?.length ? (cells as RatePerfCell[]) : null;
+  }, [rateQuery.data]);
+
+  // Default the selection to the first cell once the index arrives.
   useEffect(() => {
-    fetchRatePerformance()
-      .then((d) => {
-        if (d.cells.length) setRatePerfCells(d.cells as RatePerfCell[]);
-        else setRatePerfCells(null);
-      })
-      .catch(() => setRatePerfCells(null));
-  }, [dataVersion]);
+    if (cellIndex?.length) {
+      setSelectedCellId((prev) => prev || cellIndex[0].cellId);
+    }
+  }, [cellIndex]);
 
   const filteredCells = useMemo(() => {
     if (!cellIndex) return [];
@@ -153,9 +145,13 @@ export function useGcdCellData({
     if (treeFilterPath.length > 0) {
       const matchedIdNos = matchPathToIdNos(treeFilterPath);
       if (matchedIdNos && matchedIdNos.size > 0) {
-        return filteredCells
+        const matched = filteredCells
           .filter((c) => matchedIdNos.has(c.idNo))
           .sort((a, b) => a.idNo - b.idNo);
+        // Single mode shows ONE cell: clicking a group node drills into the
+        // first cell of that group rather than overlaying every cell under it
+        // (use Multi mode to overlay the whole group).
+        return multiselectionMode ? matched : matched.slice(0, 1);
       }
       // Leaf clicks set treeFilterPath but may not resolve via path match; honour explicit cell selection.
       if (!multiselectionMode && selectedCellIds.length > 0) {
@@ -165,53 +161,45 @@ export function useGcdCellData({
       }
       return [];
     }
+    // Honour an explicit selection (e.g. drill-down from the Master Plot inspector)
+    // even when no tree path is active, instead of defaulting to the first cell.
+    if (!multiselectionMode && selectedCellIds.length > 0) {
+      const selected = filteredCells
+        .filter((c) => selectedCellIds.includes(c.idNo))
+        .sort((a, b) => a.idNo - b.idNo);
+      if (selected.length > 0) return selected;
+    }
     return filteredCells.slice(0, 1);
   }, [filteredCells, multiselectionMode, selectedCellIds, treeFilterPath, matchPathToIdNos]);
 
-  useEffect(() => {
-    if (cellsForCharts.length === 0) {
-      setSelectedCellData(null);
-      setCellRecordsByCell({});
-      return;
-    }
-    if (cellsForCharts.length === 1) {
-      const cell = cellsForCharts[0];
-      setCellRecordsByCell({});
-      setCellDataLoading(true);
-      setCellDataError(null);
-      fetchCellRecord(cell.idNo)
-        .then((d) => {
-          const record = d as VQCell | null;
-          setSelectedCellData(record ?? null);
-          setCellDataError(record ? null : 'Failed to load cell data.');
-        })
-        .catch(() => {
-          setSelectedCellData(null);
-          setCellDataError('Failed to load cell data from database.');
-        })
-        .finally(() => setCellDataLoading(false));
-      return;
-    }
-    setSelectedCellData(null);
-    const idNos = cellsForCharts.map((c) => c.idNo);
-    setCellRecordsByCell((prev) => {
-      const next = { ...prev };
-      for (const k of Object.keys(next)) {
-        if (!idNos.includes(Number(k))) delete next[Number(k)];
-      }
-      return next;
+  // One cached query per charted cell — selection toggles and tab revisits
+  // reuse already-loaded records instead of refetching.
+  const recordQueries = useCellRecordQueries(cellsForCharts.map((c) => c.cellId));
+
+  const cellRecordsByCell = useMemo(() => {
+    const out: Record<number, VQCell> = {};
+    cellsForCharts.forEach((cell, i) => {
+      const record = recordQueries[i]?.data as VQCell | undefined;
+      if (record?.curves) out[cell.idNo] = record;
     });
-    idNos.forEach((idNo) => {
-      fetchCellRecord(idNo)
-        .then((d) => {
-          const record = d as VQCell | null;
-          if (record?.curves) {
-            setCellRecordsByCell((prev) => ({ ...prev, [idNo]: record }));
-          }
-        })
-        .catch(() => {});
-    });
-  }, [cellsForCharts]);
+    return out;
+  }, [cellsForCharts, recordQueries]);
+
+  const singleMode = cellsForCharts.length === 1;
+  const firstQuery = recordQueries[0];
+  const selectedCellData = useMemo<VQCell | null>(() => {
+    if (!singleMode) return null;
+    const record = firstQuery?.data as VQCell | undefined;
+    return record?.curves ? record : null;
+  }, [singleMode, firstQuery?.data]);
+  const cellDataLoading = singleMode ? !!firstQuery?.isLoading : false;
+  const cellDataError = !singleMode
+    ? null
+    : cellsForCharts[0] && !cellsForCharts[0].cellId
+      ? 'Cell is missing a cell_id; cannot fetch curves.'
+      : firstQuery?.isError
+        ? 'Failed to load cell data from database.'
+        : null;
 
   const selectedCell = useMemo(() => {
     if (cellsForCharts.length === 1) return cellsForCharts[0];
@@ -262,6 +250,7 @@ export function useGcdCellData({
 
   return {
     cellIndex,
+    cellIndexLoading,
     filteredCells,
     cellsForCharts,
     cellRecordsByCell,

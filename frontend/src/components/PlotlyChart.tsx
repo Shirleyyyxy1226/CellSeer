@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useRef, useState } from 'react';
 import Plotly from 'plotly.js-strict-dist-min';
-import { Download } from 'lucide-react';
+import { ChevronDown, Download } from 'lucide-react';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -9,7 +9,14 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu';
-import { tracesToCsv, downloadBlob, exportZip } from '@/lib/exportUtils';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { tracesToCsv, downloadBlob, exportZip, type ExportContext } from '@/lib/exportUtils';
 
 const Plot = lazy(() => import('@/lib/plotlyStrict'));
 
@@ -31,6 +38,8 @@ interface PlotlyChartProps {
   showDownloadButton?: boolean;
   /** Optional filename for download (defaults to chart title) */
   downloadFilename?: string;
+  /** Provenance bundled into ZIP exports so the figure is reproducible from source data. */
+  exportContext?: ExportContext;
 }
 
 const PlotlyChart = ({
@@ -44,6 +53,7 @@ const PlotlyChart = ({
   style,
   showDownloadButton = true,
   downloadFilename: downloadFilenameProp,
+  exportContext,
 }: PlotlyChartProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -117,8 +127,14 @@ const PlotlyChart = ({
     const el = getPlotlyEl();
     if (!el) return;
     const pngUrl = await Plotly.toImage(el, { format: 'png', width: el.offsetWidth, height: el.offsetHeight, scale: 2 });
-    await exportZip(pngUrl, JSON.stringify({ data, layout: defaultLayout }, null, 2), tracesToCsv(data), filename);
-  }, [data, defaultLayout, filename]);
+    await exportZip(
+      pngUrl,
+      JSON.stringify({ data, layout: defaultLayout }, null, 2),
+      tracesToCsv(data),
+      filename,
+      exportContext,
+    );
+  }, [data, defaultLayout, filename, exportContext]);
 
   const handleDownload = handleExportPng;
 
@@ -141,16 +157,38 @@ const PlotlyChart = ({
             />
           </Suspense>
           {showDownloadButton && (
-            <button
-              type="button"
-              onClick={handleDownload}
-              disabled={isDownloading}
-              title="Download as PNG"
-              aria-label="Download chart as PNG"
-              className="absolute top-2 right-10 z-10 p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/80 bg-background/80 backdrop-blur-sm border border-border/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Download className="h-3.5 w-3.5" />
-            </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  title="Export chart (PNG, CSV, JSON, ZIP)"
+                  aria-label="Export chart"
+                  className="absolute top-2 right-2 z-10 flex items-center gap-1 px-2 py-1.5 rounded-md text-[10.5px] text-muted-foreground hover:text-foreground hover:bg-muted/80 bg-background/80 backdrop-blur-sm border border-border/50 transition-colors"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  <span>Export</span>
+                  <ChevronDown className="h-3 w-3" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuItem
+                  onClick={handleExportPng}
+                  disabled={isDownloading}
+                >
+                  Export PNG
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleExportCsv}>
+                  Export CSV (source data)
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleExportJson}>
+                  Export Plotly JSON
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleExportZip}>
+                  Export ZIP (figure + data + reproduce.py)
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
         </div>
       </ContextMenuTrigger>
@@ -170,7 +208,9 @@ const PlotlyChart = ({
         <ContextMenuItem onClick={handleExportJson}>Export Plotly JSON</ContextMenuItem>
         <ContextMenuItem onClick={handleExportCsv}>Export CSV (source data)</ContextMenuItem>
         <ContextMenuSeparator />
-        <ContextMenuItem onClick={handleExportZip}>Export ZIP (PNG + JSON + CSV)</ContextMenuItem>
+        <ContextMenuItem onClick={handleExportZip}>
+          Export ZIP (figure + data + reproduce.py)
+        </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
   );

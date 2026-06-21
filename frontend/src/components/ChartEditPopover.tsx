@@ -49,16 +49,19 @@ export function ChartEditPopover({
   showConnectedLineOption = false,
   chartLabel,
 }: ChartEditPopoverProps) {
+  const is3DSurface = chartLabel?.toLowerCase().includes('3d');
+
   return (
     <Popover>
       <PopoverTrigger asChild>
         <button
           type="button"
-          title={chartLabel ? `Edit ${chartLabel}` : 'Edit chart'}
-          aria-label={chartLabel ? `Edit ${chartLabel}` : 'Edit chart'}
-          className="absolute top-2 right-2 z-10 p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/80 bg-background/80 backdrop-blur-sm border border-border/50 transition-colors"
+          title={chartLabel ? `Edit ${chartLabel} labels & style` : 'Edit chart labels & style'}
+          aria-label={chartLabel ? `Edit ${chartLabel} labels & style` : 'Edit chart labels & style'}
+          className="absolute top-2 right-2 z-10 flex items-center gap-1.5 px-2 py-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/80 bg-background/90 backdrop-blur-sm border border-border/60 shadow-sm transition-colors text-xs font-medium"
         >
           <Pencil className="h-3.5 w-3.5" />
+          <span>Edit chart</span>
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-80 max-h-[85vh] overflow-y-auto" align="end" side="left">
@@ -85,14 +88,22 @@ export function ChartEditPopover({
             />
           </div>
           <div>
-            <Label className="text-xs mb-1 block">Y-axis label</Label>
+            <Label className="text-xs mb-1 block">
+              {is3DSurface ? 'Z-axis label (dV/dQ)' : 'Y-axis label'}
+            </Label>
             <Input
               value={config.yAxisLabel}
               onChange={(e) => onConfigChange('yAxisLabel', e.target.value)}
-              placeholder="e.g. Capacity (mAh g⁻¹)"
+              placeholder={is3DSurface ? 'e.g. dV/dQ (V mAh⁻¹)' : 'e.g. Capacity (mAh g⁻¹)'}
               className="h-9"
             />
           </div>
+          {is3DSurface && (
+            <div>
+              <Label className="text-xs mb-1 block text-muted-foreground">Cycle axis label</Label>
+              <p className="text-xs text-muted-foreground px-1">Fixed — always 'Cycle' for the 3D plot.</p>
+            </div>
+          )}
           <div>
             <Label className="text-xs mb-1 block">Font</Label>
             <Select value={config.fontFamily} onValueChange={(v) => onConfigChange('fontFamily', v)}>
