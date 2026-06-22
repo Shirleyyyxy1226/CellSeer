@@ -22,6 +22,8 @@ export interface VQCellIndex {
   separatorType: string;
   spacerMm: number | null;
   cathodeMassG?: number | null;
+  /** Attached test files from the index; a cell needs a 'cycling' one to plot GCD. */
+  datasets?: { name?: string }[];
 }
 
 /** Rate performance cell from rate-performance.json */
@@ -130,6 +132,10 @@ export function useGcdCellData({
         if (cathodeFilter !== 'All' && c.cathode !== cathodeFilter) return false;
         if (spacerFilter !== 'All' && String(c.spacerMm ?? '') !== spacerFilter) return false;
         if (separatorFilter !== 'All' && c.separatorType !== separatorFilter) return false;
+        // GCD needs cycling curves. If the index lists this cell's datasets and
+        // none is 'cycling', requesting its cell-record would 404 — exclude it.
+        // (Keep cells whose datasets are absent, to avoid over-filtering.)
+        if (Array.isArray(c.datasets) && !c.datasets.some((d) => d?.name === 'cycling')) return false;
         return true;
       })
       .sort((a, b) => a.idNo - b.idNo);

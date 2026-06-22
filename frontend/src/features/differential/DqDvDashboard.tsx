@@ -9,6 +9,7 @@ import { useProjectHierarchy } from '@/contexts/ProjectHierarchyContext';
 import { getColorForCell } from '@/lib/ratePerfAggregation';
 import { Surface3dPlot } from './plots/Surface3dPlot';
 import { PeakAnalysisPlot } from './plots/PeakAnalysisPlot';
+import { EvolutionHeatmapPlot } from './plots/EvolutionHeatmapPlot';
 import { buildDqDvFigure, type Dataset } from 'cellseer-lib';
 import { ResizableChartCard } from '@/components/ResizableChartCard';
 import { ChartEditPopover } from '@/components/ChartEditPopover';
@@ -28,7 +29,7 @@ const DqDvDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
   const [direction, setDirection] = useState<ChargeDirection>('discharge');
   const TRACE_WARN_THRESHOLD = 200;
   const [heavyRenderConfirmed, setHeavyRenderConfirmed] = useState(false);
-  const { dqdvData, cells, loading, error, noDifferentialHint, noFilterMatch, totalAvailableCells } = useDifferentialData(
+  const { dqdvData, cells, loading, error, noDifferentialHint, noFilterMatch } = useDifferentialData(
     cathodeFilter,
     spacerFilter,
     separatorFilter,
@@ -61,12 +62,19 @@ const DqDvDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
   const [cycleInput, setCycleInput] = useState(() => String(cycles[cycles.length - 1] ?? 0));
   const selectedCycle = cycles[cycleIndex] ?? 0;
 
+  // Default the selection to the most recent cycle, but ONLY when the cycle set
+  // genuinely changes (new data) — not on every render. `cycles` gets a fresh
+  // array identity each render, so keying the reset on a content signature keeps
+  // it from clobbering the user's slider position mid-interaction.
+  const cycleSigRef = useRef<string>('');
   useEffect(() => {
-    const lastIdx = Math.max(0, cycles.length - 1);
-    setCycleIndex((prev) => Math.min(prev, lastIdx));
-    setCycleInput(String(cycles[lastIdx] ?? 0));
+    const sig = `${cycles.length}:${cycles[cycles.length - 1] ?? ''}`;
+    if (sig === cycleSigRef.current) return;
+    cycleSigRef.current = sig;
+    setCycleIndex(Math.max(0, cycles.length - 1));
   }, [cycles]);
 
+  // Single source of truth: the text box always mirrors the slider's cycle.
   useEffect(() => setCycleInput(String(selectedCycle)), [selectedCycle]);
 
   const [snapNote, setSnapNote] = useState<string | null>(null);
@@ -188,6 +196,14 @@ const DqDvDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
     labelFontSize: 10,
     legendFontSize: 10,
   });
+  const evoAppearance = useChartAppearance({
+    chartTitle: 'Peak dQ/dV vs cycle',
+    xAxisLabel: 'Cycle',
+    yAxisLabel: 'dQ/dV (mAh V⁻¹)',
+    titleFontSize: 11,
+    labelFontSize: 10,
+    legendFontSize: 10,
+  });
   useEffect(() => { surfaceAppearance.setChartTitle(title3d); }, [title3d, surfaceAppearance]);
   useEffect(() => { peakAppearance.setChartTitle(title2d); }, [title2d, peakAppearance]);
 
@@ -195,6 +211,9 @@ const DqDvDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
   // the plot components; this gates visibility (and honours the popover's own
   // showLegend). When collapsed the bottom margin shrinks and the plot reclaims it.
   const [legendShown, setLegendShown] = useState(true);
+  const [activePanel, setActivePanel] = useState<'profile' | 'evolution' | null>(null);
+  const openPanel = useCallback((panel: 'profile' | 'evolution') => setActivePanel(panel), []);
+  const closePanel = useCallback(() => setActivePanel(null), []);
   const surfaceConfig = useMemo(
     () => ({ ...surfaceAppearance.config, showLegend: surfaceAppearance.config.showLegend && legendShown }),
     [surfaceAppearance.config, legendShown],
@@ -203,6 +222,10 @@ const DqDvDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
     () => ({ ...peakAppearance.config, showLegend: peakAppearance.config.showLegend && legendShown }),
     [peakAppearance.config, legendShown],
   );
+  const evoConfig = useMemo(
+    () => ({ ...evoAppearance.config, showLegend: evoAppearance.config.showLegend && legendShown }),
+    [evoAppearance.config, legendShown],
+  );
 
   // Determine whether there is anything to plot yet
   const hasTraces = datasets.length > 0;
@@ -210,66 +233,24 @@ const DqDvDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
 
   // Empty-state shown when the fetch has settled with no data
   const EmptyState = (
-    <div className="flex flex-col items-center justify-center gap-3 text-center h-full min-h-[420px] px-8">
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        className="h-10 w-10 text-muted-foreground/50"
-        fill="none"
-        viewBox="0 0 24 24"
-        stroke="currentColor"
-        strokeWidth={1.5}
-        aria-hidden="true"
-      >
-        <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-      </svg>
-      <p className="text-base font-medium text-foreground">
-        Select one or more cells in the sidebar to plot dQ/dV curves
-      </p>
-      <p className="text-sm text-muted-foreground max-w-xs">
-        Use the hierarchy tree on the left to pick individual cells or a
-        condition group, then switch to this tab.
-      </p>
+    <div className="flex items-center justify-center text-center h-full min-h-[420px] px-8 text-sm text-muted-foreground">
+      Select one or more cells to plot dQ/dV curves.
     </div>
   );
+
+  if (!loading && !error && (noDifferentialHint || noFilterMatch)) {
+    return (
+      <div className="rounded-lg border border-border bg-card p-3 shadow-sm flex h-full min-h-[420px] items-center justify-center text-center text-sm text-muted-foreground">
+        {noFilterMatch
+          ? 'No cells match the current filters.'
+          : 'No dQ/dV data for the selected cells.'}
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-lg border border-border bg-card p-3 shadow-sm flex flex-col gap-3 h-full min-h-0">
       {error && !loading && <p className="text-sm text-amber-600">Database unavailable: {error}</p>}
-      {!loading && (noDifferentialHint || noFilterMatch) && (
-        <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-muted/30 px-6 py-10 text-center">
-          <span className="text-3xl" aria-hidden="true">&#128202;</span>
-          {noFilterMatch ? (
-            <>
-              <p className="font-semibold text-sm text-foreground">
-                No cells with dQ/dV data match the current filters.
-              </p>
-              <p className="text-xs text-muted-foreground max-w-sm">
-                Try clearing or changing the cathode, spacer, or separator filter.
-              </p>
-            </>
-          ) : (
-            <>
-              <p className="font-semibold text-sm text-foreground">
-                No dQ/dV data found for the selected cells.
-              </p>
-              <p className="text-xs text-muted-foreground max-w-sm">
-                Select a cell with cycling data from the hierarchy tree.
-              </p>
-            </>
-          )}
-        </div>
-      )}
-      {/* Auto-load cap indicator — only shown when fewer cells are displayed than available */}
-      {!loading && datasets.length > 0 && datasets.length < totalAvailableCells && (
-        <div className="flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/30 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <span>
-            <strong>Showing {datasets.length} of {totalAvailableCells} cells</strong> — select specific cells in the sidebar tree to override the default limit.
-          </span>
-        </div>
-      )}
       <div className="flex items-center justify-end gap-3 shrink-0 flex-wrap">
         <button
           type="button"
@@ -282,11 +263,11 @@ const DqDvDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
         </button>
         <DirectionToggle value={direction} onChange={setDirection} />
       </div>
-      <div className="grid grid-cols-1 gap-3 flex-1 min-h-[520px] lg:grid-cols-2">
+      <div className={`gap-3 flex-1 min-h-[520px] ${activePanel !== null ? 'grid grid-cols-1 lg:grid-cols-2' : 'flex flex-col'}`}>
         <ResizableChartCard
           size={surfaceChart.size}
           onResizeStart={surfaceChart.onResizeStart}
-          aspectRatio={1}
+          aspectRatio={activePanel !== null ? 1 : 16 / 9}
           minHeight={420}
           fillHeight
         >
@@ -332,6 +313,7 @@ const DqDvDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
                   width={width}
                   height={height}
                   exportContext={exportContext}
+                  onOpenPanel={openPanel}
                 />
               )}
               <ChartEditPopover
@@ -343,7 +325,8 @@ const DqDvDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
             </div>
           )}
         </ResizableChartCard>
-        <ResizableChartCard
+        {/* Profile panel */}
+        {activePanel === 'profile' && <ResizableChartCard
           size={peakChart.size}
           onResizeStart={peakChart.onResizeStart}
           aspectRatio={1}
@@ -351,20 +334,18 @@ const DqDvDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
           fillHeight
         >
           {({ width, height, ResizeHandle }) => {
-            // The cycle-picker control lives inside this card under the plot, so
-            // when filling the cell height we reserve room for it and give the
-            // rest to the plot — keeping both cards the same overall height.
             const CONTROL_H = 72;
             const plotH = peakChart.size ? height : Math.max(240, height - CONTROL_H);
             return (
             <div className="flex flex-col gap-2 h-full" style={{ width }}>
+              <div className="flex items-center justify-between px-0.5 shrink-0">
+                <span className="text-xs font-medium text-muted-foreground">Peak profile (2D)</span>
+                <button type="button" aria-label="Close panel" onClick={closePanel}
+                  className="rounded p-0.5 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">✕</button>
+              </div>
               <div className="relative bg-white dark:bg-card rounded" style={{ width, height: plotH }}>
                 {loading ? (
-                  <LoadingIndicator
-                    variant="frame"
-                    size="lg"
-                    label="Loading cell data from database…"
-                  />
+                  <LoadingIndicator variant="frame" size="lg" label="Loading cell data from database…" />
                 ) : (
                   <>
                     <PeakAnalysisPlot
@@ -376,54 +357,76 @@ const DqDvDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
                       height={plotH}
                       exportContext={exportContext}
                     />
-                    <ChartEditPopover
-                      config={peakAppearance.config}
-                      onConfigChange={peakAppearance.onConfigChange}
-                      chartLabel="Peak analysis"
-                    />
+                    <ChartEditPopover config={peakAppearance.config} onConfigChange={peakAppearance.onConfigChange} chartLabel="Peak analysis" />
                   </>
                 )}
                 <ResizeHandle />
               </div>
               <div className="flex flex-col gap-1 pt-1 shrink-0">
                 <div className="flex items-center gap-3">
-                  <label htmlFor="dqdv-cycle-input" className="text-xs text-muted-foreground whitespace-nowrap">
-                    Cycle number
-                  </label>
+                  <label htmlFor="dqdv-cycle-input" className="text-xs text-muted-foreground whitespace-nowrap">Cycle number</label>
                   <Slider
                     value={[cycleIndex]}
                     onValueChange={([v]) => { setCycleIndex(v); setCycleInput(String(cycles[v])); }}
-                    min={0}
-                    max={Math.max(0, cycles.length - 1)}
-                    step={1}
-                    className="flex-1"
-                    aria-label="Select cycle number"
+                    min={0} max={Math.max(0, cycles.length - 1)} step={1}
+                    className="flex-1" aria-label="Select cycle number"
                   />
-                  <span className="text-xs font-semibold tabular-nums text-foreground w-10 text-right shrink-0">
-                    {selectedCycle}
-                  </span>
-                  <input
-                    id="dqdv-cycle-input"
-                    type="text"
-                    inputMode="numeric"
-                    value={cycleInput}
+                  <span className="text-xs font-semibold tabular-nums text-foreground w-10 text-right shrink-0">{selectedCycle}</span>
+                  <input id="dqdv-cycle-input" type="text" inputMode="numeric" value={cycleInput}
                     onChange={(e) => setCycleInput(e.target.value)}
                     onBlur={commitCycleInput}
                     onKeyDown={(e) => e.key === 'Enter' && commitCycleInput()}
                     className="w-14 rounded border border-input bg-background px-2 py-1 text-xs font-medium tabular-nums text-center focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
-                    aria-label="Type a cycle number"
-                  />
+                    aria-label="Type a cycle number" />
                 </div>
-                {snapNote && (
-                  <p className="text-xs text-amber-600 pl-1" role="status">
-                    {snapNote}
-                  </p>
-                )}
+                {snapNote && <p className="text-xs text-amber-600 pl-1" role="status">{snapNote}</p>}
               </div>
             </div>
             );
           }}
-        </ResizableChartCard>
+        </ResizableChartCard>}
+
+        {/* Evolution heatmap panel */}
+        {activePanel === 'evolution' && <ResizableChartCard
+          size={peakChart.size}
+          onResizeStart={peakChart.onResizeStart}
+          aspectRatio={1}
+          minHeight={420}
+          fillHeight
+        >
+          {({ width, height, ResizeHandle }) => (
+            <div className="flex flex-col gap-2 h-full" style={{ width }}>
+              <div className="flex items-center justify-between px-0.5 shrink-0">
+                <span className="text-xs font-medium text-muted-foreground">Cycle evolution (2D)</span>
+                <button type="button" aria-label="Close panel" onClick={closePanel}
+                  className="rounded p-0.5 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">✕</button>
+              </div>
+              <div className="relative bg-white dark:bg-card rounded flex-1 min-h-0" style={{ width }}>
+                {loading ? (
+                  <LoadingIndicator variant="frame" size="lg" label="Loading cell data from database…" />
+                ) : (
+                  <>
+                    <EvolutionHeatmapPlot
+                      datasets={datasets}
+                      xLabel="Voltage (V)"
+                      zLabel="dQ/dV (mAh V⁻¹)"
+                      appearance={evoConfig}
+                      width={width}
+                      height={height}
+                      exportContext={exportContext}
+                    />
+                    <ChartEditPopover
+                      config={evoAppearance.config}
+                      onConfigChange={evoAppearance.onConfigChange}
+                      chartLabel="Cycle evolution"
+                    />
+                  </>
+                )}
+                <ResizeHandle />
+              </div>
+            </div>
+          )}
+        </ResizableChartCard>}
       </div>
     </div>
   );

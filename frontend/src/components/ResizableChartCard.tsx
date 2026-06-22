@@ -19,6 +19,12 @@ interface ResizableChartCardProps {
   minWidth?: number;
   /** Optional outer card padding override (defaults to `p-4`). */
   cardClassName?: string;
+  /**
+   * When true (and not resized/dragged), the card and its chart fill the parent
+   * cell's height instead of sizing by aspect ratio — used so differential
+   * charts grow to use the available vertical space (no large empty grey band).
+   */
+  fillHeight?: boolean;
   /** Render-prop receives the current width/height and a ready-to-render `ResizeHandle`. */
   children: (args: {
     width: number;
@@ -53,19 +59,26 @@ export function ResizableChartCard({
   aspectRatio,
   minHeight,
   minWidth,
-  cardClassName = 'rounded-lg border border-border bg-card p-4 overflow-auto w-full min-w-0',
+  cardClassName = 'rounded-lg border border-border bg-card p-4 w-full min-w-0',
+  fillHeight = false,
   children,
 }: ResizableChartCardProps) {
+  // Fill-height only applies while the card has not been manually resized.
+  const useFill = fillHeight && !size;
   return (
     <div
-      className={cardClassName}
-      style={size ? { minWidth: size.width + 32, minHeight: size.height + 32 } : undefined}
+      className={`${cardClassName}${useFill ? ' h-full flex flex-col min-h-0' : ''}`}
+      // Width follows the panel (never pinned to the dragged size, so the card
+      // can shrink to fit and never shows an inner horizontal scrollbar). Only
+      // the dragged height grows the card vertically.
+      style={size ? { minHeight: size.height + 32 } : undefined}
     >
       <ResponsiveChartContainer
         aspectRatio={aspectRatio}
         minHeight={minHeight}
         minWidth={minWidth}
         overrideSize={size}
+        fillHeight={useFill}
       >
         {({ width, height }) => {
           const ResizeHandle = () => (

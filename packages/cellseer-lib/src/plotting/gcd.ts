@@ -61,6 +61,7 @@ function build3Scatter(datasets: RecordDataset[], opts: BuildGcdOpts): GcdFigure
   const maxPts = opts.maxPointsPerTrace ?? DEFAULT_MAX_PTS_TRACE;
   const useSpecificCapacity = opts.useSpecificCapacityWhenAvailable ?? true;
   const applyTurbo = opts.applyTurboColor ?? true;
+  const highlightCycle = opts.highlightCycle ?? null;
 
   const traces: Plotly.Data[] = [];
   const traceIndexToCell = new Map<number, { id: string; label: string }>();
@@ -85,8 +86,10 @@ function build3Scatter(datasets: RecordDataset[], opts: BuildGcdOpts): GcdFigure
 
       const chargeSlice = charge.length <= maxPts ? charge : charge.slice(0, maxPts);
       const dchgSlice = discharge.length <= maxPts ? discharge : discharge.slice(0, maxPts);
+      const doCharge = direction === 'charge' || direction === 'both';
+      const doDischarge = direction === 'discharge' || direction === 'both';
 
-      if (direction === 'charge' && chargeSlice.length >= 2) {
+      if (doCharge && chargeSlice.length >= 2) {
         const xs: number[] = [];
         const ys: number[] = [];
         for (let k = 0; k < chargeSlice.length; k += step) {
@@ -100,13 +103,14 @@ function build3Scatter(datasets: RecordDataset[], opts: BuildGcdOpts): GcdFigure
           type: 'scatter' as const,
           mode: showConnectedLine ? ('lines' as const) : ('markers' as const),
           name: `${namePrefix}Cycle ${cyc} (charge)`,
-          line: showConnectedLine ? { width: 1.5, color: cellColor } : undefined,
-          marker: showConnectedLine ? undefined : { size: 3, color: cellColor },
+          ...(showConnectedLine
+            ? { line: { width: 1.5, color: cellColor } }
+            : { marker: { size: 3, color: cellColor } }),
           legendgroup: `${dataset.id}-${cyc}`,
           hovertemplate: `${dataset.label}<br>Cycle: ${cyc} (charge)<br>Capacity: %{x:.2f} ${capacityUnit}<br>Voltage: %{y:.3f} V<extra></extra>`,
         });
       }
-      if (direction === 'discharge' && dchgSlice.length >= 2) {
+      if (doDischarge && dchgSlice.length >= 2) {
         const xs: number[] = [];
         const ys: number[] = [];
         for (let k = 0; k < dchgSlice.length; k += step) {
@@ -120,8 +124,9 @@ function build3Scatter(datasets: RecordDataset[], opts: BuildGcdOpts): GcdFigure
           type: 'scatter' as const,
           mode: showConnectedLine ? ('lines' as const) : ('markers' as const),
           name: `${namePrefix}Cycle ${cyc} (discharge)`,
-          line: showConnectedLine ? { width: 1.5, color: cellColor } : undefined,
-          marker: showConnectedLine ? undefined : { size: 3, color: cellColor },
+          ...(showConnectedLine
+            ? { line: { width: 1.5, color: cellColor } }
+            : { marker: { size: 3, color: cellColor } }),
           legendgroup: `${dataset.id}-${cyc}`,
           hovertemplate: `${dataset.label}<br>Cycle: ${cyc} (discharge)<br>Capacity: %{x:.2f} ${capacityUnit}<br>Voltage: %{y:.3f} V<extra></extra>`,
         });
@@ -138,6 +143,15 @@ function build3Scatter(datasets: RecordDataset[], opts: BuildGcdOpts): GcdFigure
       const s = tr as { line?: { color: string }; marker?: { color: string } };
       if (s.line) s.line.color = c;
       if (s.marker) s.marker.color = c;
+    });
+  }
+
+  // Dim all cycles except the highlighted one (drives the cycle colour scale).
+  if (highlightCycle != null) {
+    traces.forEach((tr) => {
+      const s = tr as { legendgroup?: string };
+      const cyc = s.legendgroup ? s.legendgroup.split('-').pop() : undefined;
+      if (cyc !== String(highlightCycle)) (tr as { opacity?: number }).opacity = 0.2;
     });
   }
 
@@ -185,8 +199,12 @@ function buildCumulative(datasets: RecordDataset[], opts: BuildGcdOpts): GcdFigu
       const stepChg = Math.max(1, Math.ceil(chargeSlice.length / stepsPerCycle));
       const stepDchg = Math.max(1, Math.ceil(dchgSlice.length / stepsPerCycle));
       const legendGroup = `${dataset.id}-${cyc}`;
+      // 'both' lays the charge segment then the discharge segment end-to-end
+      // within the cycle, so cum advances through both (full cycling profile).
+      const doCharge = direction === 'charge' || direction === 'both';
+      const doDischarge = direction === 'discharge' || direction === 'both';
 
-      if (direction === 'charge' && chargeSlice.length >= 2) {
+      if (doCharge && chargeSlice.length >= 2) {
         const xs: number[] = [];
         const ys: number[] = [];
         for (let k = 0; k < chargeSlice.length; k += stepChg) {
@@ -206,7 +224,7 @@ function buildCumulative(datasets: RecordDataset[], opts: BuildGcdOpts): GcdFigu
           hovertemplate: `${dataset.label}<br>Cycle: ${cyc} (charge)<br>Cumulative: %{x:.2f} ${capacityUnit}<br>Voltage: %{y:.3f} V<extra></extra>`,
         });
       }
-      if (direction === 'discharge' && dchgSlice.length >= 2) {
+      if (doDischarge && dchgSlice.length >= 2) {
         const xs: number[] = [];
         const ys: number[] = [];
         for (let k = 0; k < dchgSlice.length; k += stepDchg) {

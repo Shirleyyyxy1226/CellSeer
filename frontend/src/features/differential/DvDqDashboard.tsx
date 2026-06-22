@@ -8,6 +8,7 @@ import { useProjectHierarchy } from '@/contexts/ProjectHierarchyContext';
 import { getColorForCell } from '@/lib/ratePerfAggregation';
 import { Surface3dPlot } from './plots/Surface3dPlot';
 import { PeakAnalysisPlot } from './plots/PeakAnalysisPlot';
+import { EvolutionHeatmapPlot } from './plots/EvolutionHeatmapPlot';
 import { buildDvDqFigure, type Dataset } from 'cellseer-lib';
 import { ResizableChartCard } from '@/components/ResizableChartCard';
 import { ChartEditPopover } from '@/components/ChartEditPopover';
@@ -25,7 +26,7 @@ const DvDqDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
   const { multiselectionMode, selectedCellIds } = useCellSelection();
   const { treeFilterPath } = useTreeFilter();
   const [direction, setDirection] = useState<ChargeDirection>('discharge');
-  const { dvdqData, cells, loading, error, noDifferentialHint, noFilterMatch, totalMatchedCells } = useDifferentialData(
+  const { dvdqData, cells, loading, error, noDifferentialHint, noFilterMatch } = useDifferentialData(
     cathodeFilter,
     spacerFilter,
     separatorFilter,
@@ -58,12 +59,19 @@ const DvDqDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
   const [cycleInput, setCycleInput] = useState(() => String(cycles[cycles.length - 1] ?? 0));
   const selectedCycle = cycles[cycleIndex] ?? 0;
 
+  // Default the selection to the most recent cycle, but ONLY when the cycle set
+  // genuinely changes (new data) — not on every render. `cycles` gets a fresh
+  // array identity each render, so keying the reset on a content signature keeps
+  // it from clobbering the user's slider position mid-interaction.
+  const cycleSigRef = useRef<string>('');
   useEffect(() => {
-    const lastIdx = Math.max(0, cycles.length - 1);
-    setCycleIndex((prev) => Math.min(prev, lastIdx));
-    setCycleInput(String(cycles[lastIdx] ?? 0));
+    const sig = `${cycles.length}:${cycles[cycles.length - 1] ?? ''}`;
+    if (sig === cycleSigRef.current) return;
+    cycleSigRef.current = sig;
+    setCycleIndex(Math.max(0, cycles.length - 1));
   }, [cycles]);
 
+  // Single source of truth: the text box always mirrors the slider's cycle.
   useEffect(() => setCycleInput(String(selectedCycle)), [selectedCycle]);
 
   const [snapNotice, setSnapNotice] = useState<string | null>(null);
@@ -129,21 +137,6 @@ const DvDqDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
       });
   }, [data, filteredCellIds, cells, treeFilterPath, hierCols, pathToColorMap]);
 
-  const isCapped =
-    !loading &&
-    selectedCellIds.length === 0 &&
-    datasets.length > 0 &&
-    totalMatchedCells > datasets.length;
-  const [capBannerDismissed, setCapBannerDismissed] = useState(false);
-  // Reset dismissal whenever filter changes produce a new cap situation
-  const prevTotalRef = useRef(totalMatchedCells);
-  useEffect(() => {
-    if (prevTotalRef.current !== totalMatchedCells) {
-      setCapBannerDismissed(false);
-      prevTotalRef.current = totalMatchedCells;
-    }
-  }, [totalMatchedCells]);
-
   const { data: traces3d, layout: layout3D } = useMemo(
     () => buildDvDqFigure(datasets, { mode: '3d' }),
     [datasets]
@@ -194,6 +187,14 @@ const DvDqDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
     labelFontSize: 10,
     legendFontSize: 10,
   });
+  const evoAppearance = useChartAppearance({
+    chartTitle: 'Peak dV/dQ vs cycle',
+    xAxisLabel: 'Cycle',
+    yAxisLabel: 'dV/dQ (V mAh⁻¹)',
+    titleFontSize: 11,
+    labelFontSize: 10,
+    legendFontSize: 10,
+  });
   useEffect(() => { surfaceAppearance.setChartTitle(title3d); }, [title3d, surfaceAppearance]);
   useEffect(() => { peakAppearance.setChartTitle(title2d); }, [title2d, peakAppearance]);
 
@@ -201,6 +202,9 @@ const DvDqDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
   // the plot components; this gates visibility (and honours the popover's own
   // showLegend). When collapsed the bottom margin shrinks and the plot reclaims it.
   const [legendShown, setLegendShown] = useState(true);
+  const [activePanel, setActivePanel] = useState<'profile' | 'evolution' | null>(null);
+  const openPanel = useCallback((panel: 'profile' | 'evolution') => setActivePanel(panel), []);
+  const closePanel = useCallback(() => setActivePanel(null), []);
   const surfaceConfig = useMemo(
     () => ({ ...surfaceAppearance.config, showLegend: surfaceAppearance.config.showLegend && legendShown }),
     [surfaceAppearance.config, legendShown],
@@ -209,52 +213,24 @@ const DvDqDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
     () => ({ ...peakAppearance.config, showLegend: peakAppearance.config.showLegend && legendShown }),
     [peakAppearance.config, legendShown],
   );
+  const evoConfig = useMemo(
+    () => ({ ...evoAppearance.config, showLegend: evoAppearance.config.showLegend && legendShown }),
+    [evoAppearance.config, legendShown],
+  );
+
+  if (!loading && !error && (noDifferentialHint || noFilterMatch)) {
+    return (
+      <div className="rounded-lg border border-border bg-card p-3 shadow-sm flex h-full min-h-[420px] items-center justify-center text-center text-sm text-muted-foreground">
+        {noFilterMatch
+          ? 'No cells match the current filters.'
+          : 'No dV/dQ data for the selected cells.'}
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-lg border border-border bg-card p-3 shadow-sm flex flex-col gap-3 h-full min-h-0">
       {error && !loading && <p className="text-sm text-amber-600">Database unavailable: {error}</p>}
-      {!loading && (noDifferentialHint || noFilterMatch) && (
-        <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-muted/30 px-6 py-10 text-center">
-          <span className="text-3xl" aria-hidden="true">&#128202;</span>
-          {noFilterMatch ? (
-            <>
-              <p className="font-semibold text-sm text-foreground">
-                No cells with dV/dQ data match the current filters.
-              </p>
-              <p className="text-xs text-muted-foreground max-w-sm">
-                Try clearing or changing the cathode, spacer, or separator filter. If you expect data
-                for these cells, check that cycling records have been processed.
-              </p>
-            </>
-          ) : (
-            <>
-              <p className="font-semibold text-sm text-foreground">
-                No dV/dQ data found for the selected cells.
-              </p>
-              <p className="text-xs text-muted-foreground max-w-sm">
-                Select a cell with cycling data from the hierarchy tree, or check that dV/dQ
-                datasets have been computed for these cells.
-              </p>
-            </>
-          )}
-        </div>
-      )}
-      {isCapped && !capBannerDismissed && (
-        <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
-          <span className="flex-1">
-            Showing {datasets.length} of {totalMatchedCells} matching cells — the default view loads
-            a representative few for a fast comparison. Select specific cells in the library to choose which ones load.
-          </span>
-          <button
-            type="button"
-            aria-label="Dismiss cap notice"
-            onClick={() => setCapBannerDismissed(true)}
-            className="shrink-0 rounded p-0.5 hover:bg-amber-200 dark:hover:bg-amber-800 transition-colors"
-          >
-            ×
-          </button>
-        </div>
-      )}
       <div className="flex items-center justify-end gap-3 shrink-0 flex-wrap">
         <button
           type="button"
@@ -267,11 +243,11 @@ const DvDqDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
         </button>
         <DirectionToggle value={direction} onChange={setDirection} />
       </div>
-      <div className="grid grid-cols-1 gap-3 flex-1 min-h-[520px] lg:grid-cols-2">
+      <div className={`gap-3 flex-1 min-h-[520px] ${activePanel !== null ? 'grid grid-cols-1 lg:grid-cols-2' : 'flex flex-col'}`}>
         <ResizableChartCard
           size={surfaceChart.size}
           onResizeStart={surfaceChart.onResizeStart}
-          aspectRatio={1}
+          aspectRatio={activePanel !== null ? 1 : 16 / 9}
           minHeight={420}
           fillHeight
         >
@@ -294,6 +270,7 @@ const DvDqDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
                     width={width}
                     height={height}
                     exportContext={exportContext}
+                    onOpenPanel={openPanel}
                   />
                   <ChartEditPopover
                     config={surfaceAppearance.config}
@@ -306,7 +283,8 @@ const DvDqDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
             </div>
           )}
         </ResizableChartCard>
-        <ResizableChartCard
+        {/* Profile panel */}
+        {activePanel === 'profile' && <ResizableChartCard
           size={peakChart.size}
           onResizeStart={peakChart.onResizeStart}
           aspectRatio={1}
@@ -314,20 +292,18 @@ const DvDqDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
           fillHeight
         >
           {({ width, height, ResizeHandle }) => {
-            // The cycle-picker control lives inside this card under the plot, so
-            // when filling the cell height we reserve room for it and give the
-            // rest to the plot — keeping both cards the same overall height.
             const CONTROL_H = 84;
             const plotH = peakChart.size ? height : Math.max(240, height - CONTROL_H);
             return (
             <div className="flex flex-col gap-2 h-full" style={{ width }}>
+              <div className="flex items-center justify-between px-0.5 shrink-0">
+                <span className="text-xs font-medium text-muted-foreground">Peak profile (2D)</span>
+                <button type="button" aria-label="Close panel" onClick={closePanel}
+                  className="rounded p-0.5 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">✕</button>
+              </div>
               <div className="relative bg-white dark:bg-card rounded" style={{ width, height: plotH }}>
                 {loading ? (
-                  <LoadingIndicator
-                    variant="frame"
-                    size="lg"
-                    label="Loading cell data from database…"
-                  />
+                  <LoadingIndicator variant="frame" size="lg" label="Loading cell data from database…" />
                 ) : (
                   <>
                     <PeakAnalysisPlot
@@ -339,79 +315,78 @@ const DvDqDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
                       height={plotH}
                       exportContext={exportContext}
                     />
-                    <ChartEditPopover
-                      config={peakAppearance.config}
-                      onConfigChange={peakAppearance.onConfigChange}
-                      chartLabel="Peak analysis"
-                    />
+                    <ChartEditPopover config={peakAppearance.config} onConfigChange={peakAppearance.onConfigChange} chartLabel="Peak analysis" />
                   </>
                 )}
                 <ResizeHandle />
               </div>
               <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2 mt-1 shrink-0">
-                <p className="text-xs font-medium text-muted-foreground mb-1.5">
-                  Peak profile — select cycle
-                </p>
+                <p className="text-xs font-medium text-muted-foreground mb-1.5">Peak profile — select cycle</p>
                 <div className="flex items-center gap-3">
                   <span className="text-xs text-muted-foreground whitespace-nowrap">
-                    Cycle
-                    {cycles.length > 0 && (
-                      <span className="ml-1 text-muted-foreground/60">
-                        ({cycles[0]}–{cycles[cycles.length - 1]})
-                      </span>
-                    )}
-                    :
+                    Cycle{cycles.length > 0 && <span className="ml-1 text-muted-foreground/60">({cycles[0]}–{cycles[cycles.length - 1]})</span>}:
                   </span>
                   {cycles.length > 1 ? (
-                    <>
-                      <datalist id="dvdq-cycle-ticks">
-                        {cycles.map((c) => <option key={c} value={c} />)}
-                      </datalist>
-                      <input
-                        type="range"
-                        list="dvdq-cycle-ticks"
-                        min={cycles[0]}
-                        max={cycles[cycles.length - 1]}
-                        value={selectedCycle}
-                        onChange={(e) => {
-                          const num = parseInt(e.target.value, 10);
-                          const best = closestCycleIndex(num);
-                          setCycleIndex(best);
-                          setCycleInput(String(cycles[best]));
-                        }}
-                        className="flex-1 accent-primary"
-                      />
-                    </>
-                  ) : (
-                    <div className="flex-1" />
-                  )}
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={cycleInput}
+                    <input type="range" min={cycles[0]} max={cycles[cycles.length - 1]} value={selectedCycle}
+                      onChange={(e) => { const best = closestCycleIndex(parseInt(e.target.value, 10)); setCycleIndex(best); setCycleInput(String(cycles[best])); }}
+                      className="flex-1 accent-primary" />
+                  ) : <div className="flex-1" />}
+                  <input type="text" inputMode="numeric" value={cycleInput}
                     placeholder={cycles.length > 0 ? `${cycles[0]}–${cycles[cycles.length - 1]}` : ''}
                     aria-describedby="dvdq-cycle-snap-notice"
                     onChange={(e) => setCycleInput(e.target.value)}
                     onBlur={commitCycleInput}
                     onKeyDown={(e) => e.key === 'Enter' && commitCycleInput()}
-                    className="w-16 rounded border border-input bg-background px-2 py-1 text-xs font-medium tabular-nums text-center focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
-                  />
-                  {snapNotice && (
-                    <span
-                      id="dvdq-cycle-snap-notice"
-                      role="status"
-                      aria-live="polite"
-                      className="text-xs text-amber-600 dark:text-amber-400 whitespace-nowrap"
-                    >
-                      {snapNotice}
-                    </span>
-                  )}
+                    className="w-16 rounded border border-input bg-background px-2 py-1 text-xs font-medium tabular-nums text-center focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1" />
+                  {snapNotice && <span id="dvdq-cycle-snap-notice" role="status" aria-live="polite" className="text-xs text-amber-600 dark:text-amber-400 whitespace-nowrap">{snapNotice}</span>}
                 </div>
               </div>
             </div>
             );
           }}
-        </ResizableChartCard>
+        </ResizableChartCard>}
+
+        {/* Evolution heatmap panel */}
+        {activePanel === 'evolution' && <ResizableChartCard
+          size={peakChart.size}
+          onResizeStart={peakChart.onResizeStart}
+          aspectRatio={1}
+          minHeight={420}
+          fillHeight
+        >
+          {({ width, height, ResizeHandle }) => (
+            <div className="flex flex-col gap-2 h-full" style={{ width }}>
+              <div className="flex items-center justify-between px-0.5 shrink-0">
+                <span className="text-xs font-medium text-muted-foreground">Cycle evolution (2D)</span>
+                <button type="button" aria-label="Close panel" onClick={closePanel}
+                  className="rounded p-0.5 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">✕</button>
+              </div>
+              <div className="relative bg-white dark:bg-card rounded flex-1 min-h-0" style={{ width }}>
+                {loading ? (
+                  <LoadingIndicator variant="frame" size="lg" label="Loading cell data from database…" />
+                ) : (
+                  <>
+                    <EvolutionHeatmapPlot
+                      datasets={datasets}
+                      xLabel="Capacity (mAh)"
+                      zLabel="dV/dQ (V mAh⁻¹)"
+                      appearance={evoConfig}
+                      width={width}
+                      height={height}
+                      exportContext={exportContext}
+                    />
+                    <ChartEditPopover
+                      config={evoAppearance.config}
+                      onConfigChange={evoAppearance.onConfigChange}
+                      chartLabel="Cycle evolution"
+                    />
+                  </>
+                )}
+                <ResizeHandle />
+              </div>
+            </div>
+          )}
+        </ResizableChartCard>}
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { HierarchyEditor } from '@/components/tree/HierarchyEditor';
 import { CircuitTreeMindmap } from '@/components/tree/CircuitTreeMindmap';
 import { LoadingIndicator } from '@/components/LoadingIndicator';
@@ -30,8 +30,21 @@ function OnboardingCallout({ onDismiss }: { onDismiss: () => void }) {
 }
 
 export function HierarchyDashboard() {
-  const { handleCellSelect, annotationsByCell, multiselectionMode, setMultiselectionMode, selectedCellIds } =
+  const { handleCellSelect, annotationsByCell, multiselectionMode, setMultiselectionMode, selectedCellIds, setSelectedCellIds } =
     useCellSelection();
+
+  // Multi mode: clicking a group node toggles selection of every cell under it.
+  const handleGroupToggle = useCallback(
+    (cellIds: number[]) => {
+      if (!cellIds.length) return;
+      const next = new Set(selectedCellIds);
+      const allSelected = cellIds.every((id) => next.has(id));
+      if (allSelected) cellIds.forEach((id) => next.delete(id));
+      else cellIds.forEach((id) => next.add(id));
+      setSelectedCellIds([...next]);
+    },
+    [selectedCellIds, setSelectedCellIds],
+  );
   const { apiData, loading, error, activeJs, setHierarchyOrder, resetHierarchyOrder } =
     useProjectHierarchy();
   const [collapsedPreLeafNodeKeys, setCollapsedPreLeafNodeKeys] = useState<Set<string>>(new Set());
@@ -257,6 +270,7 @@ export function HierarchyDashboard() {
             cells={cells}
             annotationsByCell={annotationsByCell}
             onCellSelect={handleCellSelect}
+            onGroupToggle={handleGroupToggle}
             multiselectionMode={multiselectionMode}
             selectedCellIds={selectedCellIds}
             pathToColorMap={pathToColorMap}

@@ -1325,7 +1325,6 @@ export function CircuitTreeMindmap(props: CircuitTreeMindmapProps) {
               onMouseEnter={onPointerEnter}
               onClick={(e) => {
                 e.stopPropagation();
-                console.log('[groupClick] multi:', multiselectionMode, 'hasToggle:', !!onGroupToggle, 'cellIds:', n.cellIds?.length);
                 // Multi mode: clicking a group toggles all its cells into the
                 // selection (shows the group checkbox/selected effect). Single
                 // mode keeps the drill/filter behaviour.

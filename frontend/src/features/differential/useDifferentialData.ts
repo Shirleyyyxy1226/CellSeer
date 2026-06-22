@@ -100,8 +100,6 @@ export function useDifferentialData(
   error: string | null;
   noDifferentialHint: string | null;
   noFilterMatch: boolean;
-  totalMatchedCells: number;
-  totalAvailableCells: number;
 } {
   const { dataVersion } = useDataRefresh();
   const [readyCellIds, setReadyCellIds] = useState<Set<string>>(new Set());
@@ -161,16 +159,6 @@ export function useDifferentialData(
     // selectionKey participates so identity-only array changes don't cause refetches.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cellIndex, cathodeFilter, separatorFilter, spacerFilter, readyCellIds, selectionKey]);
-
-  const totalMatchedCells = useMemo(() => {
-    if (!cellIndex?.length) return 0;
-    return cellIndex.filter((c) => {
-      if (cathodeFilter !== 'All' && c.cathode !== cathodeFilter) return false;
-      if (separatorFilter !== 'All' && c.separatorType !== separatorFilter) return false;
-      if (!matchesSpacer(spacerFilter, c.spacerMm)) return false;
-      return true;
-    }).length;
-  }, [cellIndex, cathodeFilter, separatorFilter, spacerFilter]);
 
   useEffect(() => {
     let cancelled = false;
@@ -312,7 +300,5 @@ export function useDifferentialData(
     error: loadError,
     noDifferentialHint,
     noFilterMatch,
-    totalMatchedCells,
-    totalAvailableCells: totalMatchedCells,
   };
 }

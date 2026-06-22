@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useRef, useState } from 'react';
 import Plotly from 'plotly.js-strict-dist-min';
-import { ChevronDown, Download } from 'lucide-react';
+import { Download } from 'lucide-react';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -163,11 +163,9 @@ const PlotlyChart = ({
                   type="button"
                   title="Export chart (PNG, CSV, JSON, ZIP)"
                   aria-label="Export chart"
-                  className="absolute top-2 right-2 z-10 flex items-center gap-1 px-2 py-1.5 rounded-md text-[10.5px] text-muted-foreground hover:text-foreground hover:bg-muted/80 bg-background/80 backdrop-blur-sm border border-border/50 transition-colors"
+                  className="absolute top-2 right-2 z-10 flex items-center justify-center p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/80 bg-background/80 backdrop-blur-sm border border-border/50 transition-colors"
                 >
                   <Download className="h-3.5 w-3.5" />
-                  <span>Export</span>
-                  <ChevronDown className="h-3 w-3" />
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-52">

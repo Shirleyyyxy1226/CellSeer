@@ -53,7 +53,7 @@ const CellSelectionContext = createContext<CellSelectionContextValue | null>(
 
 export function CellSelectionProvider({ children }: { children: React.ReactNode }) {
   const [selectedCellIds, setSelectedCellIdsState] = useState<number[]>([]);
-  const [multiselectionMode, setMultiselectionMode] = useState(false);
+  const [multiselectionMode, setMultiselectionModeState] = useState(false);
   // Detail-panel dismissal is keyed on the exact selection so that any change
   // to the selection (different cell, more cells, fewer cells) auto-reopens it.
   const [dismissedSelectionKey, setDismissedSelectionKey] = useState<string | null>(null);
@@ -128,6 +128,24 @@ export function CellSelectionProvider({ children }: { children: React.ReactNode 
     });
   }, []);
 
+  /**
+   * Toggle multi-select. Leaving multi-select collapses the selection to the
+   * most recently selected cell (selections are appended, so it's the last
+   * element) — otherwise single-select would keep showing the whole
+   * multi-selection. Entering multi-select leaves the current selection as-is.
+   */
+  const setMultiselectionMode = useCallback((v: boolean) => {
+    flushSync(() => {
+      setMultiselectionModeState(v);
+      if (!v) {
+        setDismissedSelectionKey(null);
+        setSelectedCellIdsState((prev) =>
+          prev.length > 1 ? [prev[prev.length - 1]] : prev,
+        );
+      }
+    });
+  }, []);
+
   const refetchAnnotations = useCallback(async () => {
     try {
       const data = await fetchCellAnnotations();
@@ -175,6 +193,7 @@ export function CellSelectionProvider({ children }: { children: React.ReactNode 
       removeFromSelection,
       clearSelection,
       multiselectionMode,
+      setMultiselectionMode,
       handleCellSelect,
       isDetailPanelDismissed,
       detailPanelOpen,

@@ -71,7 +71,13 @@ async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(finalUrl, init);
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error((err as { detail?: string }).detail ?? `HTTP ${res.status}`);
+    // Attach the HTTP status so callers (e.g. React Query retry predicates) can
+    // skip retrying a definitive 404 instead of hammering the endpoint 3×.
+    const e = new Error((err as { detail?: string }).detail ?? `HTTP ${res.status}`) as Error & {
+      status?: number;
+    };
+    e.status = res.status;
+    throw e;
   }
   return res.json();
 }
@@ -137,7 +143,6 @@ export interface OverviewCell {
   fadeRatePctPer100: number | null;
   ceTrendPctPer100: number | null;
   cycleLife80: number | null;
-  healthScore: number | null;
   cycleCount: number;
   capacityBasis: 'mAh/g' | 'mAh';
 }
@@ -154,6 +159,20 @@ export interface MasterPlotOverview {
 
 export const fetchMasterPlotOverview = (): Promise<MasterPlotOverview> =>
   apiFetch('/api/master-plot/overview');
+
+/**
+ * Per-cell dQ/dV peak-shift scalars (04 · FR-4) — ΔV (mV) of the dominant redox
+ * peak between early and late cycling. Lazy: fetched only when that metric is
+ * selected. `peakShiftMv` is null where the peak couldn't be reliably tracked.
+ */
+export interface PeakShiftResponse {
+  cellCount: number;
+  valueCount: number;
+  cells: { cellId: string; peakShiftMv: number | null }[];
+}
+
+export const fetchMasterPlotPeakShift = (): Promise<PeakShiftResponse> =>
+  apiFetch('/api/master-plot/peak-shift');
 
 /**
  * Per-cell cycling curves. Dashboards request stride-downsampled traces

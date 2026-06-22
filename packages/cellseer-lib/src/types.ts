@@ -67,7 +67,7 @@ export interface RecordDataset {
   cathodeMassG?: number | null;
 }
 
-export type GcdDirection = 'discharge' | 'charge';
+export type GcdDirection = 'discharge' | 'charge' | 'both';
 export type GcdMode = 'scatter' | 'cumulative';
 
 export interface BuildGcdOpts {

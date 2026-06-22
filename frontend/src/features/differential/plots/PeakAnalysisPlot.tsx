@@ -45,45 +45,28 @@ export function PeakAnalysisPlot({
     const xText = appearance?.xAxisLabel ?? xLabel ?? '';
     const yText = appearance?.yAxisLabel ?? yLabel ?? '';
     const showLegend = appearance?.showLegend ?? true;
-    const legendPosition = appearance?.legendPosition ?? 'right-bottom';
 
     const baseFont = { size: labelSize, family: fontFamily };
     const tickFont = { size: tickSize, family: fontFamily };
     const legendFont = { size: legendSize, family: fontFamily };
 
+    // Legend is forced BELOW the plot (horizontal row under the x-axis) so it
+    // never steals plot width or occludes traces. The dashboard's collapse
+    // toggle drives `showLegend`; when off, the bottom margin shrinks back.
     const legend: Partial<Plotly.Layout>['legend'] | undefined = showLegend
-      ? legendPosition === 'in'
-        ? {
-            x: 0.99,
-            y: 1,
-            xanchor: 'right',
-            yanchor: 'top',
-            bgcolor: 'rgba(255,255,255,0.9)',
-            font: legendFont,
-          }
-        : appearance
-          ? {
-              orientation: 'v',
-              x: 1.02,
-              y: 0,
-              xanchor: 'left',
-              yanchor: 'bottom',
-              font: legendFont,
-            }
-          : {
-              x: 0.5,
-              y: -0.12,
-              xanchor: 'center',
-              yanchor: 'top',
-              orientation: 'h',
-              font: legendFont,
-            }
+      ? {
+          orientation: 'h',
+          x: 0,
+          y: -0.2,
+          xanchor: 'left',
+          yanchor: 'top',
+          font: legendFont,
+        }
       : undefined;
 
-    const margin =
-      appearance && showLegend && legendPosition === 'right-bottom'
-        ? { t: 36, r: 120, b: 48, l: 40 }
-        : { t: 36, r: 8, b: 48, l: 40 };
+    const margin = showLegend
+      ? { t: 36, r: 44, b: 120, l: 40 }
+      : { t: 36, r: 44, b: 48, l: 40 };
 
     return {
       uirevision,
@@ -91,12 +74,15 @@ export function PeakAnalysisPlot({
       font: baseFont,
       xaxis: { title: { text: xText, font: baseFont }, tickfont: tickFont, gridcolor: '#e0e0e0', showgrid: true },
       yaxis: { title: { text: yText, font: baseFont }, tickfont: tickFont, gridcolor: '#e0e0e0', showgrid: true },
+      ...layoutOverride,
+      // Legend placement / collapse must win over any legend, margin or
+      // showlegend that the figure builder put in `layoutOverride`, so these are
+      // applied AFTER the spread.
       legend,
       margin,
       showlegend: showLegend,
       ...(width != null ? { width } : {}),
       ...(height != null ? { height } : {}),
-      ...layoutOverride,
     };
   }, [uirevision, title, xLabel, yLabel, layoutOverride, appearance, width, height]);
 

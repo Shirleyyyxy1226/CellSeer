@@ -54,17 +54,18 @@ export function ChartEditPopover({
   return (
     <Popover>
       <PopoverTrigger asChild>
+        {/* Icon-only so it barely covers the plot; sits left of the Export icon
+            (right-10) to avoid overlap. Tooltip carries the full label. */}
         <button
           type="button"
           title={chartLabel ? `Edit ${chartLabel} labels & style` : 'Edit chart labels & style'}
           aria-label={chartLabel ? `Edit ${chartLabel} labels & style` : 'Edit chart labels & style'}
-          className="absolute top-2 right-2 z-10 flex items-center gap-1.5 px-2 py-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/80 bg-background/90 backdrop-blur-sm border border-border/60 shadow-sm transition-colors text-xs font-medium"
+          className="absolute top-2 right-10 z-20 flex items-center justify-center p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/80 bg-background/90 backdrop-blur-sm border border-border/60 shadow-sm transition-colors"
         >
           <Pencil className="h-3.5 w-3.5" />
-          <span>Edit chart</span>
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-80 max-h-[85vh] overflow-y-auto" align="end" side="left">
+      <PopoverContent className="w-80 max-h-[85vh] overflow-y-auto" align="end" side="bottom">
         <h3 className="font-semibold text-sm mb-3">
           {chartLabel ? `${chartLabel} — appearance` : 'Chart appearance'}
         </h3>

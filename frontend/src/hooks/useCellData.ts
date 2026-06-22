@@ -116,6 +116,9 @@ export function useCellRecordQueries(cellIds: string[]) {
       queryFn: () => fetchCellRecord(cellId),
       staleTime: STALE_MS,
       enabled: !!cellId,
+      // A 404 means this cell has no cycling record — definitive, don't retry.
+      retry: (count: number, err: unknown) =>
+        (err as { status?: number }).status !== 404 && count < 2,
     })),
   });
 }
@@ -130,6 +133,8 @@ export function useDifferentialQueries(cellIds: string[], direction: 'discharge'
       queryFn: () => fetchDifferential(cellId, direction),
       staleTime: STALE_MS,
       enabled: !!cellId,
+      retry: (count: number, err: unknown) =>
+        (err as { status?: number }).status !== 404 && count < 2,
     })),
   });
 }
