@@ -1,13 +1,14 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import PlotlyChart from '@/components/PlotlyChart';
-import { turboColor } from '@/lib/turboColormap';
 import { useCellSelection } from '@/contexts/CellSelectionContext';
 import { useTreeFilter } from '@/contexts/TreeFilterContext';
 import { useProjectHierarchy } from '@/contexts/ProjectHierarchyContext';
-import { getColorForCell } from '@/lib/ratePerfAggregation';
+import { buildPathToColorMap, getColorForCell } from '@/lib/ratePerfAggregation';
+import { buildCellEncodings, getCellEncoding } from '@/lib/cellColorScheme';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { ChartEditPopover } from '@/components/ChartEditPopover';
+import { ChartLegend, type LegendItem } from '@/components/ChartLegend';
 import { ResizableChartCard } from '@/components/ResizableChartCard';
 import { CycleColorScale } from '@/components/CycleColorScale';
 import { ArrowLeft, Info, MousePointerClick } from 'lucide-react';
@@ -16,14 +17,36 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { useChartAppearance } from '@/hooks/useChartAppearance';
 import { useResizableChart } from '@/hooks/useResizableChart';
 import { parseCycleFilter } from '@/lib/cycleFilter';
+import type { AnalysisResult } from '@/lib/treeUtils';
 import {
   buildGcdCumulativeFigure,
   buildGcdFigure,
-  buildRatePerformanceFigure,
-  type RatePerfTraceSpec,
   type RecordDataset,
 } from 'cellseer-lib';
+import { RatePerformancePlot } from '../ratePerformance/plots/RatePerformancePlot';
 import { useGcdCellData, type VQCell } from './useGcdCellData';
+
+function detectIdNoHeaderIndex(headers: string[]): number {
+  const patterns = [/^id\s*no\.?$/i, /^id_no$/i, /^idno$/i, /^number$/i, /^cell\s*no\.?$/i, /^cel\s*no\.?$/i];
+  for (let i = 0; i < headers.length; i++) {
+    if (patterns.some((p) => p.test(String(headers[i] ?? '').trim()))) return i;
+  }
+  return -1;
+}
+
+function parseIdNoFromLeafValue(raw: string): number | null {
+  const trimmed = String(raw ?? '').trim();
+  const m = trimmed.match(/^Cell\s*(\d+)$/i) ?? trimmed.match(/^(\d+)$/);
+  if (!m) return null;
+  const n = parseInt(m[1], 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+const EMPTY_ANALYSIS: AnalysisResult = {
+  leafCol: 0, rowIdCol: -1, flagCol: -1, rootLabelColIdx: -1, rootLabelVal: '',
+  hierCols: [], annotations: [], labelDecorations: [],
+  N: 0, headers: [], allConstants: [], allCandidates: [],
+};
 
 interface VoltageCapacityPanelProps {
   visibleCells: string[];
@@ -36,9 +59,6 @@ interface VoltageCapacityPanelProps {
 
 const MAX_CYCLES = 60;
 const MAX_PTS_TRACE = 2500;
-// Above this many traces a per-cycle discrete legend can't fit under the plot
-// without occluding the axis title; cycles read from the colour gradient instead.
-const GCD_LEGEND_MAX_ITEMS = 8;
 
 const GcdDashboard = ({
   cathodeFilter,
@@ -78,6 +98,8 @@ const GcdDashboard = ({
     // GCD curves are continuous V–Q lines — default to connected lines, not the
     // old scatter-dots (still toggleable via the chart Edit popover).
     showConnectedLine: true,
+    // Enables the "Maximise contrast" toggle in the chart Edit popover (R2).
+    maximizeContrast: false,
   });
   const {
     chartTitle,
@@ -87,18 +109,17 @@ const GcdDashboard = ({
     titleFontSize,
     labelFontSize,
     legendFontSize,
-    showLegend,
-    legendPosition,
     showConnectedLine,
+    maximizeContrast,
   } = appearance.config;
 
   // Direction of the per-cycle ZOOM (GCD curves). 'both' overlays the full
   // charge+discharge loop. The cumulative overview always shows 'both'.
   const [gcdDirection, setGcdDirection] = useState<'discharge' | 'charge' | 'both'>('discharge');
   const [combinedHighlightCycle, setCombinedHighlightCycle] = useState<number | null>(null);
-  // Per-plot legend visibility — each plot that has a legend gets its own
-  // toggle button (so you hide/show the legend for that plot only).
-  const [gcdLegendShown, setGcdLegendShown] = useState(true);
+  // The GCD chart's legend is owned by its appearance config (the eye toggle and
+  // the edit-popover checkbox share one value). The CE chart has no edit popover,
+  // so it keeps a local legend-visibility flag driven by its own eye toggle.
   const [ceLegendShown, setCeLegendShown] = useState(true);
 
   const main = useResizableChart();
@@ -135,20 +156,36 @@ const GcdDashboard = ({
   const activeAnalysis = hierarchyData?.analysis ?? null;
   const hierCols = useMemo(() => activeAnalysis?.hierCols ?? [], [activeAnalysis?.hierCols]);
 
+  // Visual encodings for every cell shown on this tab: identity hue (or the
+  // max-contrast palette when toggled) PLUS an orthogonal line-dash + marker
+  // keyed by within-condition replicate, so visually-similar cells overlaid for
+  // comparison stay distinguishable. Built once from the union of the cells the
+  // GCD curves and the CE chart draw, so a cell looks the same in both.
+  const cellEncodings = useMemo(() => {
+    const byId = new Map<number, VQCell | (typeof cellsForCharts)[number]>();
+    for (const c of cellsForCharts) if (!byId.has(c.idNo)) byId.set(c.idNo, c);
+    for (const c of cellsDataList) if (!byId.has(c.idNo)) byId.set(c.idNo, c);
+    return buildCellEncodings([...byId.values()], { maximizeContrast: maximizeContrast ?? false });
+  }, [cellsForCharts, cellsDataList, maximizeContrast]);
+
   const recordDatasets = useMemo<RecordDataset[]>(() => {
     return cellsDataList
       .filter((cellData) => !!cellData?.curves)
       .map((cellData: VQCell) => {
+        const enc = getCellEncoding(cellEncodings, cellData);
         return {
           id: String(cellData.idNo),
           label: cellData.cellName ?? `Cell ${cellData.idNo}`,
-          // Canonical identity colour — matches the hierarchy tree and sidebar.
-          color: getColorForCell(cellData, treeFilterPath, hierCols),
+          // Canonical identity colour — matches the hierarchy tree and sidebar
+          // (or the max-contrast palette when that toggle is on).
+          color: enc?.color ?? getColorForCell(cellData, treeFilterPath, hierCols),
+          dash: enc?.dash,
+          symbol: enc?.symbol,
           cathodeMassG: cellData.cathodeMassG ?? null,
           curves: cellData.curves,
         };
       });
-  }, [cellsDataList, treeFilterPath, hierCols]);
+  }, [cellsDataList, cellEncodings, treeFilterPath, hierCols]);
 
   // Overlaying every cycle (often 30–60) turns the per-cycle GCD plot into an
   // unreadable tangle. When the user hasn't typed a cycle filter, default the
@@ -200,6 +237,24 @@ const GcdDashboard = ({
       return { traces: [] as Plotly.Data[], gcdTraceIndexToCell: new Map<number, { idNo: number; cellName: string }>() };
     }
   }, [recordDatasets, gcdCycleSubset, showConnectedLine, gcdDirection, combinedHighlightCycle, isSingleCell, zoomFocusCycle]);
+
+  // Multi-cell GCD colours lines by cell, so a discrete legend (one entry per
+  // cell) is useful. Single-cell mode colours by cycle and already shows the
+  // CycleColorScale ramp, so a per-cycle discrete legend would be redundant.
+  const gcdLegendItems = useMemo<LegendItem[]>(
+    () =>
+      isSingleCell
+        ? []
+        : recordDatasets.map((rd) => ({
+            label: rd.label,
+            color: rd.color ?? '#6b7280',
+            dash: rd.dash,
+            symbol: rd.symbol,
+            hasLine: true,
+            hasMarker: false,
+          })),
+    [isSingleCell, recordDatasets],
+  );
 
   // Cycles present in the per-cell GCD curves, for the colour scale (single-cell
   // mode only — in multi-cell mode line colour encodes the cell, not the cycle).
@@ -384,45 +439,10 @@ const GcdDashboard = ({
         tickfont: { size: Math.max(9, labelFontSize - 1) },
         gridcolor: 'rgba(128,128,128,0.2)',
       },
-      // A per-cycle GCD shows one trace PER CYCLE. A discrete legend with dozens
-      // of "Cycle N" rows can't fit under a fixed-height plot — it collides with
-      // the x-axis title and overflows the card. Cycles are sequential and already
-      // read from the colour gradient (and the companion "All cycles" colourbar),
-      // so past a small count we simply omit the discrete legend.
-      showlegend: showLegend && gcdLegendShown && traces.length <= GCD_LEGEND_MAX_ITEMS,
-      // 'in' (compact, inside top-right — kept as a popover option) vs the default
-      // 'below' (horizontal row under the x-axis, never in the right gutter).
-      legend:
-        showLegend && gcdLegendShown && traces.length <= GCD_LEGEND_MAX_ITEMS
-          ? legendPosition === 'in'
-            ? {
-                orientation: 'v' as const,
-                font: { size: legendFontSize },
-                x: 0.99,
-                y: 1,
-                xanchor: 'right' as const,
-                yanchor: 'top' as const,
-                bgcolor: 'rgba(255,255,255,0.9)',
-              }
-            : {
-                orientation: 'h' as const,
-                font: { size: legendFontSize },
-                x: 0,
-                // Sit well clear of the x-axis title so the two never overlap.
-                y: -0.32,
-                xanchor: 'left' as const,
-                yanchor: 'top' as const,
-              }
-          : undefined,
-      margin: {
-        t: 48,
-        r: 44,
-        b:
-          showLegend && gcdLegendShown && legendPosition !== 'in' && traces.length <= GCD_LEGEND_MAX_ITEMS
-            ? 150
-            : 80,
-        l: 65,
-      },
+      // Legend is drawn as an HTML block below the plot (see ChartLegend), so the
+      // in-figure legend is off and the inflated bottom margin is reclaimed.
+      showlegend: false,
+      margin: { t: 48, r: 44, b: 80, l: 65 },
       uirevision: 'voltage-capacity',
     }),
     [
@@ -432,66 +452,51 @@ const GcdDashboard = ({
       fontFamily,
       titleFontSize,
       labelFontSize,
-      legendFontSize,
-      showLegend,
-      legendPosition,
-      gcdLegendShown,
-      traces.length,
     ],
   );
 
-  const ratePerfFig = useMemo(() => {
-    if (!selectedCellRatePerf) return null;
-    const row = selectedCellRatePerf;
-    const hasCrate = !!(row.cRates && row.cRates.length === row.cycles.length);
-    const useSpec = row.specificCapacityMahG != null;
-    const traceSpec: RatePerfTraceSpec[] = [
-      {
-        name: row.cellName,
-        x: row.cycles,
-        y: row.specificCapacityMahG ?? row.dischargeCapacityMah,
-        color: turboColor(0),
-        hasCrate,
-        cRates: hasCrate ? row.cRates : undefined,
-        cell: { idNo: row.idNo, cellName: row.cellName },
-      },
-    ];
-    return buildRatePerformanceFigure(traceSpec, {
-      direction: 'discharge',
-      useSpecificCapacity: useSpec,
-      showConnectedLine,
-      protocolSegments: row.protocolSegments,
+  const metadataByIdNo = useMemo(() => {
+    const headers = hierarchyData?.parsed?.headers ?? [];
+    const rows = hierarchyData?.parsed?.rows ?? [];
+    if (!headers.length || !rows.length) return new Map<number, Record<string, string>>();
+    const idIdx = detectIdNoHeaderIndex(headers);
+    const leafIdx = hierarchyData?.analysis?.leafCol ?? Math.max(0, headers.length - 1);
+    const out = new Map<number, Record<string, string>>();
+    rows.forEach((row) => {
+      const directId = idIdx >= 0 ? parseInt(String(row[idIdx] ?? '').trim(), 10) : NaN;
+      const idNo = Number.isFinite(directId) ? directId : parseIdNoFromLeafValue(String(row[leafIdx] ?? ''));
+      if (idNo == null) return;
+      const rec: Record<string, string> = {};
+      headers.forEach((h, i) => { rec[h] = String(row[i] ?? ''); });
+      out.set(idNo, rec);
     });
-  }, [selectedCellRatePerf, showConnectedLine]);
+    return out;
+  }, [hierarchyData?.parsed?.headers, hierarchyData?.parsed?.rows, hierarchyData?.analysis?.leafCol]);
 
-  const ratePerfLayout: Partial<Plotly.Layout> = useMemo(
-    () => ({
-      width: 800,
-      height: 360,
-      autosize: false,
-      font: { family: `${fontFamily}, sans-serif` },
-      title: {
-        text: `${selectedCellRatePerf?.cellName ?? 'Rate performance'}: discharge capacity vs cycle`,
-        font: { size: titleFontSize },
-      },
-      xaxis: {
-        title: { text: 'Cycle number', font: { size: labelFontSize } },
-        tickfont: { size: Math.max(9, labelFontSize - 1) },
-        gridcolor: 'rgba(128,128,128,0.2)',
-      },
-      yaxis: {
-        title: { text: 'Capacity (mAh g⁻¹)', font: { size: labelFontSize } },
-        tickfont: { size: Math.max(9, labelFontSize - 1) },
-        gridcolor: 'rgba(128,128,128,0.2)',
-      },
-      showlegend: false,
-      margin: { t: 48, r: 40, b: 80, l: 65 },
-      uirevision: 'rate-perf-gcd',
-      shapes: ratePerfFig?.shapes ?? [],
-      annotations: ratePerfFig?.annotations ?? [],
-    }),
-    [fontFamily, titleFontSize, labelFontSize, selectedCellRatePerf, ratePerfFig],
+  const visibleRatePerfCells = useMemo(() => {
+    if (!ratePerfCells?.length) return [];
+    const idNos = new Set(cellsForCharts.map((c) => c.idNo));
+    return ratePerfCells.filter((r) => idNos.has(r.idNo));
+  }, [ratePerfCells, cellsForCharts]);
+
+  const ratePerfPathToColorMap = useMemo(
+    () => visibleRatePerfCells.length
+      ? buildPathToColorMap(visibleRatePerfCells, activeAnalysis?.hierCols ?? [], metadataByIdNo)
+      : new Map<string, string>(),
+    [visibleRatePerfCells, activeAnalysis?.hierCols, metadataByIdNo],
   );
+
+  const ratePerfAppearance = useChartAppearance({
+    chartTitle: 'Rate performance',
+    xAxisLabel: 'Cycle number',
+    yAxisLabel: 'Discharge capacity (mAh)',
+    showConnectedLine: false,
+    maximizeContrast: false,
+  });
+
+  const [ratePerfLegendItems, setRatePerfLegendItems] = useState<LegendItem[]>([]);
+  const [ratePerfLegendShown, setRatePerfLegendShown] = useState(true);
+  const handleRatePerfLegendItems = useCallback((items: LegendItem[]) => setRatePerfLegendItems(items), []);
 
   // ── Coulombic efficiency vs cycle ──
   // CE_n = discharge_n / charge_n × 100, computed per charted cell with the same
@@ -523,17 +528,20 @@ const GcdDashboard = ({
           }
         }
         if (!x.length) return null;
+        const enc = getCellEncoding(cellEncodings, c);
         return {
           id: String(c.idNo),
           label: c.cellName ?? `Cell ${c.idNo}`,
-          color: getColorForCell(c, treeFilterPath, hierCols),
+          color: enc?.color ?? getColorForCell(c, treeFilterPath, hierCols),
+          dash: enc?.dash,
+          symbol: enc?.symbol,
           x,
           y,
           excluded: cyc.length - x.length,
         };
       })
       .filter((v): v is NonNullable<typeof v> => v != null);
-  }, [ratePerfCells, cellsForCharts, treeFilterPath, hierCols]);
+  }, [ratePerfCells, cellsForCharts, cellEncodings, treeFilterPath, hierCols]);
 
   const ceTraces = useMemo(
     (): Plotly.Data[] =>
@@ -543,9 +551,22 @@ const GcdDashboard = ({
         type: 'scatter' as const,
         mode: 'lines+markers' as const,
         name: ceSeriesByCell.length > 1 ? s.label : 'Coulombic efficiency',
-        line: { width: 1.8, color: s.color },
-        marker: { size: 4, color: s.color },
+        line: { width: 1.8, color: s.color, ...(s.dash ? { dash: s.dash } : {}) },
+        marker: { size: 5, color: s.color, ...(s.symbol ? { symbol: s.symbol } : {}) },
         hovertemplate: `${s.label}<br>Cycle %{x}<br>CE %{y:.2f}%<extra></extra>`,
+      })),
+    [ceSeriesByCell],
+  );
+
+  const ceLegendItems = useMemo<LegendItem[]>(
+    () =>
+      ceSeriesByCell.map((s) => ({
+        label: ceSeriesByCell.length > 1 ? s.label : 'Coulombic efficiency',
+        color: s.color,
+        dash: s.dash,
+        symbol: s.symbol,
+        hasLine: true,
+        hasMarker: true,
       })),
     [ceSeriesByCell],
   );
@@ -588,13 +609,9 @@ const GcdDashboard = ({
         font: { size: titleFontSize },
       },
       xaxis: {
-        // The bottom legend (multi-cell) and a bottom x-axis title can't coexist
-        // at short chart heights — they collide. Drop the redundant "Cycle
-        // number" title when the legend is shown (the chart title already says
-        // "vs cycle" and the ticks are cycle numbers); keep it otherwise.
-        ...(ceSeriesByCell.length > 1 && ceLegendShown
-          ? {}
-          : { title: { text: 'Cycle number', font: { size: labelFontSize } } }),
+        // The legend is now an HTML block below the plot, so the x-axis title and
+        // the legend can no longer collide — always show "Cycle number".
+        title: { text: 'Cycle number', font: { size: labelFontSize } },
         tickfont: { size: Math.max(9, labelFontSize - 1) },
         gridcolor: 'rgba(128,128,128,0.2)',
       },
@@ -603,15 +620,12 @@ const GcdDashboard = ({
         tickfont: { size: Math.max(9, labelFontSize - 1) },
         gridcolor: 'rgba(128,128,128,0.2)',
       },
-      showlegend: ceSeriesByCell.length > 1 && ceLegendShown,
-      legend:
-        ceSeriesByCell.length > 1 && ceLegendShown
-          ? { orientation: 'h' as const, x: 0, y: -0.22, xanchor: 'left' as const, yanchor: 'top' as const, font: { size: legendFontSize } }
-          : undefined,
-      margin: { t: 48, r: 40, b: ceSeriesByCell.length > 1 && ceLegendShown ? 100 : 80, l: 65 },
+      // Legend renders as an HTML block below the plot (see ChartLegend).
+      showlegend: false,
+      margin: { t: 48, r: 40, b: 80, l: 65 },
       uirevision: 'ce-vs-cycle',
     }),
-    [fontFamily, titleFontSize, labelFontSize, legendFontSize, selectedCell, ceSeriesByCell.length, ceLegendShown],
+    [fontFamily, titleFontSize, labelFontSize, selectedCell, ceSeriesByCell.length],
   );
 
   /** Detect silent cycle truncation caused by MAX_CYCLES cap. */
@@ -794,6 +808,7 @@ const GcdDashboard = ({
                       width={SCALE_W}
                       height={height}
                       highlight={combinedHighlightCycle}
+                      baseColor={recordDatasets[0]?.color}
                     />
                   </div>
                 );
@@ -861,17 +876,6 @@ const GcdDashboard = ({
                       </span>
                     )}
                   </div>
-                  {traces.length > 1 && traces.length <= GCD_LEGEND_MAX_ITEMS && (
-                    <button
-                      type="button"
-                      onClick={() => setGcdLegendShown((v) => !v)}
-                      aria-pressed={gcdLegendShown}
-                      className="shrink-0 rounded-md border border-border px-2.5 h-7 text-[11px] text-muted-foreground hover:bg-muted/60 transition-colors"
-                      title={gcdLegendShown ? "Hide this plot's legend" : "Show this plot's legend"}
-                    >
-                      {gcdLegendShown ? "Legend ▾" : "Legend ▸"}
-                    </button>
-                  )}
                   {/* Direction toggle controls the zoom (GCD curves) only. */}
                   <div className="ml-auto inline-flex items-center rounded-md border border-border overflow-hidden">
                     {(['discharge', 'charge', 'both'] as const).map((d, i) => (
@@ -904,6 +908,7 @@ const GcdDashboard = ({
                     margin: { ...(layout.margin ?? {}), r: showScale ? SCALE_W + 16 : (layout.margin?.r ?? 44) },
                   };
                   return (
+                    <>
                     <div className="relative bg-white dark:bg-card rounded" style={{ width, height }}>
                       <div className="absolute inset-0" style={{ minWidth: 1, minHeight: 1 }}>
                         <PlotlyChart
@@ -913,6 +918,7 @@ const GcdDashboard = ({
                           layout={chartLayout}
                           config={{ responsive: true }}
                           style={{ width, height }}
+                          hoverFocus={cellsDataList.length > 1}
                           traceIndexToCell={gcdTraceIndexToCell}
                           onContextMenu={(cell) => setSelectedCellIds([cell.idNo])}
                           onClick={(ev) => {
@@ -928,6 +934,7 @@ const GcdDashboard = ({
                             width={SCALE_W}
                             height={height}
                             highlight={combinedHighlightCycle}
+                            baseColor={recordDatasets[0]?.color}
                           />
                         </div>
                       )}
@@ -939,6 +946,14 @@ const GcdDashboard = ({
                       />
                       <ResizeHandle />
                     </div>
+                    <ChartLegend
+                      items={gcdLegendItems}
+                      shown={appearance.config.showLegend}
+                      onToggle={() => appearance.onConfigChange('showLegend', !appearance.config.showLegend)}
+                      chartLabel="GCD"
+                      fontSize={legendFontSize}
+                    />
+                    </>
                   );
                 })() : cellIndexLoading || cellDataLoading ? (
                   <LoadingIndicator
@@ -976,39 +991,53 @@ const GcdDashboard = ({
           </ResizableChartCard>
 
           {/* ── Section: Rate performance ── */}
-          <div className="flex items-center gap-2 min-h-[1.5rem]">
-            {ratePerfFig && ratePerfFig.data.length > 0 && (
-              <h2 className="text-sm font-medium text-foreground">Rate performance</h2>
-            )}
-          </div>
-
-          {ratePerfFig && ratePerfFig.data.length > 0 && (
-            <ResizableChartCard
-              size={ratePerf.size}
-              onResizeStart={ratePerf.onResizeStart}
-              aspectRatio={800 / 360}
-              minHeight={240}
-            >
-              {({ width, height, ResizeHandle }) => (
-                <div className="relative bg-white dark:bg-card rounded" style={{ width, height }}>
-                  <PlotlyChart
-                        exportContext={exportContext}
-                    key={`rateperf-${width}-${height}`}
-                    data={ratePerfFig.data}
-                    layout={{ ...ratePerfLayout, width, height }}
-                    config={{ responsive: true }}
-                    style={{ width, height }}
-                  />
-                  <ChartEditPopover
-                    config={appearance.config}
-                    onConfigChange={appearance.onConfigChange}
-                    showConnectedLineOption
-                    chartLabel="Rate performance"
-                  />
-                  <ResizeHandle />
-                </div>
-              )}
-            </ResizableChartCard>
+          {visibleRatePerfCells.length > 0 && (
+            <>
+              <div className="flex items-center gap-2 min-h-[1.5rem]">
+                <h2 className="text-sm font-medium text-foreground">Rate performance</h2>
+              </div>
+              <ResizableChartCard
+                size={ratePerf.size}
+                onResizeStart={ratePerf.onResizeStart}
+                aspectRatio={800 / 360}
+                minHeight={240}
+              >
+                {({ width, height, ResizeHandle }) => (
+                  <>
+                    <div className="relative bg-white dark:bg-card rounded" style={{ width, height }}>
+                      <RatePerformancePlot
+                        filteredCells={visibleRatePerfCells}
+                        analysis={activeAnalysis ?? EMPTY_ANALYSIS}
+                        treeFilterPath={treeFilterPath}
+                        pathToColorMap={ratePerfPathToColorMap}
+                        direction="discharge"
+                        detailDepth={0}
+                        metadataByIdNo={metadataByIdNo}
+                        showConnectedLine={ratePerfAppearance.config.showConnectedLine ?? false}
+                        config={ratePerfAppearance.config}
+                        width={width}
+                        height={height}
+                        onLegendItems={handleRatePerfLegendItems}
+                      />
+                      <ChartEditPopover
+                        config={ratePerfAppearance.config}
+                        onConfigChange={ratePerfAppearance.onConfigChange}
+                        showConnectedLineOption
+                        chartLabel="Rate performance"
+                      />
+                      <ResizeHandle />
+                    </div>
+                    <ChartLegend
+                      items={ratePerfLegendItems}
+                      shown={ratePerfLegendShown}
+                      onToggle={() => setRatePerfLegendShown((v) => !v)}
+                      chartLabel="Rate performance"
+                      fontSize={legendFontSize}
+                    />
+                  </>
+                )}
+              </ResizableChartCard>
+            </>
           )}
 
           {/* ── Section: Coulombic efficiency vs cycle ── */}
@@ -1016,17 +1045,6 @@ const GcdDashboard = ({
             <>
               <div className="flex items-center gap-2 min-h-[1.5rem]">
                 <h2 className="text-sm font-medium text-foreground">Coulombic efficiency vs cycle</h2>
-                {ceSeriesByCell.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => setCeLegendShown((v) => !v)}
-                    aria-pressed={ceLegendShown}
-                    className="ml-auto shrink-0 rounded-md border border-border px-2.5 h-7 text-[11px] text-muted-foreground hover:bg-muted/60 transition-colors"
-                    title={ceLegendShown ? "Hide this plot's legend" : "Show this plot's legend"}
-                  >
-                    {ceLegendShown ? "Legend ▾" : "Legend ▸"}
-                  </button>
-                )}
               </div>
               {protocolMismatch && (
                 <div
@@ -1048,6 +1066,7 @@ const GcdDashboard = ({
                 minHeight={220}
               >
                 {({ width, height, ResizeHandle }) => (
+                  <>
                   <div className="relative bg-white dark:bg-card rounded" style={{ width, height }}>
                     <PlotlyChart
                       exportContext={exportContext}
@@ -1059,6 +1078,14 @@ const GcdDashboard = ({
                     />
                     <ResizeHandle />
                   </div>
+                  <ChartLegend
+                    items={ceLegendItems}
+                    shown={ceLegendShown}
+                    onToggle={() => setCeLegendShown((v) => !v)}
+                    chartLabel="Coulombic efficiency"
+                    fontSize={legendFontSize}
+                  />
+                  </>
                 )}
               </ResizableChartCard>
               {ceExcluded > 0 && (

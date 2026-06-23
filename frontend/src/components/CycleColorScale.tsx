@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import type React from 'react';
-import { turboColor } from '@/lib/turboColormap';
+import { cycleColor, cellCycleColor } from '@/lib/cycleColormap';
 
 interface CycleColorScaleProps {
   /** Sorted, deduped list of cycle numbers to map across the turbo scale. */
@@ -13,6 +13,9 @@ interface CycleColorScaleProps {
   highlight: number | null;
   /** Toggle highlight for a clicked cycle; omit to make the scale a read-only legend. */
   onHighlight?: (cycle: number | null) => void;
+  /** Cell colour to fade across cycles (early = light → late = full colour).
+   *  Falls back to the default sequential ramp when absent or not a hex. */
+  baseColor?: string;
 }
 
 /**
@@ -27,11 +30,13 @@ export function CycleColorScale({
   height,
   highlight,
   onHighlight,
+  baseColor,
 }: CycleColorScaleProps) {
-  const turboStops = useMemo(
-    () => Array.from({ length: 32 }, (_, i) => turboColor(i / 31)).join(', '),
-    [],
-  );
+  const cycleStops = useMemo(() => {
+    const isHex = !!baseColor && /^#[0-9a-fA-F]{6}$/.test(baseColor);
+    const at = (t: number) => (isHex ? cellCycleColor(baseColor!, t) : cycleColor(t));
+    return Array.from({ length: 32 }, (_, i) => at(i / 31)).join(', ');
+  }, [baseColor]);
   if (cycles.length === 0) return null;
   const minCycle = cycles[0];
   const maxCycle = cycles[cycles.length - 1];
@@ -72,7 +77,7 @@ export function CycleColorScale({
           style={{
             width: 32,
             height: Math.max(140, Math.round(height * 0.55)),
-            background: `linear-gradient(to bottom, ${turboStops})`,
+            background: `linear-gradient(to bottom, ${cycleStops})`,
           }}
         />
       </div>

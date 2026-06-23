@@ -1,5 +1,4 @@
 import { useMemo, useState, useCallback, useEffect, useRef } from 'react';
-import { Slider } from '@/components/ui/slider';
 import { DirectionToggle, type ChargeDirection } from '@/components/DirectionToggle';
 import { LoadingIndicator } from '@/components/LoadingIndicator';
 import { useDifferentialData } from './useDifferentialData';
@@ -7,12 +6,15 @@ import { useCellSelection } from '@/contexts/CellSelectionContext';
 import { useTreeFilter } from '@/contexts/TreeFilterContext';
 import { useProjectHierarchy } from '@/contexts/ProjectHierarchyContext';
 import { getColorForCell } from '@/lib/ratePerfAggregation';
+import { buildCellEncodings, getCellEncoding } from '@/lib/cellColorScheme';
 import { Surface3dPlot } from './plots/Surface3dPlot';
 import { PeakAnalysisPlot } from './plots/PeakAnalysisPlot';
 import { EvolutionHeatmapPlot } from './plots/EvolutionHeatmapPlot';
 import { buildDqDvFigure, type Dataset } from 'cellseer-lib';
 import { ResizableChartCard } from '@/components/ResizableChartCard';
 import { ChartEditPopover } from '@/components/ChartEditPopover';
+import { LegendToggleButton } from '@/components/LegendToggleButton';
+import { ChartLegend, type LegendItem } from '@/components/ChartLegend';
 import { useResizableChart } from '@/hooks/useResizableChart';
 import { useChartAppearance } from '@/hooks/useChartAppearance';
 import type { ExportContext } from '@/lib/exportUtils';
@@ -40,12 +42,7 @@ const DqDvDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
   const { apiData, matchPathToIdNos } = useProjectHierarchy();
   const activeAnalysis = apiData?.analysis ?? null;
 
-  const pathToColorMap = useMemo(
-    () => apiData?.pathToColorMap && Object.keys(apiData.pathToColorMap).length > 0
-      ? new Map(Object.entries(apiData.pathToColorMap))
-      : new Map<string, string>(),
-    [apiData?.pathToColorMap]
-  );
+  const pathToColorMap = useMemo(() => new Map<string, string>(), []);
 
   const cycles = useMemo(() => data?.cycles ?? [], [data?.cycles]);
   const closestCycleIndex = useCallback((num: number): number => {
@@ -77,7 +74,7 @@ const DqDvDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
   // Single source of truth: the text box always mirrors the slider's cycle.
   useEffect(() => setCycleInput(String(selectedCycle)), [selectedCycle]);
 
-  const [snapNote, setSnapNote] = useState<string | null>(null);
+  const [snapNotice, setSnapNotice] = useState<string | null>(null);
   const snapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const commitCycleInput = useCallback(() => {
@@ -85,14 +82,14 @@ const DqDvDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
     const num = parseInt(cycleInput, 10);
     if (Number.isNaN(num)) { setCycleInput(String(selectedCycle)); return; }
     const best = closestCycleIndex(num);
-    const resolvedCycle = cycles[best];
-    if (resolvedCycle !== num) {
-      setSnapNote(`Snapped to cycle ${resolvedCycle}`);
-      if (snapTimerRef.current) clearTimeout(snapTimerRef.current);
-      snapTimerRef.current = setTimeout(() => setSnapNote(null), 2500);
-    }
+    const snapped = cycles[best];
     setCycleIndex(best);
-    setCycleInput(String(resolvedCycle));
+    setCycleInput(String(snapped));
+    if (snapped !== num) {
+      if (snapTimerRef.current) clearTimeout(snapTimerRef.current);
+      setSnapNotice(`Snapped to ${snapped}`);
+      snapTimerRef.current = setTimeout(() => setSnapNotice(null), 2000);
+    }
   }, [cycleInput, selectedCycle, cycles, closestCycleIndex]);
 
   const filteredCellIds = useMemo(() => {
@@ -120,25 +117,62 @@ const DqDvDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
 
   const datasets = useMemo<Dataset[]>(() => {
     if (!data?.cellData?.length) return [];
-    return data.cellData
-      .filter((cd) => filteredCellIds.has(cd.cell.id))
-      .map((cd) => {
-        const cellMatch = cells.find((c) => c.cellId === cd.cell.id);
-        const color = cellMatch
+    const shown = data.cellData.filter((cd) => filteredCellIds.has(cd.cell.id));
+    // R1: orthogonal dash/symbol keyed by within-condition replicate index over
+    // exactly the cells on screen, so overlaid same-hue replicates separate in
+    // the 2D view. Hue stays the identity colour (R2 contrast lives on the
+    // primary GCD/rate-perf views, not this cycle-dominated plot).
+    const matched = shown
+      .map((cd) => cells.find((c) => c.cellId === cd.cell.id))
+      .filter((c): c is NonNullable<typeof c> => !!c);
+    const encodings = buildCellEncodings(matched, { maximizeContrast: false });
+    return shown.map((cd) => {
+      const cellMatch = cells.find((c) => c.cellId === cd.cell.id);
+      const enc = cellMatch ? getCellEncoding(encodings, cellMatch) : undefined;
+      const color = enc?.color
+        ?? (cellMatch
           ? getColorForCell(cellMatch, treeFilterPath, hierCols, pathToColorMap)
-          : cd.cell.color;
-        return {
-          id: cd.cell.id,
-          label: cd.cell.name,
-          color,
-          cycles: cd.cycleTraces.map((ct) => ({
-            cycle: ct.cycle,
-            x: data.voltages,
-            y: ct.dqdv,
-          })),
-        };
-      });
+          : cd.cell.color);
+      return {
+        id: cd.cell.id,
+        label: cd.cell.name,
+        color,
+        dash: enc?.dash,
+        symbol: enc?.symbol,
+        cycles: cd.cycleTraces.map((ct) => ({
+          cycle: ct.cycle,
+          x: data.voltages,
+          y: ct.dqdv,
+        })),
+      };
+    });
   }, [data, filteredCellIds, cells, treeFilterPath, hierCols, pathToColorMap]);
+
+  // One legend entry per cell for the 2D panels. Peak shows the cell's line
+  // (dash) + peak marker (symbol); Evolution draws solid lines + circle markers,
+  // so its swatches omit dash/symbol to match what's actually on the plot.
+  const peakLegendItems = useMemo<LegendItem[]>(
+    () =>
+      datasets.map((d) => ({
+        label: d.label,
+        color: d.color ?? '#6b7280',
+        dash: d.dash,
+        symbol: d.symbol ?? 'diamond',
+        hasLine: true,
+        hasMarker: true,
+      })),
+    [datasets],
+  );
+  const evoLegendItems = useMemo<LegendItem[]>(
+    () =>
+      datasets.map((d) => ({
+        label: d.label,
+        color: d.color ?? '#6b7280',
+        hasLine: true,
+        hasMarker: true,
+      })),
+    [datasets],
+  );
 
   const estimatedTraceCount = useMemo(
     () => datasets.reduce((acc, d) => acc + d.cycles.length, 0),
@@ -175,8 +209,10 @@ const DqDvDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
   );
 
   const directionLabel = direction === 'charge' ? 'Charge' : 'Discharge';
-  const title2d = `dQ/dV vs voltage — ${directionLabel.toLowerCase()} (all cycles · selected cycle highlighted)`;
-  const title3d = `Incremental capacity (dQ/dV) — ${directionLabel.toLowerCase()}`;
+  const title2d = selectedCycle
+    ? `dQ/dV peak profile — ${directionLabel.toLowerCase()} · cycle ${selectedCycle} highlighted over all-cycle envelope`
+    : `dQ/dV peak profile — ${directionLabel.toLowerCase()}`;
+  const title3d = `dQ/dV vs voltage — ${directionLabel.toLowerCase()}`;
 
   const surfaceChart = useResizableChart();
   const peakChart = useResizableChart();
@@ -207,25 +243,14 @@ const DqDvDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
   useEffect(() => { surfaceAppearance.setChartTitle(title3d); }, [title3d, surfaceAppearance]);
   useEffect(() => { peakAppearance.setChartTitle(title2d); }, [title2d, peakAppearance]);
 
-  // Collapsible legend: local control, default shown. Forced below the plot in
-  // the plot components; this gates visibility (and honours the popover's own
-  // showLegend). When collapsed the bottom margin shrinks and the plot reclaims it.
-  const [legendShown, setLegendShown] = useState(true);
+  // Legend visibility is now per-plot, owned by each plot's appearance config
+  // (the eye toggle and the edit-popover checkbox both write the same value).
   const [activePanel, setActivePanel] = useState<'profile' | 'evolution' | null>(null);
   const openPanel = useCallback((panel: 'profile' | 'evolution') => setActivePanel(panel), []);
-  const closePanel = useCallback(() => setActivePanel(null), []);
-  const surfaceConfig = useMemo(
-    () => ({ ...surfaceAppearance.config, showLegend: surfaceAppearance.config.showLegend && legendShown }),
-    [surfaceAppearance.config, legendShown],
-  );
-  const peakConfig = useMemo(
-    () => ({ ...peakAppearance.config, showLegend: peakAppearance.config.showLegend && legendShown }),
-    [peakAppearance.config, legendShown],
-  );
-  const evoConfig = useMemo(
-    () => ({ ...evoAppearance.config, showLegend: evoAppearance.config.showLegend && legendShown }),
-    [evoAppearance.config, legendShown],
-  );
+  const closePanel = useCallback(() => {
+    setActivePanel(null);
+    surfaceChart.setSize(null);
+  }, [surfaceChart]);
 
   // Determine whether there is anything to plot yet
   const hasTraces = datasets.length > 0;
@@ -252,15 +277,6 @@ const DqDvDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
     <div className="rounded-lg border border-border bg-card p-3 shadow-sm flex flex-col gap-3 h-full min-h-0">
       {error && !loading && <p className="text-sm text-amber-600">Database unavailable: {error}</p>}
       <div className="flex items-center justify-end gap-3 shrink-0 flex-wrap">
-        <button
-          type="button"
-          onClick={() => setLegendShown((v) => !v)}
-          aria-pressed={legendShown}
-          className="shrink-0 rounded-md border border-border px-2.5 py-1 text-xs text-muted-foreground hover:bg-muted/60 transition-colors"
-          title={legendShown ? 'Hide the legend below the plots' : 'Show the legend below the plots'}
-        >
-          {legendShown ? 'Legend ▾' : 'Legend ▸'}
-        </button>
         <DirectionToggle value={direction} onChange={setDirection} />
       </div>
       <div className={`gap-3 flex-1 min-h-[520px] ${activePanel !== null ? 'grid grid-cols-1 lg:grid-cols-2' : 'flex flex-col'}`}>
@@ -307,13 +323,14 @@ const DqDvDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
                 <Surface3dPlot
                   traces={traces3d}
                   xValues={data?.voltages ?? []}
-                  appearance={surfaceConfig}
+                  appearance={surfaceAppearance.config}
                   uirevision="dqdv-3d"
                   layoutOverride={layout3D}
                   width={width}
                   height={height}
                   exportContext={exportContext}
                   onOpenPanel={openPanel}
+                  ResizeHandle={ResizeHandle}
                 />
               )}
               <ChartEditPopover
@@ -321,7 +338,11 @@ const DqDvDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
                 onConfigChange={surfaceAppearance.onConfigChange}
                 chartLabel="3D surface"
               />
-              <ResizeHandle />
+              <LegendToggleButton
+                shown={surfaceAppearance.config.showLegend}
+                onToggle={() => surfaceAppearance.onConfigChange('showLegend', !surfaceAppearance.config.showLegend)}
+                chartLabel="3D surface"
+              />
             </div>
           )}
         </ResizableChartCard>
@@ -334,8 +355,11 @@ const DqDvDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
           fillHeight
         >
           {({ width, height, ResizeHandle }) => {
-            const CONTROL_H = 72;
-            const plotH = peakChart.size ? height : Math.max(240, height - CONTROL_H);
+            const CONTROL_H = 84;
+            // Reserve room for the legend block (toggle + scrolling swatch list)
+            // below the plot so the fixed-height column never overflows.
+            const LEGEND_H = 84;
+            const plotH = peakChart.size ? height : Math.max(220, height - CONTROL_H - LEGEND_H);
             return (
             <div className="flex flex-col gap-2 h-full" style={{ width }}>
               <div className="flex items-center justify-between px-0.5 shrink-0">
@@ -350,11 +374,12 @@ const DqDvDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
                   <>
                     <PeakAnalysisPlot
                       traces={traces2d}
-                      appearance={peakConfig}
+                      appearance={peakAppearance.config}
                       uirevision="dqdv-2d"
                       layoutOverride={layout2D}
                       width={width}
                       height={plotH}
+                      hoverFocus={datasets.length > 1}
                       exportContext={exportContext}
                     />
                     <ChartEditPopover config={peakAppearance.config} onConfigChange={peakAppearance.onConfigChange} chartLabel="Peak analysis" />
@@ -362,24 +387,35 @@ const DqDvDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
                 )}
                 <ResizeHandle />
               </div>
-              <div className="flex flex-col gap-1 pt-1 shrink-0">
+              <ChartLegend
+                items={peakLegendItems}
+                shown={peakAppearance.config.showLegend}
+                onToggle={() => peakAppearance.onConfigChange('showLegend', !peakAppearance.config.showLegend)}
+                chartLabel="Peak analysis"
+                fontSize={peakAppearance.config.legendFontSize}
+                maxHeight={56}
+                className="shrink-0"
+              />
+              <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2 mt-1 shrink-0">
+                <p className="text-xs font-medium text-muted-foreground mb-1.5">Peak profile — select cycle</p>
                 <div className="flex items-center gap-3">
-                  <label htmlFor="dqdv-cycle-input" className="text-xs text-muted-foreground whitespace-nowrap">Cycle number</label>
-                  <Slider
-                    value={[cycleIndex]}
-                    onValueChange={([v]) => { setCycleIndex(v); setCycleInput(String(cycles[v])); }}
-                    min={0} max={Math.max(0, cycles.length - 1)} step={1}
-                    className="flex-1" aria-label="Select cycle number"
-                  />
-                  <span className="text-xs font-semibold tabular-nums text-foreground w-10 text-right shrink-0">{selectedCycle}</span>
-                  <input id="dqdv-cycle-input" type="text" inputMode="numeric" value={cycleInput}
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">
+                    Cycle{cycles.length > 0 && <span className="ml-1 text-muted-foreground/60">({cycles[0]}–{cycles[cycles.length - 1]})</span>}:
+                  </span>
+                  {cycles.length > 1 ? (
+                    <input type="range" min={cycles[0]} max={cycles[cycles.length - 1]} value={selectedCycle}
+                      onChange={(e) => { const best = closestCycleIndex(parseInt(e.target.value, 10)); setCycleIndex(best); setCycleInput(String(cycles[best])); }}
+                      className="flex-1 accent-primary" />
+                  ) : <div className="flex-1" />}
+                  <input type="text" inputMode="numeric" value={cycleInput}
+                    placeholder={cycles.length > 0 ? `${cycles[0]}–${cycles[cycles.length - 1]}` : ''}
+                    aria-describedby="dqdv-cycle-snap-notice"
                     onChange={(e) => setCycleInput(e.target.value)}
                     onBlur={commitCycleInput}
                     onKeyDown={(e) => e.key === 'Enter' && commitCycleInput()}
-                    className="w-14 rounded border border-input bg-background px-2 py-1 text-xs font-medium tabular-nums text-center focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
-                    aria-label="Type a cycle number" />
+                    className="w-16 rounded border border-input bg-background px-2 py-1 text-xs font-medium tabular-nums text-center focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1" />
+                  {snapNotice && <span id="dqdv-cycle-snap-notice" role="status" aria-live="polite" className="text-xs text-amber-600 dark:text-amber-400 whitespace-nowrap">{snapNotice}</span>}
                 </div>
-                {snapNote && <p className="text-xs text-amber-600 pl-1" role="status">{snapNote}</p>}
               </div>
             </div>
             );
@@ -394,25 +430,28 @@ const DqDvDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
           minHeight={420}
           fillHeight
         >
-          {({ width, height, ResizeHandle }) => (
+          {({ width, height, ResizeHandle }) => {
+            // Reserve room for the header + legend block so the column doesn't
+            // overflow; the plot box takes the remainder.
+            const evoPlotH = Math.max(220, height - 28 - 84);
+            return (
             <div className="flex flex-col gap-2 h-full" style={{ width }}>
               <div className="flex items-center justify-between px-0.5 shrink-0">
                 <span className="text-xs font-medium text-muted-foreground">Cycle evolution (2D)</span>
                 <button type="button" aria-label="Close panel" onClick={closePanel}
                   className="rounded p-0.5 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">✕</button>
               </div>
-              <div className="relative bg-white dark:bg-card rounded flex-1 min-h-0" style={{ width }}>
+              <div className="relative bg-white dark:bg-card rounded shrink-0" style={{ width, height: evoPlotH }}>
                 {loading ? (
                   <LoadingIndicator variant="frame" size="lg" label="Loading cell data from database…" />
                 ) : (
                   <>
                     <EvolutionHeatmapPlot
                       datasets={datasets}
-                      xLabel="Voltage (V)"
                       zLabel="dQ/dV (mAh V⁻¹)"
-                      appearance={evoConfig}
+                      appearance={evoAppearance.config}
                       width={width}
-                      height={height}
+                      height={evoPlotH}
                       exportContext={exportContext}
                     />
                     <ChartEditPopover
@@ -424,8 +463,18 @@ const DqDvDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
                 )}
                 <ResizeHandle />
               </div>
+              <ChartLegend
+                items={evoLegendItems}
+                shown={evoAppearance.config.showLegend}
+                onToggle={() => evoAppearance.onConfigChange('showLegend', !evoAppearance.config.showLegend)}
+                chartLabel="Cycle evolution"
+                fontSize={evoAppearance.config.legendFontSize}
+                maxHeight={56}
+                className="shrink-0"
+              />
             </div>
-          )}
+            );
+          }}
         </ResizableChartCard>}
       </div>
     </div>

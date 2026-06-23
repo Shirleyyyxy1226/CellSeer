@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import PlotlyChart from '@/components/PlotlyChart';
 import type { ExportContext } from '@/lib/exportUtils';
 import type { ChartAppearanceConfig } from '@/components/ChartEditPopover';
@@ -26,6 +26,8 @@ interface Props {
   plotContainerRef?: React.RefObject<HTMLDivElement>;
   /** Called when a camera preset is clicked, signalling which 2D panel to open. */
   onOpenPanel?: (panel: 'profile' | 'evolution') => void;
+  /** Resize handle rendered inside the plot area (above the footer strip). */
+  ResizeHandle?: () => React.ReactElement;
 }
 
 const FALLBACK_FONT_SIZE = 10;
@@ -69,13 +71,15 @@ export function Surface3dPlot({
   exportContext,
   plotContainerRef,
   onOpenPanel,
+  ResizeHandle,
 }: Props) {
   // Camera is state-driven (not imperative relayout) so a preset reliably wins
   // over the React re-render that follows opening the 2D panel. The eye is baked
   // into uirevision: changing it forces Plotly to apply the new camera, while an
   // unchanged eye lets free-rotation persist across data refreshes.
   const [cameraEye, setCameraEye] = useState<{ x: number; y: number; z: number }>({ ...DEFAULT_EYE });
-  const eyeKey = `${cameraEye.x},${cameraEye.y},${cameraEye.z}`;
+  const [cameraSeq, setCameraSeq] = useState(0);
+  const eyeKey = `${cameraEye.x},${cameraEye.y},${cameraEye.z}|${cameraSeq}`;
 
   // The camera toolbar sits in a footer strip BELOW the plot (not overlaid), so
   // the plot reserves room for it. Height passed in is the whole card; the plot
@@ -107,7 +111,7 @@ export function Surface3dPlot({
     return {
       // Eye baked into uirevision so a preset change is applied; same eye keeps
       // the user's manual rotation across data updates.
-      uirevision: `${uirevision}|${eyeKey}`,
+      uirevision: `${uirevision}|${eyeKey}|legend-${showLegend}`,
       title: { text: titleText, font: { size: titleSize, family: fontFamily } },
       font: baseFont,
       ...restOverride,
@@ -145,7 +149,16 @@ export function Surface3dPlot({
     };
   }, [uirevision, eyeKey, cameraEye, title, xLabel, zLabel, xValues, layoutOverride, appearance, width, plotH]);
 
-  const ref = plotContainerRef;
+  const internalRef = useRef<HTMLDivElement>(null);
+  const ref = plotContainerRef ?? internalRef;
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => e.preventDefault();
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [ref]);
 
   return (
     <div
@@ -157,13 +170,14 @@ export function Surface3dPlot({
       }}
     >
       {/* Plot area — height reserves the footer below it */}
-      <div style={{ width: '100%', height: plotH ?? '100%', flex: plotH != null ? undefined : 1, minHeight: 0 }}>
+      <div style={{ position: 'relative', width: '100%', height: plotH ?? '100%', flex: plotH != null ? undefined : 1, minHeight: 0 }}>
         <PlotlyChart
           data={traces}
           layout={layout}
           style={{ width: '100%', height: '100%' }}
           exportContext={exportContext}
         />
+        {ResizeHandle && <ResizeHandle />}
       </div>
 
       {/* Footer strip: camera presets + Reset 3D (below the plot, not overlaid) */}
@@ -179,6 +193,7 @@ export function Surface3dPlot({
             title={p.title}
             onClick={() => {
               setCameraEye({ ...p.eye });
+              setCameraSeq((n) => n + 1);
               onOpenPanel?.(p.panel);
             }}
             className="rounded-md border border-border/50 bg-background px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
@@ -189,7 +204,7 @@ export function Surface3dPlot({
         <button
           type="button"
           title="Reset 3D camera to default perspective"
-          onClick={() => setCameraEye({ ...DEFAULT_EYE })}
+          onClick={() => { setCameraEye({ ...DEFAULT_EYE }); setCameraSeq((n) => n + 1); }}
           className="rounded-md border border-border/50 bg-background px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
         >
           Reset 3D
