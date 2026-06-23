@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { fetchCellRecord } from '@/lib/api';
-import { useRatePerformanceQuery } from '@/hooks/useCellData';
+import { useRatePerformanceQuery, useCellRecordQueries } from '@/hooks/useCellData';
 import { useCellSelection } from '@/contexts/CellSelectionContext';
-import { useDataRefresh } from '@/contexts/DataRefreshContext';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, ChevronUp, Layers } from 'lucide-react';
 import { ChartEditPopover, type ChartAppearanceConfig, type ChartAppearanceKey } from '@/components/ChartEditPopover';
+import { ChartLegend, type LegendItem } from '@/components/ChartLegend';
 import { ResizableChartCard } from '@/components/ResizableChartCard';
 import { DirectionToggle, type ChargeDirection } from '@/components/DirectionToggle';
 import { LoadingIndicator } from '@/components/LoadingIndicator';
@@ -20,7 +19,7 @@ import {
   resolveHierarchyCellValue,
 } from '@/lib/ratePerfAggregation';
 import { useProjectHierarchy } from '@/contexts/ProjectHierarchyContext';
-import type { RatePerfCellRaw as NewareCell } from '@/lib/cellTypes';
+import type { RatePerfCell as CyclingCell } from '@/lib/cellTypes';
 import { formatNodeLabel } from '@/lib/treeUtils';
 import { VoltageTimePlot, type VoltageTimeCellRecord, type VoltageTimePlotConfig } from './plots/VoltageTimePlot';
 import { RatePerformancePlot } from './plots/RatePerformancePlot';
@@ -72,21 +71,13 @@ const RatePerformanceDashboard = (_: Props) => {
   const { setSelectedCellIds, multiselectionMode, selectedCellIds } =
     useCellSelection();
   const rateQuery = useRatePerformanceQuery();
-  const newareData = rateQuery.data?.cells?.length ? (rateQuery.data.cells as NewareCell[]) : null;
-  const newareLoading = rateQuery.isLoading;
+  const cyclingData = rateQuery.data?.cells?.length ? (rateQuery.data.cells as CyclingCell[]) : null;
+  const cyclingLoading = rateQuery.isLoading;
   const { apiData: hierarchyData, matchPathToIdNos } = useProjectHierarchy();
   const { protocolFilter } = useProtocolFilter();
   const { treeFilterPath } = useTreeFilter();
-  const { dataVersion } = useDataRefresh();
   const [detailDepth, setDetailDepth] = useState(0);
   const [direction, setDirection] = useState<ChargeDirection>('discharge');
-  const [cellRecordsByCell, setCellRecordsByCell] = useState<Record<
-    number,
-    { curves: Record<string, Record<string, (number | string | null)[]>>; cellName: string }
-  >>({});
-  const recordFetchInFlightRef = useRef<Set<number>>(new Set());
-  const recordMissingRef = useRef<Set<number>>(new Set());
-  const recordLoadedRef = useRef<Set<number>>(new Set());
 
   const defaultChartTitle = useMemo(
     () => treeFilterPath.length === 0 ? 'Rate Performance' : `Rate Performance: ${treeFilterPath.map((p) => p.val).join(' · ')}`,
@@ -98,35 +89,21 @@ const RatePerformanceDashboard = (_: Props) => {
     xAxisLabel: 'Cycle number',
     yAxisLabel: 'Capacity (mAh g⁻¹)',
     showConnectedLine: false,
+    // Enables the "Maximise contrast" toggle in the chart Edit popover (R2).
+    maximizeContrast: false,
   });
   const { fontFamily, titleFontSize, labelFontSize, legendFontSize } = appearance.config;
   useEffect(() => { appearance.setChartTitle(defaultChartTitle); }, [defaultChartTitle, appearance]);
 
   const mainChart = useResizableChart();
   const initialVoltageChart = useResizableChart();
-
-  // Per-cell record caches are keyed by idNo; drop them when project data changes.
-  useEffect(() => {
-    recordFetchInFlightRef.current.clear();
-    recordMissingRef.current.clear();
-    recordLoadedRef.current.clear();
-    setCellRecordsByCell({});
-  }, [dataVersion]);
+  // Each plot builds its traces internally (after aggregation / downsampling),
+  // then reports the derived legend entries so we can render the legend as a
+  // block below the plot (see ChartLegend).
+  const [rateLegendItems, setRateLegendItems] = useState<LegendItem[]>([]);
+  const [voltageLegendItems, setVoltageLegendItems] = useState<LegendItem[]>([]);
 
   const activeAnalysis = hierarchyData?.analysis ?? null;
-
-  const pathToColorMap = useMemo(
-    () => {
-      const fromHierarchy = hierarchyData?.pathToColorMap;
-      if (fromHierarchy && Object.keys(fromHierarchy).length > 0) {
-        return new Map(Object.entries(fromHierarchy));
-      }
-      return newareData?.length
-        ? buildPathToColorMap(newareData, activeAnalysis?.hierCols ?? [])
-        : new Map<string, string>();
-    },
-    [hierarchyData?.pathToColorMap, newareData, activeAnalysis?.hierCols],
-  );
 
   const metadataByIdNo = useMemo(() => {
     const headers = hierarchyData?.parsed?.headers ?? [];
@@ -148,6 +125,13 @@ const RatePerformanceDashboard = (_: Props) => {
     return out;
   }, [hierarchyData?.parsed?.headers, hierarchyData?.parsed?.rows, hierarchyData?.analysis?.leafCol]);
 
+  const pathToColorMap = useMemo(
+    () => cyclingData?.length
+      ? buildPathToColorMap(cyclingData, activeAnalysis?.hierCols ?? [], metadataByIdNo)
+      : new Map<string, string>(),
+    [cyclingData, activeAnalysis?.hierCols, metadataByIdNo],
+  );
+
   const maxDetailDepth = getMaxDetailDepth(treeFilterPath, activeAnalysis?.hierCols ?? []);
   const canDrillDown = treeFilterPath.length > 0 && detailDepth < maxDetailDepth;
   const handleDrillDown = useCallback(() => { setDetailDepth((d) => Math.min(d + 1, maxDetailDepth)); }, [maxDetailDepth]);
@@ -165,24 +149,24 @@ const RatePerformanceDashboard = (_: Props) => {
   }, [treeFilterPath]);
 
   const filteredNeware = useMemo(() => {
-    if (!newareData) return [];
-    let out: NewareCell[];
+    if (!cyclingData) return [];
+    let out: CyclingCell[];
     if (multiselectionMode && selectedCellIds.length > 0) {
-      out = newareData.filter((c) => selectedCellIds.includes(c.idNo));
+      out = cyclingData.filter((c) => selectedCellIds.includes(c.idNo));
     } else {
       const matchedIds = matchPathToIdNos(treeFilterPath);
       if (treeFilterPath.length > 0) {
         if (matchedIds && matchedIds.size > 0) {
           // Tree path takes priority when it can resolve real cells.
-          out = newareData.filter((c) => matchedIds.has(c.idNo));
+          out = cyclingData.filter((c) => matchedIds.has(c.idNo));
         } else if (!multiselectionMode && selectedCellIds.length === 1) {
           // Fallback for leaf labels that don't map cleanly via path matching.
-          out = newareData.filter((c) => c.idNo === selectedCellIds[0]);
+          out = cyclingData.filter((c) => c.idNo === selectedCellIds[0]);
         } else {
           return [];
         }
       } else if (!multiselectionMode && selectedCellIds.length === 1) {
-        out = newareData.filter((c) => c.idNo === selectedCellIds[0]);
+        out = cyclingData.filter((c) => c.idNo === selectedCellIds[0]);
       } else {
         return [];
       }
@@ -190,7 +174,7 @@ const RatePerformanceDashboard = (_: Props) => {
     if (protocolFilter !== 'All') out = out.filter((c) => c.protocol === protocolFilter);
     return out.sort((a, b) => a.idNo - b.idNo);
   }, [
-    newareData,
+    cyclingData,
     treeFilterPath,
     protocolFilter,
     multiselectionMode,
@@ -215,59 +199,24 @@ const RatePerformanceDashboard = (_: Props) => {
     return () => window.clearTimeout(timer);
   }, [multiselectionMode, treeFilterPath, matchPathToIdNos, selectedCellIds, setSelectedCellIds]);
 
-  const filteredCellIds = useMemo(() => filteredNeware.map((c) => c.idNo).join(','), [filteredNeware]);
-
-  useEffect(() => {
-    if (filteredNeware.length === 0) {
-      setCellRecordsByCell((prev) => (Object.keys(prev).length ? {} : prev));
-      return;
-    }
-    const idNos = filteredNeware.map((c) => c.idNo);
-    setCellRecordsByCell((prev) => {
-      const next = { ...prev };
-      let changed = false;
-      for (const k of Object.keys(next)) {
-        const keyNum = Number(k);
-        if (!idNos.includes(keyNum)) {
-          delete next[keyNum];
-          recordLoadedRef.current.delete(keyNum);
-          changed = true;
-        }
-      }
-      return changed ? next : prev;
+  // Full per-cell curves for the voltage-time chart. Shared React Query hook —
+  // same cache / retry-skip-on-404 / dedup as GCD & Differential (replaces the
+  // hand-rolled fetch + in-flight/missing/loaded refs this dashboard used to
+  // keep). Order matches filteredNeware, so we map back by index.
+  const recordQueries = useCellRecordQueries(filteredNeware.map((c) => c.cellId));
+  const cellRecordsByCell = useMemo(() => {
+    const out: Record<
+      number,
+      { curves: Record<string, Record<string, (number | string | null)[]>>; cellName: string }
+    > = {};
+    filteredNeware.forEach((cell, i) => {
+      const rec = recordQueries[i]?.data as
+        | { curves?: Record<string, Record<string, (number | string | null)[]>>; cellName?: string }
+        | undefined;
+      if (rec?.curves) out[cell.idNo] = { curves: rec.curves, cellName: rec.cellName ?? cell.cellId };
     });
-    filteredNeware.forEach((cell) => {
-      const idNo = cell.idNo;
-      const cellId = cell.cellId;
-      if (!cellId) return;
-      if (recordLoadedRef.current.has(idNo)) return;
-      if (recordFetchInFlightRef.current.has(idNo)) return;
-      if (recordMissingRef.current.has(idNo)) return;
-      recordFetchInFlightRef.current.add(idNo);
-      fetchCellRecord(cellId)
-        .then((d) => {
-          const record = d as { curves?: Record<string, Record<string, (number | string | null)[]>>; cellName?: string } | null;
-          if (record?.curves) {
-            setCellRecordsByCell((prev) => ({
-              ...prev,
-              [idNo]: { curves: record.curves!, cellName: record.cellName ?? cellId },
-            }));
-            recordLoadedRef.current.add(idNo);
-          } else {
-            recordMissingRef.current.add(idNo);
-          }
-        })
-        .catch((err) => {
-          const msg = err instanceof Error ? err.message : String(err ?? '');
-          if (/not found/i.test(msg)) {
-            recordMissingRef.current.add(idNo);
-          }
-        })
-        .finally(() => {
-          recordFetchInFlightRef.current.delete(idNo);
-        });
-    });
-  }, [filteredCellIds, filteredNeware]);
+    return out;
+  }, [filteredNeware, recordQueries]);
 
   const directionLabelLower = direction === 'charge' ? 'charge' : 'discharge';
   const hasPlot = !!activeAnalysis && hasRatePerfTraces(filteredNeware, direction);
@@ -302,8 +251,13 @@ const RatePerformanceDashboard = (_: Props) => {
   // Initial-voltage chart keeps its own title + axis labels but reuses
   // the main chart's font sizes / family (existing cross-coupling behaviour).
   const [maxVoltageCycles, setMaxVoltageCycles] = useState(5);
-  // Collapse toggle for the below-the-plot legend on the voltage-vs-time chart.
-  const [legendShown, setLegendShown] = useState(true);
+  // Local text mirror so the field can be cleared / partially edited while
+  // typing; the cycle count commits when the value is valid and clamps on blur.
+  // (A controlled number input would snap back mid-edit.)
+  const [cyclesText, setCyclesText] = useState('5');
+  // Legend visibility for the voltage-vs-time chart (the eye toggle and the
+  // edit-popover checkbox both write this single value).
+  const [voltageLegendShown, setVoltageLegendShown] = useState(true);
   const derivedVoltageTitle = useMemo(() => {
     const cellCount = cellRecords.length;
     const cellNote = cellCount === 1 ? `cell ${cellRecords[0]?.cellName ?? ''}` : `${cellCount} cells`;
@@ -323,10 +277,10 @@ const RatePerformanceDashboard = (_: Props) => {
       titleFontSize,
       labelFontSize,
       legendFontSize,
-      showLegend: true,
+      showLegend: voltageLegendShown,
       legendPosition: 'right-bottom',
     }),
-    [initialVoltageTitle, initialVoltageXLabel, initialVoltageYLabel, fontFamily, titleFontSize, labelFontSize, legendFontSize],
+    [initialVoltageTitle, initialVoltageXLabel, initialVoltageYLabel, fontFamily, titleFontSize, labelFontSize, legendFontSize, voltageLegendShown],
   );
 
   const onInitialVoltageConfigChange = useCallback(
@@ -334,11 +288,12 @@ const RatePerformanceDashboard = (_: Props) => {
       if (key === 'chartTitle') setInitialVoltageTitleOverride(value as string);
       else if (key === 'xAxisLabel') setInitialVoltageXLabel(value as string);
       else if (key === 'yAxisLabel') setInitialVoltageYLabel(value as string);
+      else if (key === 'showLegend') setVoltageLegendShown(value === true);
       else if (key === 'fontFamily' || key === 'titleFontSize' || key === 'labelFontSize' || key === 'legendFontSize') {
         // Font knobs are shared with the main chart on purpose.
         appearance.onConfigChange(key, value);
       }
-      // showLegend / legendPosition / showConnectedLine: intentionally no-op
+      // legendPosition / showConnectedLine: intentionally no-op
       // (these are hardcoded for the initial-voltage chart).
     },
     [appearance],
@@ -357,7 +312,7 @@ const RatePerformanceDashboard = (_: Props) => {
     const isCellLevelNext = nextLevelIdx >= activeAnalysis.hierCols.length;
     if (!nextCol && !isCellLevelNext) return null;
 
-    const seriesForCell = (cell: NewareCell): number[] =>
+    const seriesForCell = (cell: CyclingCell): number[] =>
       direction === 'charge'
         ? (cell.chargeCapacityMah ?? [])
         : (useSpecificCapacity ? (cell.specificCapacityMahG ?? cell.dischargeCapacityMah) : cell.dischargeCapacityMah);
@@ -372,7 +327,7 @@ const RatePerformanceDashboard = (_: Props) => {
       };
     }
 
-    const grouped = new Map<string, NewareCell[]>();
+    const grouped = new Map<string, CyclingCell[]>();
     filteredNeware.forEach((cell) => {
       const key = resolveHierarchyCellValue(cell, nextCol!.header, metadataByIdNo.get(cell.idNo));
       if (!key) return;
@@ -441,26 +396,6 @@ const RatePerformanceDashboard = (_: Props) => {
       <div className="flex-1 min-h-0 min-w-0 flex gap-0">
         <div className="flex-1 min-w-0 min-h-0 overflow-auto transition-all duration-300">
           <div className="space-y-4 p-4 w-full min-w-0">
-            <div className="flex items-center justify-end gap-3">
-              {cellRecords.length > 0 && (
-                <button
-                  type="button"
-                  aria-pressed={legendShown}
-                  onClick={() => setLegendShown((v) => !v)}
-                  title={legendShown ? 'Hide the legend below the voltage chart' : 'Show the legend below the voltage chart'}
-                  className="shrink-0 rounded-md px-2 py-1 text-[11px] tracking-wide cursor-pointer border border-border text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                >
-                  {legendShown ? 'Legend ▾' : 'Legend ▸'}
-                </button>
-              )}
-              <DirectionToggle
-                value={direction}
-                onChange={setDirection}
-                disabled={noSelection}
-                title={noSelection ? 'Select a hierarchy node first' : undefined}
-              />
-            </div>
-
             <ResizableChartCard
               size={mainChart.size}
               onResizeStart={mainChart.onResizeStart}
@@ -470,7 +405,12 @@ const RatePerformanceDashboard = (_: Props) => {
               {({ width, height, ResizeHandle }) => (
                 <>
                   <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
-                    <div />
+                    <DirectionToggle
+                      value={direction}
+                      onChange={setDirection}
+                      disabled={noSelection}
+                      title={noSelection ? 'Select a hierarchy node first' : undefined}
+                    />
                     <div className="flex items-center gap-2">
                       <Button
                         variant="outline"
@@ -503,6 +443,7 @@ const RatePerformanceDashboard = (_: Props) => {
                     </div>
                   </div>
                   {hasPlot && activeAnalysis ? (
+                    <>
                     <div className="relative bg-white dark:bg-card rounded" style={{ width, height }}>
                       {/* Y-axis unit badge + mixed-capacity warning */}
                       <div className="absolute bottom-2 left-2 z-10 flex flex-col gap-1 items-start pointer-events-none">
@@ -530,6 +471,7 @@ const RatePerformanceDashboard = (_: Props) => {
                           width={width}
                           height={height}
                           onCellSelect={(cell) => setSelectedCellIds([cell.idNo])}
+                          onLegendItems={setRateLegendItems}
                         />
                       </div>
                       <ChartEditPopover
@@ -540,7 +482,15 @@ const RatePerformanceDashboard = (_: Props) => {
                       />
                       <ResizeHandle />
                     </div>
-                  ) : newareLoading ? (
+                    <ChartLegend
+                      items={rateLegendItems}
+                      shown={appearance.config.showLegend}
+                      onToggle={() => appearance.onConfigChange('showLegend', !appearance.config.showLegend)}
+                      chartLabel="Rate performance"
+                      fontSize={legendFontSize}
+                    />
+                    </>
+                  ) : cyclingLoading ? (
                     <LoadingIndicator
                       variant="frame"
                       size="lg"
@@ -549,7 +499,7 @@ const RatePerformanceDashboard = (_: Props) => {
                     />
                   ) : (
                     <div className="h-[420px] flex flex-col items-center justify-center text-muted-foreground gap-2">
-                      {newareData === null ? (
+                      {cyclingData === null ? (
                         <p>No rate performance data found.</p>
                       ) : treeFilterPath.length === 0 && !multiselectionMode ? (
                         <div className="flex flex-col items-center gap-3 text-center px-8">
@@ -582,6 +532,7 @@ const RatePerformanceDashboard = (_: Props) => {
                 minHeight={200}
               >
                 {({ width, height, ResizeHandle }) => (
+                  <>
                   <div className="relative bg-white dark:bg-card rounded" style={{ width, height }}>
                     <div className="absolute top-2 left-2 z-10 flex items-center gap-1.5">
                       <label className="text-[10px] text-muted-foreground whitespace-nowrap" htmlFor="max-cycles-input">
@@ -589,13 +540,21 @@ const RatePerformanceDashboard = (_: Props) => {
                       </label>
                       <input
                         id="max-cycles-input"
-                        type="number"
-                        min={1}
-                        max={50}
-                        value={maxVoltageCycles}
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        value={cyclesText}
                         onChange={(e) => {
-                          const v = parseInt(e.target.value, 10);
-                          if (Number.isFinite(v) && v >= 1) setMaxVoltageCycles(v);
+                          const t = e.target.value.replace(/\D/g, '').slice(0, 2);
+                          setCyclesText(t);
+                          const v = parseInt(t, 10);
+                          if (Number.isFinite(v) && v >= 1) setMaxVoltageCycles(Math.min(50, v));
+                        }}
+                        onBlur={() => {
+                          const v = parseInt(cyclesText, 10);
+                          const clamped = Number.isFinite(v) ? Math.min(50, Math.max(1, v)) : maxVoltageCycles;
+                          setMaxVoltageCycles(clamped);
+                          setCyclesText(String(clamped));
                         }}
                         className="w-14 h-6 rounded border border-border text-[10px] px-1.5 bg-background/80"
                       />
@@ -606,7 +565,7 @@ const RatePerformanceDashboard = (_: Props) => {
                       width={width}
                       height={height}
                       maxCycles={maxVoltageCycles}
-                      showLegend={legendShown}
+                      onLegendItems={setVoltageLegendItems}
                     />
                     <ChartEditPopover
                       config={initialVoltageAppearanceConfig}
@@ -618,6 +577,14 @@ const RatePerformanceDashboard = (_: Props) => {
                     />
                     <ResizeHandle />
                   </div>
+                  <ChartLegend
+                    items={voltageLegendItems}
+                    shown={voltageLegendShown}
+                    onToggle={() => setVoltageLegendShown((v) => !v)}
+                    chartLabel="Initial voltage"
+                    fontSize={legendFontSize}
+                  />
+                  </>
                 )}
               </ResizableChartCard>
             )}

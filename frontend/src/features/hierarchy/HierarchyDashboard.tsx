@@ -1,37 +1,41 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { HierarchyEditor } from '@/components/tree/HierarchyEditor';
 import { CircuitTreeMindmap } from '@/components/tree/CircuitTreeMindmap';
 import { LoadingIndicator } from '@/components/LoadingIndicator';
+import { SearchInput } from '@/components/SearchInput';
 import { useCellSelection } from '@/contexts/CellSelectionContext';
 import { useProjectHierarchy } from '@/contexts/ProjectHierarchyContext';
-import { collectPreLeafNodeKeys, treeNodeStableKey, type TreeNode } from '@/lib/treeUtils';
+import { useTreeFilter } from '@/contexts/TreeFilterContext';
+import { collectPreLeafNodeKeys, getPathFromRootToNode, treeNodeStableKey, type TreeNode } from '@/lib/treeUtils';
 import { buildCanonicalCellColorMap, buildPathToColorMap } from '@/lib/ratePerfAggregation';
-import type { RatePerfCellRaw } from '@/lib/cellTypes';
+import type { RatePerfCell } from '@/lib/cellTypes';
 
 /* ── Main panel ─────────────────────────────────────────────────────── */
 
-function OnboardingCallout({ onDismiss }: { onDismiss: () => void }) {
-  return (
-    <div role="status" className="mx-4 mt-3 flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-[12px] text-blue-900">
-      <svg aria-hidden width="16" height="16" viewBox="0 0 24 24" fill="none" className="mt-0.5 shrink-0">
-        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.8"/>
-        <path d="M12 8v4m0 4h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-      </svg>
-      <span className="flex-1">
-        <strong>Two ways to interact with the tree:</strong>{' '}
-        Click a <em>branch</em> (e.g. NMC811) to pre-filter the chart tabs by that condition.{' '}
-        Click a <em>leaf cell</em> (the rightmost column) to open its detail panel and drive the curves.
-      </span>
-      <button type="button" onClick={onDismiss} aria-label="Dismiss tip" className="shrink-0 ml-1 rounded p-0.5 hover:bg-blue-100 transition-colors text-blue-500 hover:text-blue-700">
-        <svg aria-hidden width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-      </button>
-    </div>
-  );
-}
-
 export function HierarchyDashboard() {
-  const { handleCellSelect, annotationsByCell, multiselectionMode, setMultiselectionMode, selectedCellIds, setSelectedCellIds } =
+  const { handleCellSelect, clearSelection, annotationsByCell, multiselectionMode, setMultiselectionMode, selectedCellIds, setSelectedCellIds } =
     useCellSelection();
+  const { treeFilterPath, setTreeFilterPath } = useTreeFilter();
+  const { apiData, loading, error, activeJs, setHierarchyOrder, resetHierarchyOrder } =
+    useProjectHierarchy();
+  const [collapsedPreLeafNodeKeys, setCollapsedPreLeafNodeKeys] = useState<Set<string>>(new Set());
+  const [collapsedBranchKeys, setCollapsedBranchKeys] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState('');
+  const tree = (apiData?.tree ?? null) as TreeNode | null;
+  const analysis = apiData?.analysis ?? null;
+
+  const handleNodeClick = useCallback(
+    (node: TreeNode) => {
+      if (!tree) return;
+      const path = getPathFromRootToNode(tree, node);
+      if (multiselectionMode && node.isLeaf) return;
+      setTreeFilterPath(path ?? []);
+      if (!node.isLeaf) {
+        clearSelection();
+      }
+    },
+    [tree, multiselectionMode, setTreeFilterPath, clearSelection],
+  );
 
   // Multi mode: clicking a group node toggles selection of every cell under it.
   const handleGroupToggle = useCallback(
@@ -45,21 +49,6 @@ export function HierarchyDashboard() {
     },
     [selectedCellIds, setSelectedCellIds],
   );
-  const { apiData, loading, error, activeJs, setHierarchyOrder, resetHierarchyOrder } =
-    useProjectHierarchy();
-  const [collapsedPreLeafNodeKeys, setCollapsedPreLeafNodeKeys] = useState<Set<string>>(new Set());
-  const [collapsedBranchKeys, setCollapsedBranchKeys] = useState<Set<string>>(new Set());
-  const [searchQuery, setSearchQuery] = useState('');
-  const tree = (apiData?.tree ?? null) as TreeNode | null;
-  const analysis = apiData?.analysis ?? null;
-  const [calloutDismissed, setCalloutDismissed] = useState(false);
-  const prevSelectedLen = useRef(selectedCellIds.length);
-  useEffect(() => {
-    if (selectedCellIds.length > 0 && prevSelectedLen.current === 0) {
-      setCalloutDismissed(true);
-    }
-    prevSelectedLen.current = selectedCellIds.length;
-  }, [selectedCellIds.length]);
   const [loadTimedOut, setLoadTimedOut] = useState(false);
   useEffect(() => {
     if (!loading || apiData) {
@@ -105,6 +94,14 @@ export function HierarchyDashboard() {
       } else if (cellVal && /^\d+$/.test(cellVal)) {
         idNo = parseInt(cellVal, 10);
       }
+      // Include all hierCol values keyed by header so buildPathToColorMap
+      // produces path keys that match the tree's rawVal-based lookup.
+      const hierColVals: Record<string, string> = {};
+      (an?.hierCols ?? []).forEach(col => {
+        if (col.j >= 0 && col.j < row.length) {
+          hierColVals[col.header] = String(row[col.j] ?? '').trim();
+        }
+      });
       return {
         idNo,
         cellId: '',
@@ -112,6 +109,7 @@ export function HierarchyDashboard() {
         cathode: cathodeCol >= 0 ? (row[cathodeCol] ?? '') : '',
         separatorType: separatorCol >= 0 ? (row[separatorCol] ?? '') : '',
         spacerMm: spacerCol >= 0 ? (parseFloat(row[spacerCol]) || null) : null,
+        ...hierColVals,
       };
     });
   }, [apiData]);
@@ -141,10 +139,10 @@ export function HierarchyDashboard() {
   }
 
   const pathToColorMap = cells.length
-    ? buildPathToColorMap(cells as unknown as RatePerfCellRaw[], analysis?.hierCols ?? [])
+    ? buildPathToColorMap(cells as unknown as RatePerfCell[], analysis?.hierCols ?? [])
     : undefined;
   const cellColorMap = cells.length
-    ? buildCanonicalCellColorMap(cells as unknown as RatePerfCellRaw[])
+    ? buildCanonicalCellColorMap(cells as unknown as RatePerfCell[])
     : undefined;
 
   const collapseAll = () => {
@@ -188,35 +186,15 @@ export function HierarchyDashboard() {
       )}
 
       {/* Onboarding callout: show until dismissed or first selection */}
-      {!calloutDismissed && apiData && (
-        <OnboardingCallout onDismiss={() => setCalloutDismissed(true)} />
-      )}
-      {calloutDismissed && apiData && (
-        <div className="flex justify-end px-4 pt-1">
-          <button type="button" onClick={() => setCalloutDismissed(false)} title="Show interaction tips" aria-label="Show interaction tips" className="rounded-full w-5 h-5 text-[10px] font-bold border border-blue-200 text-blue-500 hover:bg-blue-50 transition-colors flex items-center justify-center">?</button>
-        </div>
-      )}
-
       {analysis && (
         <div className="px-4 pt-3 flex items-center gap-2">
-          <div className="relative flex-1 max-w-md">
-            <span
-              className="pointer-events-none absolute inset-y-0 left-2 flex items-center text-muted-foreground"
-              aria-hidden
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-                <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.8" />
-                <path d="M20 20l-3.5-3.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-              </svg>
-            </span>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search nodes or cell names…"
-              className="w-full h-8 pl-7 pr-2 text-[11px] rounded-md border border-border bg-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
-            />
-          </div>
+          <SearchInput
+            collapsible
+            value={searchQuery}
+            onChange={setSearchQuery}
+            placeholder="Search nodes or cell names…"
+            widthClass="w-64"
+          />
           <button
             type="button"
             onClick={expandAll}
@@ -270,7 +248,9 @@ export function HierarchyDashboard() {
             cells={cells}
             annotationsByCell={annotationsByCell}
             onCellSelect={handleCellSelect}
+            onNodeClick={handleNodeClick}
             onGroupToggle={handleGroupToggle}
+            selectedPath={treeFilterPath}
             multiselectionMode={multiselectionMode}
             selectedCellIds={selectedCellIds}
             pathToColorMap={pathToColorMap}
