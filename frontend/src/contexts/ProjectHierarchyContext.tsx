@@ -8,7 +8,7 @@ import {
   useState,
 } from 'react';
 import {
-  analyseCSV,
+  analyseHierarchy,
   clearHierarchyOrder,
   fetchDefaultHierarchyAnalyse,
   fetchHierarchyOrder,
@@ -16,14 +16,14 @@ import {
   type AnalyseResponse,
 } from '@/lib/analyseApi';
 import type { TreeFilterPath } from '@/components/tree/treeTypes';
-import type { ParsedCSV } from '@/lib/treeUtils';
+import type { ParsedTable } from '@/lib/treeUtils';
 import { useDataRefresh } from '@/contexts/DataRefreshContext';
 
 interface ProjectHierarchyContextValue {
   loading: boolean;
   error: string | null;
   projectKey: string;
-  parsed: ParsedCSV | null;
+  parsed: ParsedTable | null;
   apiData: AnalyseResponse | null;
   activeJs: number[];
   setHierarchyOrder: (nextJs: number[]) => Promise<void>;
@@ -126,10 +126,10 @@ export function ProjectHierarchyProvider({ children }: { children: React.ReactNo
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [projectKey, setProjectKey] = useState<string>('db-default');
-  const [parsed, setParsed] = useState<ParsedCSV | null>(null);
+  const [parsed, setParsed] = useState<ParsedTable | null>(null);
   const [apiData, setApiData] = useState<AnalyseResponse | null>(null);
   const [activeJs, setActiveJs] = useState<number[]>([]);
-  const parsedCsvRef = useRef<string>('');
+  const cachedTableText = useRef<string>('');
   const loadSeqRef = useRef(0);
 
   const applyWithOrder = useCallback(
@@ -138,9 +138,9 @@ export function ProjectHierarchyProvider({ children }: { children: React.ReactNo
         // Honour the full user-specified order instead of clamping to 4 levels,
         // otherwise the backend silently trims/reorders columns and the user's
         // drag-reorder appears to "not stick".
-        return analyseCSV(csvText, { maxLevels: order.length, userHierJs: order });
+        return analyseHierarchy(csvText, { maxLevels: order.length, columnOrder: order });
       }
-      return analyseCSV(csvText, { maxLevels: 4 });
+      return analyseHierarchy(csvText, { maxLevels: 4 });
     },
     [],
   );
@@ -154,7 +154,7 @@ export function ProjectHierarchyProvider({ children }: { children: React.ReactNo
       const base = await fetchDefaultHierarchyAnalyse();
       const scopedKey = base.projectKey || 'db-default';
       const csvText = toCsvText(base.parsed.headers, base.parsed.rows);
-      parsedCsvRef.current = csvText;
+      cachedTableText.current = csvText;
       let next = base;
       const savedOrder = await fetchHierarchyOrder(scopedKey);
       if (savedOrder.length > 0) {
@@ -187,7 +187,7 @@ export function ProjectHierarchyProvider({ children }: { children: React.ReactNo
 
   const setHierarchyOrder = useCallback(
     async (nextJs: number[]) => {
-      if (!parsed || !parsedCsvRef.current) return;
+      if (!parsed || !cachedTableText.current) return;
       setError(null);
 
       // Validate client-side so an optimistic update can't diverge from the
@@ -216,7 +216,7 @@ export function ProjectHierarchyProvider({ children }: { children: React.ReactNo
       //    interactive across consecutive drags instead of being gated on a
       //    full-page network round-trip.
       try {
-        const next = await applyWithOrder(parsedCsvRef.current, cleanJs);
+        const next = await applyWithOrder(cachedTableText.current, cleanJs);
         next.projectKey = projectKey;
         setApiData(next);
         setParsed(next.parsed);
@@ -231,12 +231,12 @@ export function ProjectHierarchyProvider({ children }: { children: React.ReactNo
   );
 
   const resetHierarchyOrder = useCallback(async () => {
-    if (!parsedCsvRef.current) return;
+    if (!cachedTableText.current) return;
     setError(null);
     setLoading(true);
     try {
       await clearHierarchyOrder(projectKey);
-      const next = await applyWithOrder(parsedCsvRef.current);
+      const next = await applyWithOrder(cachedTableText.current);
       next.projectKey = projectKey;
       setApiData(next);
       setParsed(next.parsed);

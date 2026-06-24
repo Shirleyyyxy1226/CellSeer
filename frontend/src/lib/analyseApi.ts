@@ -1,7 +1,4 @@
-/**
- * Backend API for hierarchy data and ad-hoc table analysis.
- * Replaces client-side parse/analyse from treeUtils.
- */
+/** Backend API wrappers for hierarchy analysis and table parsing. */
 
 import type { AnalysisResult, TreeNode } from '@/lib/treeUtils';
 import { withProjectQuery } from '@/lib/projectScope';
@@ -20,21 +17,21 @@ export interface AnalyseResponse {
 export interface AnalyseRequest {
   csvText: string;
   maxLevels?: number;
-  userHierJs?: number[] | null;
+  columnOrder?: number[] | null;
 }
 
 export interface HierarchyOrderResponse {
   order: number[];
 }
 
-export async function analyseCSV(
+export async function analyseHierarchy(
   csvText: string,
-  opts?: { maxLevels?: number; userHierJs?: number[] }
+  opts?: { maxLevels?: number; columnOrder?: number[] }
 ): Promise<AnalyseResponse> {
   const body: AnalyseRequest = {
     csvText,
     maxLevels: opts?.maxLevels ?? 4,
-    userHierJs: opts?.userHierJs ?? null,
+    columnOrder: opts?.columnOrder ?? null,
   };
   const res = await fetch(withProjectQuery("/api/hierarchy/analyse"), {
     method: "POST",

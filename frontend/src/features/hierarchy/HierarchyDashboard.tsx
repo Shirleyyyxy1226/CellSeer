@@ -198,26 +198,34 @@ export function HierarchyDashboard() {
           <button
             type="button"
             onClick={expandAll}
-            className="h-8 px-2.5 text-[10.5px] rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            className={`h-8 px-2.5 text-[10.5px] rounded-md border border-input shadow-sm transition-colors ${
+              collapsedBranchKeys.size === 0 && collapsedPreLeafNodeKeys.size === 0
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-muted text-muted-foreground hover:text-foreground'
+            }`}
           >
             Expand all
           </button>
           <button
             type="button"
             onClick={collapseAll}
-            className="h-8 px-2.5 text-[10.5px] rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            className={`h-8 px-2.5 text-[10.5px] rounded-md border border-input shadow-sm transition-colors ${
+              collapsedBranchKeys.size > 0 || collapsedPreLeafNodeKeys.size > 0
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-muted text-muted-foreground hover:text-foreground'
+            }`}
           >
             Collapse all
           </button>
           {/* Single / Multi toggle — mirrors the sidebar control */}
-          <div className="flex items-center rounded-md border border-border overflow-hidden ml-1" role="group" aria-label="Selection mode">
+          <div className="flex items-center rounded-md border border-input shadow-sm overflow-hidden ml-1" role="group" aria-label="Selection mode">
             <button
               type="button"
               onClick={() => setMultiselectionMode(false)}
               className={`px-2.5 h-8 text-[10.5px] inline-flex items-center transition-colors ${
                 !multiselectionMode
                   ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                  : 'bg-muted text-muted-foreground hover:text-foreground'
               }`}
               aria-pressed={!multiselectionMode}
             >
@@ -229,7 +237,7 @@ export function HierarchyDashboard() {
               className={`px-2.5 h-8 text-[10.5px] inline-flex items-center border-l border-border transition-colors ${
                 multiselectionMode
                   ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                  : 'bg-muted text-muted-foreground hover:text-foreground'
               }`}
               aria-pressed={multiselectionMode}
             >
