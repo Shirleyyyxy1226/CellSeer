@@ -28,7 +28,7 @@ router = APIRouter()
 class AnalyseRequest(BaseModel):
     csvText: str
     maxLevels: int = 4
-    userHierJs: Optional[List[int]] = None
+    columnOrder: Optional[List[int]] = None
 
 
 class HierarchyOrderRequest(BaseModel):
@@ -69,12 +69,12 @@ def _dedupe_rows_for_hierarchy(rows: list[sqlite3.Row]) -> list[sqlite3.Row]:
     return list(out.values())
 
 
-def _analyse_from_headers_rows(headers: list[str], rows: list[list[str]], max_levels: int, user_hier_js: Optional[List[int]]):
+def _analyse_from_headers_rows(headers: list[str], rows: list[list[str]], max_levels: int, column_order: Optional[List[int]]):
     if not headers or not rows:
         raise HTTPException(status_code=400, detail="CSV appears empty")
     analysis = analyse_columns(headers, rows, max_levels=max_levels)
-    if user_hier_js:
-        analysis = build_active_analysis(analysis, user_hier_js)
+    if column_order:
+        analysis = build_active_analysis(analysis, column_order)
     tree = build_tree(rows, analysis)
     colour_maps = assign_colour_map(analysis.hier_cols)
     colour_maps_perceptual = assign_colour_map_perceptual(analysis.hier_cols)
@@ -101,7 +101,7 @@ def analyse(req: AnalyseRequest):
             parsed.headers,
             parsed.rows,
             max_levels=req.maxLevels,
-            user_hier_js=req.userHierJs,
+            column_order=req.columnOrder,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -176,7 +176,7 @@ def analyse_default_from_db(maxLevels: int = 4, projectId: Optional[str] = None)
         ]
         for r in rows
     ]
-    payload = _analyse_from_headers_rows(headers, str_rows, max_levels=maxLevels, user_hier_js=None)
+    payload = _analyse_from_headers_rows(headers, str_rows, max_levels=maxLevels, column_order=None)
     payload["projectKey"] = project_id
     return payload
 

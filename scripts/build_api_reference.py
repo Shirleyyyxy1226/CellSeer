@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate docs/reference.html — the complete CellSeer API reference.
 
-The Python section is introspected live from the installed `cellviz` package
+The Python section is introspected live from the installed `cellseer` package
 (signatures + docstrings), so it cannot drift from the code. Re-run after any
 public-API change:
 
