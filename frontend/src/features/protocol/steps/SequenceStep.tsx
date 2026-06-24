@@ -1,5 +1,5 @@
 /**
- * Step 2 of the attach-protocol wizard.
+ * Step 1 of the attach-protocol wizard.
  *
  * Two columns:
  *   - Left: templates rail (builtin + user-saved) + "Save as template"
@@ -132,7 +132,6 @@ export function SequenceStep({
                   size="sm"
                   onClick={handleSaveTemplate}
                   disabled={templates.saving || !savedTemplateName.trim() || segments.length === 0}
-                  className="bg-emerald-600 hover:bg-emerald-600/90"
                 >
                   {templates.saving ? 'Saving…' : 'Save'}
                 </Button>
@@ -143,7 +142,7 @@ export function SequenceStep({
               type="button"
               onClick={() => setSaveOpen(true)}
               disabled={segments.length === 0}
-              className="flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-border py-2 text-[12px] font-medium text-muted-foreground transition-colors hover:border-emerald-300 hover:bg-emerald-50/50 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-emerald-950/20"
+              className="flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-border py-2 text-[12px] font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Save className="h-3.5 w-3.5" />
               Save as template

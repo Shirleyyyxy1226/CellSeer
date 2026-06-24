@@ -1,5 +1,5 @@
 /**
- * Step 3 — read-only summary before commit.
+ * Read-only summary panel shown before committing a protocol.
  */
 
 import * as React from 'react';
@@ -7,13 +7,13 @@ import { Info, TriangleAlert } from 'lucide-react';
 
 import { ProtocolBandPreview } from '../ProtocolBandPreview';
 import type { EditableProtocolSegment } from '../types';
-import type { IndexCellRaw } from '@/lib/api';
+import type { IndexCell } from '@/lib/api';
 
 export interface VerifyStepProps {
   cellIds: string[];
   segments: EditableProtocolSegment[];
   protocolName: string;
-  affectedCells?: IndexCellRaw[];
+  affectedCells?: IndexCell[];
 }
 
 export function VerifyStep({

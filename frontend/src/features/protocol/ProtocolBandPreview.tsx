@@ -11,20 +11,30 @@ import type { EditableProtocolSegment, OpenEndedProtocolSegment } from './types'
 
 type AnySegment = EditableProtocolSegment | OpenEndedProtocolSegment;
 
+// Neutral-slate ramp: high C-rate = dark, low C-rate = light. Keeps the stage
+// bar calm (no saturated hues competing for attention) while still encoding rate.
 const RATE_PALETTE = [
-  '#94a3b8', // slate-400  — very low rate
-  '#60a5fa', // blue-400
-  '#34d399', // emerald-400
-  '#fbbf24', // amber-400
-  '#fb923c', // orange-400
-  '#f87171', // red-400
-  '#a78bfa', // violet-400 — very high rate
+  '#334155', // slate-700 — ≥8C (highest rate)
+  '#475569', // slate-600 — ≥5C
+  '#64748b', // slate-500 — 2C
+  '#94a3b8', // slate-400 — 1C
+  '#cbd5e1', // slate-300 — 0.5C
+  '#dbe2ea', //            — ~0.25C
+  '#e2e8f0', // slate-200 — 0.1C (lowest rate)
 ];
 
 function rateColour(rate: number): string {
   if (!Number.isFinite(rate) || rate <= 0) return RATE_PALETTE[0];
   const bucket = Math.max(0, Math.round(-Math.log2(rate) + 3));
   return RATE_PALETTE[Math.min(bucket, RATE_PALETTE.length - 1)];
+}
+
+/** Light stage swatches need dark text; dark ones need light text. */
+function isLightFill(hex: string): boolean {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.6;
 }
 
 export interface ProtocolBandPreviewProps {
@@ -75,7 +85,12 @@ export function ProtocolBandPreview({
             title={`${seg.name || `Stage ${idx + 1}`} · ${formatCRate(seg.cRate)} · cycles ${formatCycleRange(seg.cycleStart, seg.cycleEnd)}`}
           >
             {showLabels && pct >= 9 && (
-              <span className="truncate px-1 text-[10px] font-semibold leading-none text-white drop-shadow-sm">
+              <span
+                className={cn(
+                  'truncate px-1 text-[10px] font-semibold leading-none drop-shadow-sm',
+                  isLightFill(fill) ? 'text-slate-900' : 'text-white',
+                )}
+              >
                 {formatCRate(seg.cRate)}
               </span>
             )}

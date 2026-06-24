@@ -32,8 +32,8 @@ export function ProtocolTemplateCard({
       className={cn(
         'group relative cursor-pointer rounded-lg border transition-all',
         selected
-          ? 'border-emerald-400 bg-emerald-50/60 shadow-sm dark:bg-emerald-950/20 dark:border-emerald-600'
-          : 'border-border bg-card hover:border-emerald-300 hover:bg-muted/30',
+          ? 'border-primary bg-primary/5 shadow-sm dark:bg-primary/10'
+          : 'border-border bg-card hover:border-primary/40 hover:bg-muted/30',
       )}
     >
       <button
@@ -42,7 +42,7 @@ export function ProtocolTemplateCard({
         className="flex w-full flex-col gap-2 p-2.5 text-left"
       >
         <div className="flex items-center justify-between gap-2">
-          <span className={cn('text-[13px] font-medium', selected ? 'text-emerald-800 dark:text-emerald-300' : 'text-foreground')}>
+          <span className={cn('text-[13px] font-medium', selected ? 'text-primary' : 'text-foreground')}>
             {template.name}
           </span>
           <div className="flex items-center gap-1">
@@ -52,8 +52,8 @@ export function ProtocolTemplateCard({
               </span>
             )}
             {selected && (
-              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-600">
-                <Check className="h-2.5 w-2.5 text-white" />
+              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-primary">
+                <Check className="h-2.5 w-2.5 text-primary-foreground" />
               </span>
             )}
           </div>

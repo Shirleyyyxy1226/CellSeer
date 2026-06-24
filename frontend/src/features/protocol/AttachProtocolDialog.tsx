@@ -1,8 +1,8 @@
 /**
  * Attach-protocol wizard root.
  *
- * Three-step modal: Scope → Sequence → Verify. The dialog owns wizard
- * state (segments, name, scope, current step) so the steps stay pure and
+ * Two-step modal: Schedule → Apply. The dialog owns wizard state
+ * (segments, name, scope, current step) so the steps stay pure and
  * the state survives back-and-forth navigation.
  */
 
@@ -13,13 +13,14 @@ import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
+  DialogTitle,
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 
-import { ScopeStep } from './steps/ScopeStep';
 import { SequenceStep } from './steps/SequenceStep';
-import { VerifyStep } from './steps/VerifyStep';
+import { ApplyStep } from './steps/ApplyStep';
 import {
   toEditableList,
   toWireList,
@@ -35,15 +36,14 @@ import type {
 import {
   fetchCellRecordIndex,
   setCellProtocolBulk,
-  type IndexCellRaw,
+  type IndexCell,
 } from '@/lib/api';
 
-type WizardStep = 'scope' | 'sequence' | 'verify';
-const STEP_ORDER: WizardStep[] = ['scope', 'sequence', 'verify'];
+type WizardStep = 'schedule' | 'apply';
+const STEP_ORDER: WizardStep[] = ['schedule', 'apply'];
 const STEP_LABELS: Record<WizardStep, string> = {
-  scope: 'Cells',
-  sequence: 'Schedule',
-  verify: 'Review',
+  schedule: 'Schedule',
+  apply: 'Apply',
 };
 
 export interface AttachProtocolDialogProps {
@@ -52,9 +52,9 @@ export interface AttachProtocolDialogProps {
 }
 
 export function AttachProtocolDialog({ options, onClose }: AttachProtocolDialogProps) {
-  const [step, setStep] = React.useState<WizardStep>(
-    options.initialStep ?? (options.cellIds && options.cellIds.length > 0 ? 'sequence' : 'scope'),
-  );
+  // Always start on Schedule so the user reaches the Apply step (cell review +
+  // overwrite check) before saving — on every entry path.
+  const [step, setStep] = React.useState<WizardStep>(options.initialStep ?? 'schedule');
   const [cellIds, setCellIds] = React.useState<string[]>(() =>
     Array.from(new Set(options.cellIds ?? [])),
   );
@@ -86,7 +86,7 @@ export function AttachProtocolDialog({ options, onClose }: AttachProtocolDialogP
     () => options.seedName ?? '',
   );
 
-  const [affectedCells, setAffectedCells] = React.useState<IndexCellRaw[]>([]);
+  const [affectedCells, setAffectedCells] = React.useState<IndexCell[]>([]);
   const [submitting, setSubmitting] = React.useState(false);
   const [submitError, setSubmitError] = React.useState<string | null>(null);
   const [doneSummary, setDoneSummary] = React.useState<{
@@ -105,9 +105,9 @@ export function AttachProtocolDialog({ options, onClose }: AttachProtocolDialogP
       try {
         const res = await fetchCellRecordIndex();
         if (cancelled) return;
-        const idx = new Map<string, IndexCellRaw>();
+        const idx = new Map<string, IndexCell>();
         for (const c of res.cells ?? []) idx.set(c.cellId, c);
-        const out: IndexCellRaw[] = [];
+        const out: IndexCell[] = [];
         for (const id of cellIds) {
           const c = idx.get(id);
           if (c) out.push(c);
@@ -128,9 +128,8 @@ export function AttachProtocolDialog({ options, onClose }: AttachProtocolDialogP
     segments.length > 0 && sequenceErrors.every((e) => e === '');
 
   const canAdvance: Record<WizardStep, boolean> = {
-    scope: cellIds.length > 0,
-    sequence: sequenceValid,
-    verify: true,
+    schedule: sequenceValid,
+    apply: sequenceValid && cellIds.length > 0,
   };
 
   const stepIndex = STEP_ORDER.indexOf(step);
@@ -160,15 +159,17 @@ export function AttachProtocolDialog({ options, onClose }: AttachProtocolDialogP
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="max-w-4xl gap-0 p-0 sm:rounded-xl overflow-hidden">
+      <DialogContent className="max-w-4xl gap-0 overflow-hidden bg-card p-0 sm:rounded-xl">
         {/* Header */}
-        <div className="border-b bg-muted/30 px-7 pb-4 pt-5">
+        <div className="border-b px-7 pb-4 pt-5">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h2 className="text-base font-semibold text-foreground">Attach protocol</h2>
-              <p className="mt-0.5 text-[13px] text-muted-foreground">
-                Define cycling stages for the selected cells.
-              </p>
+              <DialogTitle className="text-base font-semibold text-foreground">
+                Attach protocol
+              </DialogTitle>
+              <DialogDescription className="mt-0.5 text-[13px] text-muted-foreground">
+                Define the cycling schedule, then choose which cells it applies to.
+              </DialogDescription>
             </div>
             {!doneSummary && (
               <Stepper currentStep={step} onStepClick={(s, idx) => {
@@ -183,9 +184,7 @@ export function AttachProtocolDialog({ options, onClose }: AttachProtocolDialogP
         <div className="max-h-[62vh] min-h-[320px] overflow-y-auto px-7 py-5">
           {doneSummary ? (
             <SuccessPanel summary={doneSummary} />
-          ) : step === 'scope' ? (
-            <ScopeStep cellIds={cellIds} onChange={setCellIds} />
-          ) : step === 'sequence' ? (
+          ) : step === 'schedule' ? (
             <SequenceStep
               segments={segments}
               onSegmentsChange={setSegments}
@@ -193,8 +192,9 @@ export function AttachProtocolDialog({ options, onClose }: AttachProtocolDialogP
               onProtocolNameChange={setProtocolName}
             />
           ) : (
-            <VerifyStep
+            <ApplyStep
               cellIds={cellIds}
+              onCellIdsChange={setCellIds}
               segments={segments}
               protocolName={protocolName.trim() || synthesiseProtocolName(segments)}
               affectedCells={affectedCells}
@@ -208,9 +208,9 @@ export function AttachProtocolDialog({ options, onClose }: AttachProtocolDialogP
         </div>
 
         {/* Footer */}
-        <DialogFooter className="border-t bg-muted/20 px-7 py-3">
+        <DialogFooter className="border-t px-7 py-3">
           {doneSummary ? (
-            <Button onClick={onClose} className="bg-emerald-600 hover:bg-emerald-600/90">
+            <Button onClick={onClose}>
               Done
             </Button>
           ) : (
@@ -227,7 +227,7 @@ export function AttachProtocolDialog({ options, onClose }: AttachProtocolDialogP
                 Back
               </Button>
               <div className="flex items-center gap-2.5">
-                {step === 'verify' && cellIds.length > 0 && (
+                {step === 'apply' && cellIds.length > 0 && (
                   <span className="hidden text-[12px] text-muted-foreground sm:inline">
                     {cellIds.length} cell{cellIds.length === 1 ? '' : 's'} selected
                   </span>
@@ -241,13 +241,13 @@ export function AttachProtocolDialog({ options, onClose }: AttachProtocolDialogP
                 >
                   Cancel
                 </Button>
-                {step !== 'verify' ? (
+                {step !== 'apply' ? (
                   <Button
                     type="button"
                     size="sm"
                     onClick={goNext}
                     disabled={!canAdvance[step]}
-                    className="gap-1 bg-emerald-600 hover:bg-emerald-600/90"
+                    className="gap-1"
                   >
                     Continue
                     <ChevronRight className="h-4 w-4" />
@@ -258,7 +258,7 @@ export function AttachProtocolDialog({ options, onClose }: AttachProtocolDialogP
                     size="sm"
                     onClick={handleSubmit}
                     disabled={submitting || !sequenceValid || cellIds.length === 0}
-                    className="min-w-[80px] bg-emerald-600 hover:bg-emerald-600/90"
+                    className="min-w-[80px]"
                   >
                     {submitting ? 'Saving…' : 'Save protocol'}
                   </Button>
@@ -296,15 +296,15 @@ function Stepper({
               className={cn(
                 'flex items-center gap-2 rounded-md px-2 py-1 text-[12px] font-medium transition-colors',
                 isCurrent && 'text-foreground',
-                isPast && 'cursor-pointer text-emerald-700 dark:text-emerald-400 hover:bg-muted',
+                isPast && 'cursor-pointer text-primary hover:bg-muted',
                 !isCurrent && !isPast && 'cursor-default text-muted-foreground/60',
               )}
             >
               <span
                 className={cn(
                   'flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold transition-colors',
-                  isCurrent && 'bg-emerald-600 text-white ring-2 ring-emerald-600/20',
-                  isPast && 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300',
+                  isCurrent && 'bg-primary text-primary-foreground ring-2 ring-primary/20',
+                  isPast && 'bg-primary/10 text-primary',
                   !isCurrent && !isPast && 'border border-border bg-background text-muted-foreground',
                 )}
               >
@@ -313,7 +313,7 @@ function Stepper({
               {STEP_LABELS[s]}
             </button>
             {!isLast && (
-              <span className={cn('mx-1 h-px w-6', idx < stepIndex ? 'bg-emerald-300 dark:bg-emerald-700' : 'bg-border')} />
+              <span className={cn('mx-1 h-px w-6', idx < stepIndex ? 'bg-primary/40' : 'bg-border')} />
             )}
           </li>
         );

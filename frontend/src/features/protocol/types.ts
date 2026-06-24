@@ -48,8 +48,9 @@ export interface OpenAttachProtocolOptions {
   cellIds?: string[];
   seedSegments?: EditableProtocolSegment[] | OpenEndedProtocolSegment[];
   seedName?: string | null;
-  /** Pre-jump to the editor when caller already has a focus target. */
-  initialStep?: 'scope' | 'sequence' | 'verify';
+  /** Open directly on a given step. The wizard has two steps: 'schedule'
+   *  (name + stages) and 'apply' (target cells + review). */
+  initialStep?: 'schedule' | 'apply';
   onSaved?: (result: {
     applied: string[];
     protocolName: string;

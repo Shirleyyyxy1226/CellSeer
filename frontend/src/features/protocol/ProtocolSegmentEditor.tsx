@@ -7,7 +7,7 @@
  */
 
 import * as React from 'react';
-import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,15 +31,6 @@ export function ProtocolSegmentEditor({ segments, onChange }: ProtocolSegmentEdi
   const update = (id: string, patch: Partial<EditableProtocolSegment>) =>
     onChange(segments.map((s) => (s.id === id ? { ...s, ...patch } : s)));
   const remove = (id: string) => onChange(segments.filter((s) => s.id !== id));
-  const move = (id: string, dir: -1 | 1) => {
-    const idx = segments.findIndex((s) => s.id === id);
-    if (idx < 0) return;
-    const next = idx + dir;
-    if (next < 0 || next >= segments.length) return;
-    const copy = segments.slice();
-    [copy[idx], copy[next]] = [copy[next], copy[idx]];
-    onChange(copy);
-  };
   const append = () => onChange([...segments, makeBlankSegment(segments[segments.length - 1])]);
 
   return (
@@ -71,12 +62,8 @@ export function ProtocolSegmentEditor({ segments, onChange }: ProtocolSegmentEdi
             key={seg.id}
             segment={seg}
             error={errors[idx]}
-            isFirst={idx === 0}
-            isLast={idx === segments.length - 1}
             onUpdate={(patch) => update(seg.id, patch)}
             onRemove={() => remove(seg.id)}
-            onMoveUp={() => move(seg.id, -1)}
-            onMoveDown={() => move(seg.id, 1)}
           />
         ))}
       </div>
@@ -97,15 +84,11 @@ export function ProtocolSegmentEditor({ segments, onChange }: ProtocolSegmentEdi
 interface SegmentRowProps {
   segment: EditableProtocolSegment;
   error: string;
-  isFirst: boolean;
-  isLast: boolean;
   onUpdate: (patch: Partial<EditableProtocolSegment>) => void;
   onRemove: () => void;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
 }
 
-function SegmentRow({ segment, error, isFirst, isLast, onUpdate, onRemove, onMoveUp, onMoveDown }: SegmentRowProps) {
+function SegmentRow({ segment, error, onUpdate, onRemove }: SegmentRowProps) {
   // C-rate has its own draft so typing "0." mid-entry doesn't collapse to 0.
   const [cDraft, setCDraft] = React.useState(() => formatCRateInput(segment.cRate));
   React.useEffect(() => { setCDraft(formatCRateInput(segment.cRate)); }, [segment.cRate]);
@@ -180,12 +163,6 @@ function SegmentRow({ segment, error, isFirst, isLast, onUpdate, onRemove, onMov
 
         {/* Row actions */}
         <div className="flex items-center justify-end">
-          <Button type="button" size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground/50" disabled={isFirst} onClick={onMoveUp} title="Move up">
-            <ArrowUp className="h-3 w-3" />
-          </Button>
-          <Button type="button" size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground/50" disabled={isLast} onClick={onMoveDown} title="Move down">
-            <ArrowDown className="h-3 w-3" />
-          </Button>
           <Button type="button" size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10" onClick={onRemove} title="Remove stage">
             <Trash2 className="h-3 w-3" />
           </Button>

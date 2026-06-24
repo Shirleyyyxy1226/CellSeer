@@ -21,8 +21,8 @@ import {
 
 /**
  * Lazy import keeps the dialog module out of the main bundle. The dialog
- * pulls in the segment editor + templates + verify step, which together
- * weigh ~15 KB minified; not worth shipping on every initial paint.
+ * pulls in the segment editor and apply step, which together weigh ~15 KB
+ * minified; not worth shipping on every initial paint.
  */
 const AttachProtocolDialog = React.lazy(() =>
   import('./AttachProtocolDialog').then((m) => ({ default: m.AttachProtocolDialog })),
