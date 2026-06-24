@@ -326,18 +326,9 @@ const GcdDashboard = ({
       recordDatasets.every((rd) => rd.cathodeMassG != null && rd.cathodeMassG > 0),
     [recordDatasets],
   );
-  const someCellsHaveMass = useMemo(
-    () => recordDatasets.some((rd) => rd.cathodeMassG != null && rd.cathodeMassG > 0),
-    [recordDatasets],
-  );
   const cumulativeXLabel = allCellsHaveMass
     ? 'Cumulative specific capacity (mAh g⁻¹)'
     : 'Cumulative capacity (mAh)';
-  const cumulativeBasisBadge = allCellsHaveMass
-    ? 'mass-normalised'
-    : someCellsHaveMass
-    ? 'mixed (some cells lack mass)'
-    : 'raw mAh';
 
   // Cumulative GCD lays every cycle end-to-end along cumulative capacity, so a
   // single cell already spans the full width — overlaying ≥2 cells is an
@@ -729,14 +720,6 @@ const GcdDashboard = ({
 
           {combinedGcdTraces.length > 0 && useSmallMultiples && (
             <div className="space-y-2">
-              <div className="flex items-start gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-                <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-                <span>
-                  Cumulative GCD overlays poorly for multiple cells — showing one panel per cell (
-                  {cellsDataList.length}). Colour = cycle (early → late); basis: {cumulativeBasisBadge}. To
-                  compare cells <em>at the same cycle</em>, use the “GCD curves” section below.
-                </span>
-              </div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
                 {perCellCumulative.map((p) => (
                   <div key={p.id} className="rounded-lg border border-border bg-card p-2">
