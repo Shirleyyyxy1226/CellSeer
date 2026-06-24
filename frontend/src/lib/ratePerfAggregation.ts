@@ -11,24 +11,26 @@ import {
   cellIdentityColor,
   conditionHue,
   fallbackPathColor,
+  getCellEncoding,
   pathColorFromHues,
 } from './cellColorScheme';
+import type { CellEncoding, LineDash, MarkerSymbol } from 'cellseer-lib';
 
-export type { RatePerfCellRaw as NewareCellLike } from '@/lib/cellTypes';
+import type { RatePerfCell as CyclingCellLike } from '@/lib/cellTypes';
 
 const DEFAULT_COLOR = '#6b7280';
 
-function colorFromCellIdentity(cell: NewareCellLike): string {
+function colorFromCellIdentity(cell: CyclingCellLike): string {
   return cellIdentityColor(cell);
 }
 
 /** Build cell name → color map. Canonical scheme: fixed per cell, condition-similar hues. */
-export function buildCanonicalCellColorMap(allCells: NewareCellLike[]): Map<string, string> {
+export function buildCanonicalCellColorMap(allCells: CyclingCellLike[]): Map<string, string> {
   return buildCellColorMap(allCells);
 }
 
 /** Path key format: cathode, cathode|separator, cathode|separator|spacer, or cathode|separator|spacer|cellName. */
-export function pathKeyForCell(cell: NewareCellLike, upToLevel: 0 | 1 | 2 | 3): string {
+export function pathKeyForCell(cell: CyclingCellLike, upToLevel: 0 | 1 | 2 | 3): string {
   const parts = [
     cell.cathode ?? '',
     cell.separatorType ?? '',
@@ -40,7 +42,7 @@ export function pathKeyForCell(cell: NewareCellLike, upToLevel: 0 | 1 | 2 | 3): 
 
 /** Get color for a cell from the canonical map. */
 export function getCellColorFromMap(
-  cell: NewareCellLike,
+  cell: CyclingCellLike,
   cellColorMap: Map<string, string>,
 ): string {
   const key = cell.cellName ?? `Cell ${cell.idNo}`;
@@ -53,11 +55,12 @@ export function getCellColorFromMap(
  * matter how the hierarchy levels are ordered.
  */
 export function buildPathToColorMap(
-  allCells: NewareCellLike[],
+  allCells: CyclingCellLike[],
   hierCols?: ColStats[],
+  metadataByIdNo?: Map<number, Record<string, string>>,
 ): Map<string, string> {
   const huesByPath = new Map<string, number[]>();
-  const add = (key: string, cell: NewareCellLike) => {
+  const add = (key: string, cell: CyclingCellLike) => {
     if (!key) return;
     const hues = huesByPath.get(key) ?? [];
     hues.push(conditionHue(cell.cathode, cell.separatorType, cell.spacerMm));
@@ -65,7 +68,8 @@ export function buildPathToColorMap(
   };
   if (hierCols && hierCols.length > 0) {
     allCells.forEach((c) => {
-      const vals = hierCols.map((col) => getCellVal(c, col.header));
+      const metaRow = metadataByIdNo?.get(c.idNo);
+      const vals = hierCols.map((col) => resolveHierarchyCellValue(c, col.header, metaRow));
       for (let i = 0; i < vals.length; i++) {
         add(vals.slice(0, i + 1).join('|'), c);
       }
@@ -155,7 +159,7 @@ function resolveValueFromRecord(record: Record<string, unknown>, field: GroupFie
 }
 
 export function resolveHierarchyCellValue(
-  cell: NewareCellLike,
+  cell: CyclingCellLike,
   field: GroupField,
   metadataRow?: Record<string, unknown>,
 ): string {
@@ -172,12 +176,12 @@ export function resolveHierarchyCellValue(
   return '';
 }
 
-function getCellVal(cell: NewareCellLike, field: GroupField): string {
+function getCellVal(cell: CyclingCellLike, field: GroupField): string {
   return resolveHierarchyCellValue(cell, field);
 }
 
 /** Path key in hierarchy order – matches tree pathFromRoot for color alignment. */
-function pathKeyInOrder(cell: NewareCellLike, hierCols: ColStats[], upToLevel: number): string {
+function pathKeyInOrder(cell: CyclingCellLike, hierCols: ColStats[], upToLevel: number): string {
   const parts: string[] = [];
   for (let i = 0; i <= upToLevel && i < hierCols.length; i++) {
     const col = hierCols[i];
@@ -236,7 +240,7 @@ function getGrouping(
 
 /** Aggregate capacity by cycle: mean and optional asymmetric range [lower, upper] from mean when n>1. */
 function aggregateCapacity(
-  cells: NewareCellLike[],
+  cells: CyclingCellLike[],
   useSpecific: boolean,
   direction: 'discharge' | 'charge',
 ): { cycles: number[]; values: number[]; errorMinus?: number[]; errorPlus?: number[] } {
@@ -294,7 +298,7 @@ function aggregateCapacity(
 }
 
 /** Group cells by field value. */
-function groupCells<T extends NewareCellLike>(
+function groupCells<T extends CyclingCellLike>(
   cells: T[],
   field: GroupField,
 ): Map<string, T[]> {
@@ -309,7 +313,7 @@ function groupCells<T extends NewareCellLike>(
 }
 
 /** Group cells by composite key (e.g. separatorType + spacerMm). Returns Map<displayKey, cells>. */
-function groupCellsByComposite<T extends NewareCellLike>(
+function groupCellsByComposite<T extends CyclingCellLike>(
   cells: T[],
   parentField: GroupField,
   childField: GroupField,
@@ -331,8 +335,12 @@ export interface AggregatedTrace {
   x: number[];
   y: number[];
   color: string;
+  /** Orthogonal line-style discriminator (per-cell traces only). */
+  dash?: LineDash;
+  /** Orthogonal marker discriminator (per-cell traces only). */
+  symbol?: MarkerSymbol;
   isAggregated: boolean;
-  cell?: NewareCellLike;
+  cell?: CyclingCellLike;
   hasCrate: boolean;
   cRates?: number[];
   /** Asymmetric error bars: distance from mean down to min (errorMinus) and up to max (errorPlus). */
@@ -341,7 +349,7 @@ export interface AggregatedTrace {
 }
 
 export interface TraceOptions {
-  filteredCells: NewareCellLike[];
+  filteredCells: CyclingCellLike[];
   treeFilterPath: TreeFilterPath;
   hierCols: ColStats[];
   useSpecificCapacity: boolean;
@@ -350,6 +358,9 @@ export interface TraceOptions {
   detailDepth?: number;
   /** Path→color map (string-based, perceptually uniform). Same string = same color everywhere. */
   pathToColorMap?: Map<string, string>;
+  /** Per-cell visual encodings (colour + orthogonal dash/symbol). Applied to
+   *  individual-cell traces so overlaid similar cells stay distinguishable. */
+  cellEncodings?: Map<string, CellEncoding>;
   /** Format trace names to match hierarchy labels (e.g. "1" → "Sp 1.0 mm"). */
   labelDecorations?: LabelDecoration[];
   annotations?: Array<{ map: Record<string, string>; unit?: string } | null>;
@@ -361,7 +372,7 @@ function colorForPath(pathKey: string, pathToColorMap?: Map<string, string>): st
   return pathToColorMap?.get(pathKey) ?? fallbackPathColor(pathKey);
 }
 
-function colorForIndividualCell(cell: NewareCellLike): string {
+function colorForIndividualCell(cell: CyclingCellLike): string {
   return colorFromCellIdentity(cell);
 }
 
@@ -391,22 +402,31 @@ export function buildTraces(opts: TraceOptions): AggregatedTrace[] {
     direction = 'discharge',
     detailDepth = 0,
     pathToColorMap,
+    cellEncodings,
     labelDecorations,
     annotations,
     metadataByIdNo,
   } = opts;
   const path = treeFilterPath;
+  // Per-cell colour + orthogonal dash/symbol; falls back to plain identity
+  // colour when no encoding map was supplied.
+  const encFields = (cell: CyclingCellLike): { color: string; dash?: LineDash; symbol?: MarkerSymbol } => {
+    const enc = cellEncodings && getCellEncoding(cellEncodings, cell);
+    return enc
+      ? { color: enc.color, dash: enc.dash, symbol: enc.symbol }
+      : { color: colorForIndividualCell(cell) };
+  };
   const pathPrefix = path.map((p) => p.val).filter(Boolean).join('|');
   const hasSelection = path.length > 0;
 
-  const seriesForCell = (cell: NewareCellLike): number[] => {
+  const seriesForCell = (cell: CyclingCellLike): number[] => {
     if (direction === 'charge') {
       return cell.chargeCapacityMah ?? [];
     }
     return useSpecificCapacity ? cell.specificCapacityMahG ?? cell.dischargeCapacityMah : cell.dischargeCapacityMah;
   };
 
-  const valueForCell = (cell: NewareCellLike, field: GroupField): string =>
+  const valueForCell = (cell: CyclingCellLike, field: GroupField): string =>
     resolveHierarchyCellValue(cell, field, metadataByIdNo?.get(cell.idNo));
 
   if (!hasSelection) {
@@ -417,7 +437,7 @@ export function buildTraces(opts: TraceOptions): AggregatedTrace[] {
         name: row.cellName ?? `Cell ${row.idNo}`,
         x: row.cycles,
         y: yVals,
-        color: colorForIndividualCell(row),
+        ...encFields(row),
         isAggregated: false,
         cell: row,
         hasCrate,
@@ -436,7 +456,7 @@ export function buildTraces(opts: TraceOptions): AggregatedTrace[] {
         name: row.cellName ?? `Cell ${row.idNo}`,
         x: row.cycles,
         y: yVals,
-        color: colorForIndividualCell(row),
+        ...encFields(row),
         isAggregated: false,
         cell: row,
         hasCrate,
@@ -446,7 +466,7 @@ export function buildTraces(opts: TraceOptions): AggregatedTrace[] {
   }
 
   if (composite && parentField) {
-    const groups = new Map<string, NewareCellLike[]>();
+    const groups = new Map<string, CyclingCellLike[]>();
     filteredCells.forEach((c) => {
       const pk = valueForCell(c, parentField);
       const ck = valueForCell(c, field);
@@ -487,7 +507,7 @@ export function buildTraces(opts: TraceOptions): AggregatedTrace[] {
     return traces;
   }
 
-  const groups = new Map<string, NewareCellLike[]>();
+  const groups = new Map<string, CyclingCellLike[]>();
   filteredCells.forEach((c) => {
     const key = valueForCell(c, field);
     const arr = groups.get(key) ?? [];
@@ -524,7 +544,7 @@ export function buildTraces(opts: TraceOptions): AggregatedTrace[] {
 
 /** Get color for a cell (e.g. initial voltage chart). Same path string = same color everywhere. */
 export function getColorForCell(
-  cell: NewareCellLike,
+  cell: CyclingCellLike,
   _treeFilterPath: TreeFilterPath,
   _hierCols: ColStats[],
   _pathToColorMap?: Map<string, string>,

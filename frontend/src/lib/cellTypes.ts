@@ -28,7 +28,7 @@ export interface OpenEndedProtocolSegment {
   name?: string;
 }
 
-export interface RatePerfCellRaw {
+export interface RatePerfCell {
   idNo: number;
   cellId: string;
   cellName: string;
@@ -45,7 +45,7 @@ export interface RatePerfCellRaw {
   protocolSegments?: ProtocolSegment[];
 }
 
-export interface IndexCellRaw {
+export interface IndexCell {
   idNo: number;
   cellId: string;
   cellName: string;

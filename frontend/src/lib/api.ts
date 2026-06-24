@@ -1,6 +1,6 @@
 import type {
-  RatePerfCellRaw,
-  IndexCellRaw,
+  RatePerfCell,
+  IndexCell,
   CellDatasetSummary,
   ProtocolSegment,
   OpenEndedProtocolSegment,
@@ -9,8 +9,8 @@ import type { CellAnnotation } from '@/contexts/CellSelectionContext';
 import { currentProjectIdFromLocation, withProjectQuery } from '@/lib/projectScope';
 
 export type {
-  RatePerfCellRaw,
-  IndexCellRaw,
+  RatePerfCell,
+  IndexCell,
   CellDatasetSummary,
   ProtocolSegment,
   OpenEndedProtocolSegment,
@@ -82,11 +82,11 @@ async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
   return res.json();
 }
 
-export const fetchCellRecordIndex = (): Promise<{ cells: IndexCellRaw[] }> =>
+export const fetchCellRecordIndex = (): Promise<{ cells: IndexCell[] }> =>
   apiFetch('/api/cell-record-index');
 
 /**
- * Condition scope for the rate-performance fetch (05 · FR-2). Narrows the
+ * Condition scope for the rate-performance fetch. Narrows the
  * payload to one cohort (the active dropdown filters) so cell-level views pull
  * only what they draw. `'All'` / empty values are treated as "no constraint".
  */
@@ -98,7 +98,7 @@ export interface RateScope {
 
 export const fetchRatePerformance = (
   scope?: RateScope,
-): Promise<{ cells: RatePerfCellRaw[]; protocols?: string[] }> => {
+): Promise<{ cells: RatePerfCell[]; protocols?: string[] }> => {
   const params = new URLSearchParams();
   if (scope?.cathode && scope.cathode !== 'All') params.set('cathode', scope.cathode);
   if (scope?.separator && scope.separator !== 'All') params.set('separator', scope.separator);
@@ -108,7 +108,7 @@ export const fetchRatePerformance = (
 };
 
 /**
- * Master Plot overview aggregate (05 · FR-1). Per-condition stats + a compact
+ * Master Plot overview aggregate. Per-condition stats + a compact
  * per-cell *scalar* table — no per-cycle arrays — for the condition views at
  * scale, where shipping the full rate-performance payload would freeze the tab.
  * Mirror of the client metric pipeline; see backend/master_plot_overview.py.
@@ -161,7 +161,7 @@ export const fetchMasterPlotOverview = (): Promise<MasterPlotOverview> =>
   apiFetch('/api/master-plot/overview');
 
 /**
- * Per-cell dQ/dV peak-shift scalars (04 · FR-4) — ΔV (mV) of the dominant redox
+ * Per-cell dQ/dV peak-shift scalars — ΔV (mV) of the dominant redox
  * peak between early and late cycling. Lazy: fetched only when that metric is
  * selected. `peakShiftMv` is null where the peak couldn't be reliably tracked.
  */
@@ -304,7 +304,7 @@ export interface CellMetadataPatch {
 export async function updateCellMetadata(
   cellId: string,
   patch: CellMetadataPatch,
-): Promise<{ cell: IndexCellRaw | null; updated: string[] }> {
+): Promise<{ cell: IndexCell | null; updated: string[] }> {
   if (!cellId) throw new Error('cellId is required');
   const url = withProjectQuery(`/api/cells/${encodeURIComponent(cellId)}`);
   const res = await fetch(url, {
@@ -436,7 +436,7 @@ export interface SetCellProtocolBody {
 export const setCellProtocol = (
   cellId: string,
   body: SetCellProtocolBody,
-): Promise<{ cell: IndexCellRaw | null; protocolName: string }> =>
+): Promise<{ cell: IndexCell | null; protocolName: string }> =>
   apiFetch(`/api/cells/${encodeURIComponent(cellId)}/protocol`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },

@@ -60,14 +60,35 @@ export function axisLabel(def: PCAxisDef): string {
   return def.label;
 }
 
-/** Concise one-line definitions surfaced behind an ⓘ on the axis head. */
-const AXIS_DESCRIPTIONS: Record<string, string> = {
-  ice: 'CE of the first non-zero cycle',
+/** A literature reference shown under an axis definition in its info card. */
+export interface AxisRef {
+  label: string;
+  href: string;
+}
+
+/** Rich explanation for an axis, surfaced behind a "?" on the axis head:
+ *  a one/two-line definition plus optional vetted references. */
+export interface AxisInfo {
+  definition: string;
+  refs?: AxisRef[];
+}
+
+const AXIS_INFO: Record<string, AxisInfo> = {
+  ice: {
+    definition:
+      'Initial Coulombic Efficiency: discharge ÷ charge capacity of the first non-zero cycle. A low value flags irreversible loss to SEI formation. Computed from exported charge capacity only — no proxy.',
+    refs: [{ label: 'Smith et al., J. Electrochem. Soc. 2010', href: 'https://doi.org/10.1149/1.3268129' }],
+  },
+  ret_end: {
+    definition:
+      'Capacity retention: capacity late in life as a fraction of peak. It depends on cycle count and protocol, so compare like-for-like by picking a single protocol in the filter bar above.',
+    refs: [{ label: 'Wang et al., Front. Mech. Eng. 2021', href: 'https://doi.org/10.3389/fmech.2021.719718' }],
+  },
 };
 
-/** Optional one-line explanation for an axis, shown as an info tooltip. */
-export function axisDescription(def: PCAxisDef): string | undefined {
-  return AXIS_DESCRIPTIONS[def.id];
+/** Optional rich definition + references for an axis, shown as an info card. */
+export function axisInfo(def: PCAxisDef): AxisInfo | undefined {
+  return AXIS_INFO[def.id];
 }
 
 function cycleIndexFor(row: CellMetricRow, instrumentCycle: number): number {

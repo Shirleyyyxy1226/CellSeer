@@ -14,7 +14,7 @@
  */
 
 import type { CellMetadataPatch } from '@/lib/api';
-import type { IndexCellRaw } from '@/lib/cellTypes';
+import type { IndexCell } from '@/lib/cellTypes';
 
 /**
  * Cell columns that can be patched through `PATCH /api/cells/{id}`.
@@ -75,12 +75,12 @@ export type EditDraft = Record<PatchField, string>;
  * Using an indexed access keeps this trivially correct as new fields are
  * added to {@link PATCH_FIELDS}.
  */
-export function rawFieldValue(cell: IndexCellRaw, field: PatchField): unknown {
+export function rawFieldValue(cell: IndexCell, field: PatchField): unknown {
   return (cell as unknown as Record<string, unknown>)[field];
 }
 
 /** Build a draft seeded from the cell's current values. */
-export function draftFromCell(cell: IndexCellRaw): EditDraft {
+export function draftFromCell(cell: IndexCell): EditDraft {
   const out = {} as EditDraft;
   for (const f of PATCH_FIELDS) {
     const v = rawFieldValue(cell, f);
@@ -96,7 +96,7 @@ export function draftFromCell(cell: IndexCellRaw): EditDraft {
  * Empty strings encode "clear this field" (sent as `null`). Numbers that
  * fail to parse are skipped so the patch never sends a bad payload.
  */
-export function buildPatch(cell: IndexCellRaw, draft: EditDraft): CellMetadataPatch {
+export function buildPatch(cell: IndexCell, draft: EditDraft): CellMetadataPatch {
   const patch: CellMetadataPatch = {};
   for (const f of PATCH_FIELDS) {
     const original = rawFieldValue(cell, f);

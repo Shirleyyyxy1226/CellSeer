@@ -1,3 +1,5 @@
+import type { CellEncoding, LineDash, MarkerSymbol } from 'cellseer-lib';
+
 /**
  * cellColorScheme.ts — single source of truth for cell identity colours.
  *
@@ -11,8 +13,8 @@
  *   hierarchy order, tree filters, selection, or which other cells happen
  *   to be loaded.
  * - Similar cells look similar: replicates of one condition share a hue and
- *   differ in lightness; conditions under the same cathode sit in nearby
- *   hues (separator shifts the hue ±22°, spacer ±8°).
+ *   differ in lightness; the hue is derived purely from a hash of the
+ *   cathode/separator/spacer strings with no chemistry-specific mapping.
  * - Branch/path colours are the circular mean of their member-cell hues,
  *   so a branch visually "contains" its leaf cells.
  */
@@ -25,25 +27,6 @@ export interface CellColorAttrs {
   separatorType?: string | null;
   spacerMm?: number | string | null;
 }
-
-/**
- * Anchor hues for known cathode families (prefix-matched, longest first).
- * Hue families follow the established SEMANTIC_COLOURS conventions in
- * backend/tree_utils.py: NMC/NCA = red–orange, LFP = teal, LCO = purple.
- */
-const CATHODE_HUES: Array<[string, number]> = [
-  ['LIFEPO4', 170],
-  ['NMC811', 8],
-  ['NMC622', 20],
-  ['NMC111', 28],
-  ['LNMO', 330],
-  ['NMC', 14],
-  ['NCA', 24],
-  ['LFP', 170],
-  ['LCO', 282],
-  ['LMO', 320],
-  ['LTO', 205],
-];
 
 const PHI = 0.618033988749895;
 
@@ -65,12 +48,8 @@ function normKey(s: string): string {
   return s.toUpperCase().replace(/[^A-Z0-9]/g, '');
 }
 
-export function cathodeHue(cathode?: string | null): number {
-  const key = normKey(cathode ?? '');
-  for (const [prefix, hue] of CATHODE_HUES) {
-    if (key.startsWith(prefix)) return hue;
-  }
-  return hash01(`cathode:${key}`) * 360;
+function cathodeHue(cathode?: string | null): number {
+  return hash01(`cathode:${normKey(cathode ?? '')}`) * 360;
 }
 
 /** Hue of a condition (cathode × separator × spacer); replicates share it. */
@@ -134,6 +113,150 @@ export function buildCellColorMap(cells: CellColorAttrs[]): Map<string, string> 
   return map;
 }
 
+/* ────────────────────────────────────────────────────────────────────────
+ * Orthogonal discriminability channel (line style + marker).
+ *
+ * The identity hue alone cannot separate visually-similar cells (replicates
+ * share a hue; same-cathode siblings sit within ±30°). When such cells are
+ * overlaid for comparison, we add a SECOND, orthogonal channel that does not
+ * touch the hue: a line-dash + marker-symbol keyed by within-condition
+ * replicate index. Hue keeps meaning "which condition"; dash/symbol answer
+ * "which replicate of it". This is Wilke's redundant-coding recommendation.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/** Dash styles ordered by visual distinctness; index 0 = primary replicate. */
+const DASH_LADDER: LineDash[] = ['solid', 'dash', 'dot', 'dashdot', 'longdash', 'longdashdot'];
+/** Marker glyphs ordered by visual distinctness; index 0 = primary replicate. */
+const SYMBOL_LADDER: MarkerSymbol[] = [
+  'circle', 'square', 'diamond', 'triangle-up', 'star', 'cross', 'pentagon', 'x',
+];
+
+/**
+ * CVD-safe categorical palette for the opt-in "Maximise contrast" mode.
+ * Okabe-Ito (8) followed by a Glasbey-style extension. Adjacent entries are
+ * maximally separable, so cells that are semantically *adjacent* (and would
+ * otherwise be near-identical in hue) land far apart in colour.
+ */
+const CONTRAST_PALETTE: string[] = [
+  '#E69F00', // orange
+  '#56B4E9', // sky blue
+  '#009E73', // bluish green
+  '#0072B2', // blue
+  '#D55E00', // vermillion
+  '#CC79A7', // reddish purple
+  '#F0E442', // yellow
+  '#000000', // black
+  // Glasbey-style extension for larger active selections
+  '#999999', '#8B4513', '#FF1493', '#00CED1',
+  '#9400D3', '#228B22', '#FF8C00', '#4169E1',
+];
+
+/** Stable grouping key for a condition (cathode × separator × spacer). */
+function conditionKey(cell: CellColorAttrs): string {
+  const cathode = normKey(cell.cathode ?? '');
+  const sep = normKey((cell.separatorType ?? '').toString());
+  const sp = cell.spacerMm == null ? '' : String(cell.spacerMm).trim();
+  return `${cathode}|${sep}|${sp}`;
+}
+
+function encodingKeysFor(cell: CellColorAttrs): string[] {
+  return [
+    cell.cellName,
+    cell.cellId,
+    cell.idNo != null ? `Cell ${cell.idNo}` : null,
+    cell.idNo != null ? String(cell.idNo) : null,
+  ]
+    .map((k) => (k ?? '').toString().trim())
+    .filter(Boolean);
+}
+
+export interface BuildEncodingsOpts {
+  /** Recolour the passed set from a max-contrast CVD-safe palette. */
+  maximizeContrast?: boolean;
+}
+
+/**
+ * Build the full visual encoding (colour + dash + symbol) for a set of cells.
+ *
+ * Pass the cells *currently being displayed* (the active selection): dash and
+ * symbol are assigned by replicate index *within that set*, so an overlay
+ * always starts from a clean solid/circle and walks the ladder — the cleanest
+ * possible separation for exactly the cells on screen.
+ *
+ * - Colour (default): the cell's identity hue, unchanged.
+ * - Colour (maximizeContrast): a CVD-safe categorical colour assigned in
+ *   semantic-rank order, so similar cells become maximally different.
+ * - Dash + symbol (always): orthogonal to colour, keyed by within-condition
+ *   replicate index — this is what separates replicates that share a hue.
+ *
+ * Returns a map keyed by every identity string a consumer might look up with
+ * (cellName, cellId, "Cell <idNo>", "<idNo>").
+ */
+export function buildCellEncodings(
+  cells: CellColorAttrs[],
+  opts: BuildEncodingsOpts = {},
+): Map<string, CellEncoding> {
+  const maximizeContrast = opts.maximizeContrast ?? false;
+
+  // 1. Group by condition, sort each group by cell number for a stable index.
+  const groups = new Map<string, CellColorAttrs[]>();
+  for (const c of cells) {
+    const k = conditionKey(c);
+    const g = groups.get(k);
+    if (g) g.push(c);
+    else groups.set(k, [c]);
+  }
+  for (const g of groups.values()) g.sort((a, b) => cellNumber(a) - cellNumber(b));
+
+  // 2. Within-condition replicate index → dash + symbol (orthogonal channel).
+  const dashOf = new Map<CellColorAttrs, LineDash>();
+  const symbolOf = new Map<CellColorAttrs, MarkerSymbol>();
+  for (const g of groups.values()) {
+    g.forEach((c, i) => {
+      dashOf.set(c, DASH_LADDER[i % DASH_LADDER.length]);
+      symbolOf.set(c, SYMBOL_LADDER[i % SYMBOL_LADDER.length]);
+    });
+  }
+
+  // 3. Colour: identity hue or adaptive max-contrast palette.
+  const colorOf = new Map<CellColorAttrs, string>();
+  if (maximizeContrast) {
+    const ranked = [...cells].sort((a, b) => {
+      const ha = conditionHue(a.cathode, a.separatorType, a.spacerMm);
+      const hb = conditionHue(b.cathode, b.separatorType, b.spacerMm);
+      if (ha !== hb) return ha - hb;
+      return cellNumber(a) - cellNumber(b);
+    });
+    ranked.forEach((c, i) => colorOf.set(c, CONTRAST_PALETTE[i % CONTRAST_PALETTE.length]));
+  } else {
+    for (const c of cells) colorOf.set(c, cellIdentityColor(c));
+  }
+
+  // 4. Emit keyed by every identity string consumers resolve with.
+  const map = new Map<string, CellEncoding>();
+  for (const c of cells) {
+    const enc: CellEncoding = {
+      color: colorOf.get(c) ?? cellIdentityColor(c),
+      dash: dashOf.get(c) ?? 'solid',
+      symbol: symbolOf.get(c) ?? 'circle',
+    };
+    for (const key of encodingKeysFor(c)) if (!map.has(key)) map.set(key, enc);
+  }
+  return map;
+}
+
+/** Resolve a cell's encoding from a map built by {@link buildCellEncodings}. */
+export function getCellEncoding(
+  map: Map<string, CellEncoding>,
+  cell: CellColorAttrs,
+): CellEncoding | undefined {
+  for (const key of encodingKeysFor(cell)) {
+    const enc = map.get(key);
+    if (enc) return enc;
+  }
+  return undefined;
+}
+
 const PATH_SATURATION = 58;
 const PATH_LIGHTNESS = 46;
 
@@ -154,6 +277,16 @@ export function pathColorFromHues(hues: number[]): string {
 /** Deterministic fallback for a path key with no resolvable member cells. */
 export function fallbackPathColor(pathKey: string): string {
   return hslToHex(hash01(`path:${pathKey}`) * 360, PATH_SATURATION, PATH_LIGHTNESS);
+}
+
+/**
+ * Canonical solid colour for a cathode, for condition-level surfaces (the Master
+ * Plot overview's trajectory cards / ranking bars / heatmap row dots). A pure
+ * function of the cathode string — the same hue the cathode gets in every
+ * per-cell view and in its tree branch, so it never shifts with the cathode set.
+ */
+export function cathodeColor(cathode?: string | null): string {
+  return pathColorFromHues([cathodeHue(cathode)]);
 }
 
 function hslToHex(h: number, s: number, l: number): string {
