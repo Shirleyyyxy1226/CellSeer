@@ -1,4 +1,4 @@
-"""05 · FR-2 — scoped rate-performance payload.
+"""Scoped rate-performance payload.
 
 Exercises the optional cathode/separator/spacer filtering on
 ``routers.cells.rate_performance`` against the synthetic "P5K" project
@@ -32,7 +32,7 @@ def _unscoped():
     if not cells:
         pytest.skip(
             f"Project {PROJECT!r} has no rate-performance cells in cellseer.db "
-            "— synthetic data absent; skipping FR-2 scope tests."
+            "— synthetic data absent; skipping scope tests."
         )
     return resp
 

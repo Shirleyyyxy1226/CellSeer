@@ -1,4 +1,4 @@
-"""dQ/dV peak-shift reduction for the Master Plot (04 · FR-4).
+"""dQ/dV peak-shift reduction for the Master Plot.
 
 Reduces each cell's stored discharge dQ/dV curve to a single scalar: the voltage
 shift of the dominant redox peak between the start and end of cycling
@@ -6,7 +6,7 @@ shift of the dominant redox peak between the start and end of cycling
 is stable; a growing |ΔV| flags phase-change / impedance growth — a mechanism
 signal the capacity/CE scalars can't surface.
 
-This is a *separate, lazy* aggregate (not part of the FR-1 overview twin / parity
+This is a *separate, lazy* aggregate (not part of the overview twin / parity
 harness): the differential Parquet is large and only the dQ/dV-shift metric needs
 it, so it's fetched on demand and coverage-gated. Reads reuse the same per-file
 cache pattern as backend/routers/cells.py, keyed on (uri, file stamp), so repeat

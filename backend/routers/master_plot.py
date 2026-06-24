@@ -1,4 +1,4 @@
-"""Master Plot overview aggregate endpoint (05 · FR-1).
+"""Master Plot overview aggregate endpoint.
 
 Returns per-condition aggregates + a compact per-cell scalar table for the
 overview, instead of the full per-cycle arrays that /api/rate-performance ships.
@@ -44,11 +44,10 @@ def master_plot_overview(projectId: str | None = Query(default=None)) -> dict:
 
 @router.get("/api/master-plot/peak-shift")
 def master_plot_peak_shift(projectId: str | None = Query(default=None)) -> dict:
-    """Per-cell dQ/dV peak-shift scalars (04 · FR-4).
+    """Per-cell dQ/dV peak-shift scalars.
 
     Lazy / on-demand: the differential Parquet is large and only the
     dQ/dV-shift metric needs it, so the frontend fetches this only when that
-    metric is selected, and greys it out (from the cell index) when the project
-    has no differential data. See master_plot_peakshift.build_peak_shift.
+    metric is selected, and greys it out when the project has no differential data.
     """
     return build_peak_shift(normalize_project_id(projectId))

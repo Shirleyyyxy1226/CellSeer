@@ -1,4 +1,4 @@
-"""05 · FR-1 parity test (Python twin side).
+"""Master Plot parity test (Python twin side).
 
 Asserts backend/master_plot_overview.py produces byte-for-numeric-equal output
 to the TS reference (frontend/.../parity.golden.test.ts) over a shared fixture.

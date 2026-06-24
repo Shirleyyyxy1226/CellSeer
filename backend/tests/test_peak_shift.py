@@ -1,4 +1,4 @@
-"""Tests for the dQ/dV peak-shift reduction (04 · FR-4).
+"""Tests for the dQ/dV peak-shift reduction.
 
 Run from the backend/ dir with `-c /dev/null` (a stray backend/pyproject.toml
 otherwise hijacks pytest's rootdir):

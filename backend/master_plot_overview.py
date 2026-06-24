@@ -1,4 +1,4 @@
-"""Server-side Master Plot overview reduction (05 · FR-1).
+"""Server-side Master Plot overview reduction.
 
 This is the Python twin of the frontend per-cell metric pipeline
 (``frontend/src/features/masterPlot/overview/{metrics,stats,conditions}.ts``).

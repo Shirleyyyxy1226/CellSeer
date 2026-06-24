@@ -943,7 +943,7 @@ def rate_performance(
     """Rate-performance summary JSON from DB cycling datasets (project-scoped).
 
     The optional ``cathode`` / ``separator`` / ``spacer`` filters scope the
-    response to the condition cohort a cell-level view actually draws (05 · FR-2),
+    response to the condition cohort a cell-level view actually draws,
     so the Master Plot can pull just that cohort's per-cycle arrays instead of
     the whole project's tens of MB. The expensive Parquet build is cached
     project-wide by ``_load_rate_cells``; this only narrows the (already-built)
