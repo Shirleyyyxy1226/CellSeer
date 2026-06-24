@@ -7,12 +7,13 @@ import {
   ChevronRight,
   CloudDownload,
   LayoutDashboard,
-  Search,
+  RefreshCw,
   Upload,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { LoadingIndicator } from '@/components/LoadingIndicator';
+import { SearchInput } from '@/components/SearchInput';
 import { CellMetadataCard, FilePresence } from '@/components/CellMetadataCard';
 import {
   fetchCellRecordIndex,
@@ -20,14 +21,14 @@ import {
   fetchUploadLoaders,
   type MetadataUploadOptions,
 } from '@/lib/api';
-import type { IndexCellRaw } from '@/lib/cellTypes';
+import type { IndexCell } from '@/lib/cellTypes';
 import { statusLine } from '@/lib/cellDisplay';
 import { fetchMetadataUploadOptions } from '@/lib/api/uploadApi';
 import { useFileUpload } from '@/hooks/useFileUpload';
 
 type LoaderEntry = { fileType: string; extensions: string[] };
 
-type CellRow = IndexCellRaw;
+type CellRow = IndexCell;
 
 function UploadDropTile(props: {
   title: string;
@@ -515,16 +516,13 @@ export default function ProjectDetailPage() {
                   )}
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="relative">
-                    <Search className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
-                    <input
-                      type="text"
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
-                      placeholder="Search cell, cathode, separator…"
-                      className="h-7 w-[220px] rounded-md border border-border bg-background pl-7 pr-2 text-[11px] placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
-                    />
-                  </div>
+                  <SearchInput
+                    collapsible
+                    value={search}
+                    onChange={setSearch}
+                    placeholder="Search cell, cathode, separator…"
+                    widthClass="w-[220px]"
+                  />
                   <button
                     type="button"
                     onClick={expandAll}

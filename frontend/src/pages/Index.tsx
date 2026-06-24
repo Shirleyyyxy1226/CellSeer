@@ -14,8 +14,8 @@ import { useCellSelection } from '@/contexts/CellSelectionContext';
 import { useTreeFilter } from '@/contexts/TreeFilterContext';
 import { useProtocolFilter } from '@/contexts/ProtocolFilterContext';
 import { useCellRecordIndexQuery, useRatePerformanceQuery } from '@/hooks/useCellData';
-import type { RatePerfCellRaw } from '@/lib/cellTypes';
-import { House, Menu } from 'lucide-react';
+import type { RatePerfCell } from '@/lib/cellTypes';
+import { House, PanelLeft } from 'lucide-react';
 import { type ImperativePanelHandle, Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 
 type Tab =
@@ -73,14 +73,14 @@ const Index = () => {
   // rateperf-hier tab; every other tab's component self-fetches it when it
   // needs it (and shares the React Query cache). Gating the fetch keeps the
   // Master Plot tab from pulling a tens-of-MB payload it can serve from the
-  // lightweight overview aggregate at scale (05 · FR-1).
+  // lightweight overview aggregate at scale.
   const rateQuery = useRatePerformanceQuery({ enabled: activeTab === 'rateperf-hier' });
   const treeCells = useMemo(
     () => (indexQuery.data?.cells ?? []) as TreeCell[],
     [indexQuery.data],
   );
   const rateCells = useMemo(
-    () => (rateQuery.data?.cells ?? []) as RatePerfCellRaw[],
+    () => (rateQuery.data?.cells ?? []) as RatePerfCell[],
     [rateQuery.data],
   );
   const rateProtocols = rateQuery.data?.protocols ?? [];
@@ -118,7 +118,10 @@ const Index = () => {
     );
   }, []);
 
-  const showRightPanel = detailPanelOpen;
+  // The Cell-details panel applies to the chart tabs. The Hierarchy Tree and
+  // Master Plot views exclude it.
+  const showRightPanel =
+    detailPanelOpen && activeTab !== 'tree' && activeTab !== 'particle-master';
 
   const filteredTreeCells = useMemo(() => {
     return treeCells.filter((c) => {
@@ -148,17 +151,8 @@ const Index = () => {
       {/* Header — brand + browser-style tabs on a single compact row */}
       <header className="shrink-0 border-b border-border bg-card">
         <div className="flex items-end gap-3 px-3 pt-1.5">
-          {/* Left: menu + home + brand */}
+          {/* Left: home + brand */}
           <div className="flex items-center gap-1.5 pb-1.5 shrink-0">
-            {activeTab !== 'tree' && activeTab !== 'particle-master' && (
-              <button
-                onClick={handleToggleLeftSidebar}
-                className="p-1 rounded-md hover:bg-secondary transition-colors text-foreground"
-                aria-label={leftSidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
-              >
-                <Menu className="h-4 w-4" />
-              </button>
-            )}
             <Link
               to="/"
               aria-label="Go to Home"
@@ -241,7 +235,21 @@ const Index = () => {
           )}
         </div>
       ) : (
-      <div className="flex-1 min-h-0 flex min-w-0">
+      <div className={`relative flex-1 min-h-0 flex min-w-0 ${!leftSidebarOpen ? 'pl-10' : ''}`}>
+        {/* Re-expand affordance — floats at the top-left of the content area
+            (just below the header) only while the sidebar is collapsed. The
+            pl-10 above reserves room so it never covers the chart title. */}
+        {!leftSidebarOpen && (
+          <button
+            type="button"
+            onClick={handleToggleLeftSidebar}
+            aria-label="Expand sidebar"
+            title="Expand sidebar"
+            className="absolute top-2 left-2 z-20 inline-flex items-center justify-center rounded-md border border-border bg-card shadow-sm p-1 text-foreground hover:bg-secondary transition-colors"
+          >
+            <PanelLeft className="h-3.5 w-3.5" />
+          </button>
+        )}
         <PanelGroup direction="horizontal" autoSaveId="cellseer-layout" className="flex-1 min-h-0 flex min-w-0">
           {/* Left sidebar */}
           <>
@@ -269,6 +277,7 @@ const Index = () => {
                         protocolFilter={activeTab === 'rateperf-hier' ? protocolFilter : 'All'}
                         onProtocolFilter={activeTab === 'rateperf-hier' ? setProtocolFilter : () => {}}
                         rateCellsForProtocol={activeTab === 'rateperf-hier' ? rateCells : []}
+                        onCollapse={handleToggleLeftSidebar}
                       />
                     </div>
                   </div>

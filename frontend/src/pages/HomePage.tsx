@@ -6,12 +6,11 @@ import {
   LayoutDashboard,
   Pencil,
   Plus,
-  Search,
   Trash2,
   X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/SearchInput';
 import {
   Dialog,
   DialogContent,
@@ -244,16 +243,13 @@ export default function HomePage() {
       <main className="mx-auto max-w-6xl px-6 py-5">
         {/* ── Browse toolbar ───────────────────────────────────────── */}
         <div className="mb-4 flex flex-wrap items-center gap-2">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search projects or chemistries…"
-              className="h-8 w-72 pl-8 text-sm"
-              aria-label="Search projects"
-            />
-          </div>
+          <SearchInput
+            value={query}
+            onChange={setQuery}
+            placeholder="Search projects or chemistries…"
+            widthClass="w-72"
+            aria-label="Search projects"
+          />
           <Select value={sortKey} onValueChange={(v) => setSortKey(v as SortKey)}>
             <SelectTrigger className="h-8 w-[210px] text-sm" aria-label="Sort projects">
               <span className="mr-1 text-xs text-muted-foreground">Sort:</span>
