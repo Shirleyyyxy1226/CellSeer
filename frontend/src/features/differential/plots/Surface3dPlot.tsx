@@ -116,7 +116,7 @@ export function Surface3dPlot({
         xaxis: {
           ...overrideScene?.xaxis,
           title: { text: xText, font: baseFont },
-          range: xValues.length > 0 ? [Math.min(...xValues), Math.max(...xValues)] : (overrideScene?.xaxis as { range?: unknown } | undefined)?.range,
+          range: xValues.length > 0 ? [Math.min(...xValues), Math.max(...xValues)] : overrideScene?.xaxis?.range,
           gridcolor: '#e0e0e0',
           tickfont: tickFont,
         },

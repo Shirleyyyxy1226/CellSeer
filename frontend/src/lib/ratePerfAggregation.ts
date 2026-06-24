@@ -14,13 +14,14 @@ import {
   getCellEncoding,
   pathColorFromHues,
 } from './cellColorScheme';
+import type { CellColorAttrs } from './cellColorScheme';
 import type { CellEncoding, LineDash, MarkerSymbol } from 'cellseer-lib';
 
 import type { RatePerfCell as CyclingCellLike } from '@/lib/cellTypes';
 
 const DEFAULT_COLOR = '#6b7280';
 
-function colorFromCellIdentity(cell: CyclingCellLike): string {
+function colorFromCellIdentity(cell: CellColorAttrs): string {
   return cellIdentityColor(cell);
 }
 
@@ -167,7 +168,7 @@ export function resolveHierarchyCellValue(
     const fromMeta = resolveValueFromRecord(metadataRow, field);
     if (fromMeta) return fromMeta;
   }
-  const fromCell = resolveValueFromRecord(cell as Record<string, unknown>, field);
+  const fromCell = resolveValueFromRecord(cell as unknown as Record<string, unknown>, field);
   if (fromCell) return fromCell;
   const normalized = normalizeHeaderKey(field);
   if (normalized === 'cell' || normalized === 'cell_id' || normalized === 'id_no' || normalized === 'idno') {
@@ -372,7 +373,7 @@ function colorForPath(pathKey: string, pathToColorMap?: Map<string, string>): st
   return pathToColorMap?.get(pathKey) ?? fallbackPathColor(pathKey);
 }
 
-function colorForIndividualCell(cell: CyclingCellLike): string {
+function colorForIndividualCell(cell: CellColorAttrs): string {
   return colorFromCellIdentity(cell);
 }
 
@@ -544,7 +545,7 @@ export function buildTraces(opts: TraceOptions): AggregatedTrace[] {
 
 /** Get color for a cell (e.g. initial voltage chart). Same path string = same color everywhere. */
 export function getColorForCell(
-  cell: CyclingCellLike,
+  cell: CellColorAttrs,
   _treeFilterPath: TreeFilterPath,
   _hierCols: ColStats[],
   _pathToColorMap?: Map<string, string>,

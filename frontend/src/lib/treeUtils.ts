@@ -186,7 +186,10 @@ export function assignColourMapPerceptual(hierCols: ColStats[]): Record<string, 
 export function formatNodeLabel(
   rawVal: string,
   levelIdx: number,
-  annotations: (Annotation | null)[],
+  // Only `map` and `unit` are read here, so accept any structural subset of
+  // Annotation (rate-perf builds lightweight {map, unit} entries without
+  // col/header). Full Annotation[] callers remain compatible.
+  annotations: ({ map?: Record<string, string>; unit?: string } | null)[],
   labelDecorations: LabelDecoration[],
 ): string {
   const dec = labelDecorations[levelIdx];

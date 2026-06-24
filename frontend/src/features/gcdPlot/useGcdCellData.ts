@@ -7,6 +7,7 @@ import {
 import { useCellSelection } from '@/contexts/CellSelectionContext';
 import { useProjectHierarchy } from '@/contexts/ProjectHierarchyContext';
 import { useTreeFilter } from '@/contexts/TreeFilterContext';
+import type { RatePerfCell } from '@/lib/cellTypes';
 
 /** Full record per cycle - PyProBE columns (Voltage [V], Capacity [Ah], Current [A], etc.) */
 export interface RecordCurve {
@@ -26,18 +27,11 @@ export interface VQCellIndex {
   datasets?: { name?: string }[];
 }
 
-/** Rate performance cell from rate-performance.json */
-export interface RatePerfCell {
-  idNo: number;
-  cellId: string;
-  cellName: string;
-  cycles: number[];
-  dischargeCapacityMah: number[];
-  chargeCapacityMah?: number[];
-  specificCapacityMahG: number[] | null;
-  cRates?: number[];
-  protocolSegments?: { cycleStart: number; cycleEnd: number; cRate: number }[];
-}
+/** Rate performance cell from rate-performance.json. Canonical shape lives in
+ *  cellTypes (includes cathode/separatorType/spacerMm needed by the colour and
+ *  rate-performance plot code); re-exported so GCD shares one definition rather
+ *  than a stale duplicate that drops the hierarchy fields. */
+export type { RatePerfCell };
 
 export interface VQCell extends VQCellIndex {
   curves: Record<string, RecordCurve>;
