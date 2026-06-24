@@ -233,7 +233,6 @@ const GcdDashboard = ({
       });
       return { traces: fig.data, gcdTraceIndexToCell: traceIndexMap };
     } catch (e) {
-      console.warn('VoltageCapacityPanel: error building traces', e);
       return { traces: [] as Plotly.Data[], gcdTraceIndexToCell: new Map<number, { idNo: number; cellName: string }>() };
     }
   }, [recordDatasets, gcdCycleSubset, showConnectedLine, gcdDirection, combinedHighlightCycle, isSingleCell, zoomFocusCycle]);
@@ -283,7 +282,6 @@ const GcdDashboard = ({
       });
       return fig.data;
     } catch (e) {
-      console.warn('VoltageCapacityPanel: error building combined traces', e);
       return [];
     }
   }, [recordDatasets, allowedCycles, combinedHighlightCycle]);
@@ -355,7 +353,7 @@ const GcdDashboard = ({
           maxPointsPerTrace: MAX_PTS_TRACE,
         }).data;
       } catch (e) {
-        console.warn('GcdDashboard: per-cell cumulative build failed', e);
+        void e;
       }
       return { id: rd.id, label: rd.label, data };
     });
@@ -571,11 +569,6 @@ const GcdDashboard = ({
     [ceSeriesByCell],
   );
 
-  const ceExcluded = useMemo(
-    () => ceSeriesByCell.reduce((a, s) => a + s.excluded, 0),
-    [ceSeriesByCell],
-  );
-
   // CE is a protocol-conditioned quantity (C-rate, voltage window, CV holds all
   // shift it), so comparing cells run under DIFFERENT protocols can mislead —
   // a CE gap may be the protocol, not the cell. Warn when ≥2 charted cells have
@@ -780,11 +773,6 @@ const GcdDashboard = ({
                       className="relative shrink-0 bg-white dark:bg-card rounded overflow-hidden"
                       style={{ width: chartW, height }}
                     >
-                      <div className="absolute top-2 left-2 z-10 flex items-center gap-1 pointer-events-none">
-                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-muted/80 text-muted-foreground">
-                          Basis: {cumulativeBasisBadge}
-                        </span>
-                      </div>
                       <PlotlyChart
                         exportContext={exportContext}
                         key={`combined-${chartW}-${height}`}
@@ -1088,12 +1076,6 @@ const GcdDashboard = ({
                   </>
                 )}
               </ResizableChartCard>
-              {ceExcluded > 0 && (
-                <p className="text-[10px] text-muted-foreground">
-                  {ceExcluded} cycle{ceExcluded === 1 ? '' : 's'} excluded from CE (near-zero
-                  capacity or out-of-range ratio).
-                </p>
-              )}
             </>
           )}
         </div>

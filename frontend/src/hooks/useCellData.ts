@@ -41,7 +41,7 @@ function rateScopeKey(scope?: RateScope): string {
  * Per-cycle rate-performance payload.
  * - `enabled` lets callers defer the fetch (tens of MB at scale) until a view
  *   that needs per-cycle data is actually shown.
- * - `scope` narrows it to one condition cohort (05 · FR-2) so cell-level views
+ * - `scope` narrows it to one condition cohort so cell-level views
  *   pull only what they draw. The scope is part of the cache key, so two callers
  *   on the same cohort (e.g. trajectories + parcoords) share one fetch, and an
  *   unscoped call still matches the full-project entry.
@@ -59,7 +59,7 @@ export function useRatePerformanceQuery(options?: { enabled?: boolean; scope?: R
 }
 
 /**
- * Master Plot overview aggregate (05 · FR-1): per-condition stats + per-cell
+ * Master Plot overview aggregate: per-condition stats + per-cell
  * scalars, with no per-cycle arrays. A fraction of the rate-performance payload,
  * used to drive the condition views (heatmap / ranking / treemap)
  * for large projects. Disabled by default — the orchestrator enables it only
@@ -77,7 +77,7 @@ export function useMasterPlotOverviewQuery(options?: { enabled?: boolean }) {
 }
 
 /**
- * dQ/dV peak-shift scalars (04 · FR-4). Disabled by default — the overview
+ * dQ/dV peak-shift scalars. Disabled by default — the overview
  * enables it only when the peak-shift metric is selected, since the reduction
  * reads the (large) differential Parquet for every cell.
  */

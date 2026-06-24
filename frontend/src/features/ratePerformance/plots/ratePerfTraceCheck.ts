@@ -1,4 +1,4 @@
-import type { RatePerfCellRaw as NewareCell } from '@/lib/cellTypes';
+import type { RatePerfCell as CyclingCell } from '@/lib/cellTypes';
 import type { ChargeDirection } from '@/components/DirectionToggle';
 
 /**
@@ -12,7 +12,7 @@ import type { ChargeDirection } from '@/components/DirectionToggle';
  * "I selected charge but nothing shows up" before).
  */
 export function hasRatePerfTraces(
-  filteredCells: NewareCell[],
+  filteredCells: CyclingCell[],
   direction: ChargeDirection,
 ): boolean {
   if (filteredCells.length === 0) return false;

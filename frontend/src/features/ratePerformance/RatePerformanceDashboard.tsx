@@ -89,7 +89,6 @@ const RatePerformanceDashboard = (_: Props) => {
     xAxisLabel: 'Cycle number',
     yAxisLabel: 'Capacity (mAh g⁻¹)',
     showConnectedLine: false,
-    // Enables the "Maximise contrast" toggle in the chart Edit popover (R2).
     maximizeContrast: false,
   });
   const { fontFamily, titleFontSize, labelFontSize, legendFontSize } = appearance.config;
@@ -234,7 +233,6 @@ const RatePerformanceDashboard = (_: Props) => {
     specificCapacityCount > 0 &&
     specificCapacityCount < filteredNeware.length;
   const excludedCount = filteredNeware.length - specificCapacityCount;
-  const activeYUnit = useSpecificCapacity ? 'mAh g⁻¹' : 'mAh';
 
   const cellRecords = useMemo((): VoltageTimeCellRecord[] =>
     filteredNeware
@@ -405,12 +403,6 @@ const RatePerformanceDashboard = (_: Props) => {
               {({ width, height, ResizeHandle }) => (
                 <>
                   <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
-                    <DirectionToggle
-                      value={direction}
-                      onChange={setDirection}
-                      disabled={noSelection}
-                      title={noSelection ? 'Select a hierarchy node first' : undefined}
-                    />
                     <div className="flex items-center gap-2">
                       <Button
                         variant="outline"
@@ -441,15 +433,18 @@ const RatePerformanceDashboard = (_: Props) => {
                         Drill into next level
                       </Button>
                     </div>
+                    <DirectionToggle
+                      value={direction}
+                      onChange={setDirection}
+                      disabled={noSelection}
+                      title={noSelection ? 'Select a hierarchy node first' : undefined}
+                    />
                   </div>
                   {hasPlot && activeAnalysis ? (
                     <>
                     <div className="relative bg-white dark:bg-card rounded" style={{ width, height }}>
-                      {/* Y-axis unit badge + mixed-capacity warning */}
+                      {/* Mixed-capacity warning */}
                       <div className="absolute bottom-2 left-2 z-10 flex flex-col gap-1 items-start pointer-events-none">
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-background/80 border border-border/60 text-muted-foreground backdrop-blur-sm">
-                          Y: {activeYUnit}
-                        </span>
                         {mixedCapacityWarning && (
                           <span className="px-2 py-1 rounded-md text-[10.5px] bg-yellow-50 border border-yellow-300 text-yellow-800 dark:bg-yellow-900/30 dark:border-yellow-700 dark:text-yellow-300 max-w-[280px] leading-snug pointer-events-auto">
                             Plotting specific capacity (mAh g⁻¹).
