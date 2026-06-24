@@ -16,16 +16,16 @@ import { useTreeFilter } from '@/contexts/TreeFilterContext';
 import { useProjectHierarchy } from '@/contexts/ProjectHierarchyContext';
 import { getPathFromRootToNode, collectPreLeafNodeKeys, type TreeNode } from '@/lib/treeUtils';
 import { buildCanonicalCellColorMap, buildPathToColorMap } from '@/lib/ratePerfAggregation';
-import type { IndexCellRaw, RatePerfCellRaw } from '@/lib/cellTypes';
+import type { IndexCell, RatePerfCell } from '@/lib/cellTypes';
 import { useDimensions } from '@/hooks/useDimensions';
 import { useTreeLayout } from '@/hooks/useTreeLayout';
 
 interface PublicTreeFilterSidebarProps {
-  cells: IndexCellRaw[];
+  cells: IndexCell[];
   protocols?: string[];
   protocolFilter?: string;
   onProtocolFilter?: (v: string) => void;
-  rateCellsForProtocol?: RatePerfCellRaw[];
+  rateCellsForProtocol?: RatePerfCell[];
 }
 
 export function PublicTreeFilterSidebar({
@@ -78,7 +78,7 @@ export function PublicTreeFilterSidebar({
   const pathToColorMap = useMemo(
     () =>
       cells.length
-        ? buildPathToColorMap(cells as unknown as RatePerfCellRaw[], activeAnalysis?.hierCols ?? [])
+        ? buildPathToColorMap(cells as unknown as RatePerfCell[], activeAnalysis?.hierCols ?? [])
         : new Map<string, string>(),
     [cells, activeAnalysis?.hierCols],
   );
@@ -86,7 +86,7 @@ export function PublicTreeFilterSidebar({
   const cellColorMap = useMemo(
     () =>
       cells.length
-        ? buildCanonicalCellColorMap(cells as unknown as RatePerfCellRaw[])
+        ? buildCanonicalCellColorMap(cells as unknown as RatePerfCell[])
         : new Map<string, string>(),
     [cells],
   );
@@ -168,7 +168,7 @@ export function PublicTreeFilterSidebar({
               usePerceptualColors
               cellColorMap={cellColorMap}
               pathToColorMap={pathToColorMap}
-              cells={cells as unknown as RatePerfCellRaw[]}
+              cells={cells as unknown as RatePerfCell[]}
               annotationsByCell={annotationsByCell}
               onCellSelect={handleCellSelect}
               selectedCellIds={selectedCellIds}

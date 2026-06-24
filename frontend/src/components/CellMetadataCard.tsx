@@ -18,7 +18,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, ChevronDown, ChevronUp, Clock, Paperclip, Pencil } from 'lucide-react';
 
-import type { CellDatasetSummary, IndexCellRaw } from '@/lib/cellTypes';
+import type { CellDatasetSummary, IndexCell } from '@/lib/cellTypes';
 import { updateCellMetadata } from '@/lib/api';
 import {
   buildPatch,
@@ -43,7 +43,7 @@ import { ProtocolStatusChip } from '@/features/protocol';
 export type CellMetadataLayout = 'wide' | 'narrow';
 
 export interface CellMetadataCardProps {
-  cell: IndexCellRaw;
+  cell: IndexCell;
   /** `wide` = drawer (2-col), `narrow` = sidebar (1-col + smaller spacing). */
   layout?: CellMetadataLayout;
   /** Fires after a successful metadata PATCH. Parent should refetch index. */

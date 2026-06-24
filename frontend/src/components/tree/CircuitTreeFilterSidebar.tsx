@@ -1,12 +1,11 @@
-/* CircuitTreeFilterSidebar.tsx — sidebar chrome around the new
-   CircuitTreeMindmap. Forked from PublicTreeFilterSidebar so that the
-   original lives on disk for comparison.
+/* CircuitTreeFilterSidebar.tsx — sidebar panel wrapping CircuitTreeMindmap.
 
-   Visual reference: the "Cell hierarchy filter" card in B_Mini Board —
-   header with title + sub-text + stats, GROUP BY chips, search box,
-   Single / Multi toggle, expand/collapse, and a footer legend. */
+   Provides header (title + stats), hierarchy-column GROUP BY chips,
+   search box, Single / Multi selection toggle, expand/collapse controls,
+   and a footer legend. */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { PanelLeftClose } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -18,6 +17,7 @@ import {
 import { CircuitTreeMindmap } from '@/components/tree/CircuitTreeMindmap';
 import { HierarchyEditor } from '@/components/tree/HierarchyEditor';
 import { LoadingIndicator } from '@/components/LoadingIndicator';
+import { SearchInput } from '@/components/SearchInput';
 import { useCellSelection } from '@/contexts/CellSelectionContext';
 import { useTreeFilter } from '@/contexts/TreeFilterContext';
 import { useProjectHierarchy } from '@/contexts/ProjectHierarchyContext';
@@ -29,17 +29,18 @@ import {
   type TreeNode,
 } from '@/lib/treeUtils';
 import { buildCanonicalCellColorMap, buildPathToColorMap } from '@/lib/ratePerfAggregation';
-import type { IndexCellRaw, RatePerfCellRaw } from '@/lib/cellTypes';
+import type { IndexCell, RatePerfCell } from '@/lib/cellTypes';
 
 interface CircuitTreeFilterSidebarProps {
-  cells: IndexCellRaw[];
+  cells: IndexCell[];
   protocols?: string[];
   protocolFilter?: string;
   onProtocolFilter?: (v: string) => void;
-  rateCellsForProtocol?: RatePerfCellRaw[];
+  rateCellsForProtocol?: RatePerfCell[];
+  /** Collapse the whole left sidebar (button lives in the sidebar header). */
+  onCollapse?: () => void;
 }
 
-const LINEAGE_DOT = ['#2864c8', '#ce6014', '#c43250', '#3a8a4a'];
 
 function collectAllBranchKeys(root: TreeNode): Set<string> {
   const keys = new Set<string>();
@@ -61,6 +62,7 @@ export function CircuitTreeFilterSidebar({
   protocolFilter = 'All',
   onProtocolFilter,
   rateCellsForProtocol = [],
+  onCollapse,
 }: CircuitTreeFilterSidebarProps) {
   const {
     handleCellSelect,
@@ -101,7 +103,7 @@ export function CircuitTreeFilterSidebar({
   const pathToColorMap = useMemo(
     () =>
       cells.length
-        ? buildPathToColorMap(cells as unknown as RatePerfCellRaw[], analysis?.hierCols ?? [])
+        ? buildPathToColorMap(cells as unknown as RatePerfCell[], analysis?.hierCols ?? [])
         : new Map<string, string>(),
     [cells, analysis?.hierCols],
   );
@@ -109,7 +111,7 @@ export function CircuitTreeFilterSidebar({
   const cellColorMap = useMemo(
     () =>
       cells.length
-        ? buildCanonicalCellColorMap(cells as unknown as RatePerfCellRaw[])
+        ? buildCanonicalCellColorMap(cells as unknown as RatePerfCell[])
         : new Map<string, string>(),
     [cells],
   );
@@ -144,7 +146,6 @@ export function CircuitTreeFilterSidebar({
   // so the group checkbox reflects the selected state.
   const handleGroupToggle = useCallback(
     (cellIds: number[]) => {
-      console.log('[groupToggle] cellIds:', cellIds.length, cellIds.slice(0, 5), 'prevSelected:', selectedCellIds.length);
       if (!cellIds.length) return;
       const next = new Set(selectedCellIds);
       const allSelected = cellIds.every((id) => next.has(id));
@@ -189,25 +190,38 @@ export function CircuitTreeFilterSidebar({
 
   return (
     <div className="flex flex-col h-full gap-2 overflow-hidden">
-      {/* Compact stats strip — replaces the bigger title card */}
-      <div className="shrink-0 flex items-center justify-end gap-3 px-1">
-        <div className="flex items-baseline gap-1.5">
-          <span className="text-[11px] tracking-[0.12em] uppercase text-muted-foreground">
-            Selected
-          </span>
-          <span className="text-[12px] font-semibold text-foreground tabular-nums">
-            {selectedCount}
-          </span>
+      {/* Top header strip — stats on the left, collapse button on the right. */}
+      <div className="shrink-0 flex items-center justify-between gap-3 px-1">
+        <div className="flex items-center gap-3">
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-[11px] tracking-[0.12em] uppercase text-muted-foreground">
+              Selected
+            </span>
+            <span className="text-[12px] font-semibold text-foreground tabular-nums">
+              {selectedCount}
+            </span>
+          </div>
+          <div className="w-px h-3.5 bg-border" />
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-[11px] tracking-[0.12em] uppercase text-muted-foreground">
+              Cells
+            </span>
+            <span className="text-[12px] font-semibold text-foreground tabular-nums">
+              {totalCells}
+            </span>
+          </div>
         </div>
-        <div className="w-px h-3.5 bg-border" />
-        <div className="flex items-baseline gap-1.5">
-          <span className="text-[11px] tracking-[0.12em] uppercase text-muted-foreground">
-            Cells
-          </span>
-          <span className="text-[12px] font-semibold text-foreground tabular-nums">
-            {totalCells}
-          </span>
-        </div>
+        {onCollapse && (
+          <button
+            type="button"
+            onClick={onCollapse}
+            title="Collapse sidebar"
+            aria-label="Collapse sidebar"
+            className="shrink-0 p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          >
+            <PanelLeftClose className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
       {/* GROUP BY editor (existing component, slight chrome wrap) */}
@@ -226,57 +240,19 @@ export function CircuitTreeFilterSidebar({
         </div>
       )}
 
-      {/* Search + actions row */}
-      <div className="shrink-0 flex items-center gap-2">
-        <div className="relative flex-1 min-w-0">
-          <span
-            className="pointer-events-none absolute inset-y-0 left-2 flex items-center text-muted-foreground"
-            aria-hidden
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-              <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.8" />
-              <path d="M20 20l-3.5-3.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-            </svg>
-          </span>
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search nodes or cell names…"
-            className="w-full h-8 pl-7 pr-2 text-[11px] rounded-md border border-border bg-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
-          />
-        </div>
-        <button
-          type="button"
-          onClick={expandAll}
-          className="h-8 px-2.5 text-[10.5px] rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-          title="Expand all"
-        >
-          Expand all
-        </button>
-        <button
-          type="button"
-          onClick={collapseAll}
-          className="h-8 px-2.5 text-[10.5px] rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-          title="Collapse all"
-        >
-          Collapse all
-        </button>
-      </div>
-
-      {/* Single / Multi toggle row */}
-      <div className="shrink-0 flex items-center gap-2">
+      {/* Select / search / expand-collapse — one row to save vertical space */}
+      <div className="shrink-0 flex items-center gap-2 flex-wrap px-2.5 py-2 rounded-md bg-background">
         <span className="text-[11px] tracking-[0.12em] uppercase text-muted-foreground">
           Select
         </span>
-        <div className="flex items-center rounded-md border border-border overflow-hidden">
+        <div className="flex items-center rounded-md border border-input shadow-sm overflow-hidden">
           <button
             type="button"
             onClick={() => setMultiselectionMode(false)}
             className={`px-2.5 h-7 text-[11px] inline-flex items-center gap-1.5 transition-colors ${
               !multiselectionMode
                 ? 'bg-primary text-primary-foreground'
-                : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                : 'bg-muted text-muted-foreground hover:text-foreground'
             }`}
             aria-pressed={!multiselectionMode}
           >
@@ -296,7 +272,7 @@ export function CircuitTreeFilterSidebar({
             className={`px-2.5 h-7 text-[11px] inline-flex items-center gap-1.5 border-l border-border transition-colors ${
               multiselectionMode
                 ? 'bg-primary text-primary-foreground'
-                : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                : 'bg-muted text-muted-foreground hover:text-foreground'
             }`}
             aria-pressed={multiselectionMode}
           >
@@ -309,6 +285,41 @@ export function CircuitTreeFilterSidebar({
               }`}
             />
             Multi
+          </button>
+        </div>
+
+        {/* Search + expand/collapse pinned to the end of the row */}
+        <div className="ml-auto flex items-center gap-2">
+          <SearchInput
+            collapsible
+            value={searchQuery}
+            onChange={setSearchQuery}
+            placeholder="Search nodes or cell names…"
+            widthClass="w-48"
+          />
+          <button
+            type="button"
+            onClick={expandAll}
+            className={`h-8 px-2.5 text-[10.5px] rounded-md border border-input shadow-sm transition-colors ${
+              collapsedBranchKeys.size === 0 && collapsedPreLeafNodeKeys.size === 0
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-muted text-muted-foreground hover:text-foreground'
+            }`}
+            title="Expand all"
+          >
+            Expand all
+          </button>
+          <button
+            type="button"
+            onClick={collapseAll}
+            className={`h-8 px-2.5 text-[10.5px] rounded-md border border-input shadow-sm transition-colors ${
+              collapsedBranchKeys.size > 0 || collapsedPreLeafNodeKeys.size > 0
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-muted text-muted-foreground hover:text-foreground'
+            }`}
+            title="Collapse all"
+          >
+            Collapse all
           </button>
         </div>
       </div>
@@ -331,7 +342,7 @@ export function CircuitTreeFilterSidebar({
               pathToColorMap={pathToColorMap}
               cellColorMap={cellColorMap}
               usePerceptualColors
-              cells={cells as unknown as RatePerfCellRaw[]}
+              cells={cells as unknown as RatePerfCell[]}
               annotationsByCell={annotationsByCell}
               onCellSelect={handleCellSelect}
               protocolFilteredOutCellIds={protocolFilteredOutCellIds}
@@ -349,23 +360,6 @@ export function CircuitTreeFilterSidebar({
           )}
         </div>
 
-        {/* Footer legend */}
-        {analysis && analysis.hierCols.length > 0 && (
-          <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 border-t border-border bg-muted/30 text-[10px] text-muted-foreground">
-            <div className="flex items-center gap-3 min-w-0 overflow-hidden">
-              {analysis.hierCols.slice(0, 4).map((c, i) => (
-                <span key={c.j} className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                  <span
-                    aria-hidden
-                    className="inline-block w-2 h-2 rounded-full"
-                    style={{ background: LINEAGE_DOT[i % LINEAGE_DOT.length] }}
-                  />
-                  <span>{c.header}</span>
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
 
       {protocols.length > 0 && !!onProtocolFilter && (

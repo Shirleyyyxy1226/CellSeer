@@ -1,15 +1,11 @@
-/* CircuitTreeMindmap.tsx — chip-card "mindmap" tree (forks TreeSvg).
+/* CircuitTreeMindmap.tsx — chip-card "mindmap" tree.
 
-   Style fork inspired by tree-circuit-cells.jsx / Mini Board:
-   - Branch nodes are HTML chip-cards (colored left bar + shape + label +
-     count badge + caret) instead of bare SVG dots.
-   - Edges are orthogonal "bus" routes (parent → mid-column bus →
-     child) with thickness proportional to descendant count.
-   - Column gutters get numbered "01 · CATHODE" mono headers + a faint
-     vertical rail tint to make depth columns scannable.
-
-   This is a parallel implementation to TreeSvg.tsx — the original file
-   is left untouched so the legacy curved-edge tree can still be used. */
+   Branch nodes are HTML chip-cards (coloured left bar + label +
+   count badge + caret) instead of bare SVG dots. Edges are orthogonal
+   "bus" routes (parent → mid-column bus → child) with thickness
+   proportional to descendant count. Column gutters get numbered
+   "01 · CATHODE" mono headers and a faint vertical rail tint to make
+   depth columns scannable. */
 
 import {
   useEffect,
@@ -33,9 +29,8 @@ import {
 } from '@/lib/treeUtils';
 import { cellIdentityColor } from '@/lib/cellColorScheme';
 
-/** Column-level palette for the "leftmost lineage" colour. Keeps the
- *  chip-card and edge color the same regardless of depth, like the
- *  Mini Board mockup where each branch keeps its first-column tint. */
+/** Column-level palette for the "leftmost lineage" colour. Each branch
+ *  chip and its outgoing edges share the same tint regardless of depth. */
 const LINEAGE_PALETTE = [
   '#2864c8', // blue   — cathode-1
   '#ce6014', // amber  — cathode-2
@@ -417,57 +412,6 @@ function NodeCaret({
   );
 }
 
-function ShapeIcon({ depth, color, tint }: { depth: number; color: string; tint: string }) {
-  const size = 17;
-  const r = 6;
-  const cx = size / 2;
-  const cy = size / 2;
-  if (depth === 1) {
-    return (
-      <svg width={size} height={size}>
-        <circle cx={cx} cy={cy} r={r} fill={tint} stroke={color} strokeWidth="1.4" />
-      </svg>
-    );
-  }
-  if (depth === 2) {
-    return (
-      <svg width={size} height={size}>
-        <rect
-          x={cx - r}
-          y={cy - r}
-          width={r * 2}
-          height={r * 2}
-          rx={1.4}
-          fill={tint}
-          stroke={color}
-          strokeWidth="1.4"
-        />
-      </svg>
-    );
-  }
-  if (depth === 3) {
-    return (
-      <svg width={size} height={size}>
-        <polygon
-          points={`${cx},${cy - r} ${cx + r},${cy} ${cx},${cy + r} ${cx - r},${cy}`}
-          fill={tint}
-          stroke={color}
-          strokeWidth="1.4"
-        />
-      </svg>
-    );
-  }
-  return (
-    <svg width={size} height={size}>
-      <polygon
-        points={`${cx},${cy - r} ${cx + r * 0.87},${cy + r * 0.5} ${cx - r * 0.87},${cy + r * 0.5}`}
-        fill={tint}
-        stroke={color}
-        strokeWidth="1.4"
-      />
-    </svg>
-  );
-}
 
 /* ───── Main component ───── */
 
@@ -791,7 +735,9 @@ export function CircuitTreeMindmap(props: CircuitTreeMindmapProps) {
       const busX = parent.depth === 0 ? layout.trunkBusX : (x1 + x2) / 2;
       const y1 = parentY;
       const y2 = layout.positions.get(n.uid) ?? parentY;
-      const onSelectedPath = selectedLineageUids.has(n.uid);
+      const onSelectedPath = selectedLineageUids.size > 0
+        ? selectedLineageUids.has(n.uid)
+        : isInStream(n);
       const stroke = onSelectedPath || active?.has(n.uid) ? colourForNode(n) : '#aab7c4';
       const opacity = onSelectedPath
         ? 1
@@ -816,7 +762,7 @@ export function CircuitTreeMindmap(props: CircuitTreeMindmapProps) {
     // `colourForNode` and `chipMinW` are derived from props/state already in
     // the dep list; the helper closure is re-created each render by design.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibleNodes, layout, metaByKey, active, cells, colourMaps, pathToColorMap, cellColorMap, selectedLineageUids]);
+  }, [visibleNodes, layout, metaByKey, active, cells, colourMaps, pathToColorMap, cellColorMap, selectedLineageUids, pathMatch]);
 
   /* ── Trunk (depth-1 vertical rail) ─────────────────────────────────── */
   const trunk = useMemo(() => {
@@ -1383,7 +1329,6 @@ export function CircuitTreeMindmap(props: CircuitTreeMindmapProps) {
                   )}
                 </span>
               )}
-              <ShapeIcon depth={n.depth} color={baseColor} tint={tint} />
               <span
                 style={{
                   flex: 1,

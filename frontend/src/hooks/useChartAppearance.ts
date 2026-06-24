@@ -35,6 +35,9 @@ export function useChartAppearance(
   const [showConnectedLine, setShowConnectedLine] = useState<boolean | undefined>(
     initial.showConnectedLine,
   );
+  const [maximizeContrast, setMaximizeContrast] = useState<boolean | undefined>(
+    initial.maximizeContrast,
+  );
 
   const onConfigChange = useCallback(
     <K extends ChartAppearanceKey>(key: K, value: ChartAppearanceConfig[K]) => {
@@ -69,6 +72,9 @@ export function useChartAppearance(
         case 'showConnectedLine':
           setShowConnectedLine((value as boolean | undefined) ?? false);
           break;
+        case 'maximizeContrast':
+          setMaximizeContrast((value as boolean | undefined) ?? false);
+          break;
       }
     },
     [],
@@ -85,6 +91,7 @@ export function useChartAppearance(
     showLegend,
     legendPosition,
     showConnectedLine,
+    maximizeContrast,
   };
 
   return { config, onConfigChange, setChartTitle };

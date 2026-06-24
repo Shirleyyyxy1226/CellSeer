@@ -3,6 +3,7 @@
  * Use one instance per chart when a page has multiple charts.
  */
 
+import { useId } from 'react';
 import { Pencil } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Label } from '@/components/ui/label';
@@ -16,8 +17,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
-export const FONTS = ['Inter', 'Arial', 'Helvetica', 'Times New Roman', 'Georgia', 'Courier New'];
-export const FONT_SIZES = [9, 10, 11, 12, 14, 16, 18, 20];
+const FONTS = ['Inter', 'Arial', 'Helvetica', 'Times New Roman', 'Georgia', 'Courier New'];
+const FONT_SIZES = [9, 10, 11, 12, 14, 16, 18, 20];
 
 export interface ChartAppearanceConfig {
   chartTitle: string;
@@ -30,6 +31,9 @@ export interface ChartAppearanceConfig {
   showLegend: boolean;
   legendPosition: 'in' | 'right-bottom';
   showConnectedLine?: boolean;
+  /** Recolour the shown cells from a high-contrast CVD-safe palette so
+   *  visually-similar cells become easy to tell apart. Identity hues unchanged. */
+  maximizeContrast?: boolean;
 }
 
 export type ChartAppearanceKey = keyof ChartAppearanceConfig;
@@ -50,6 +54,13 @@ export function ChartEditPopover({
   chartLabel,
 }: ChartEditPopoverProps) {
   const is3DSurface = chartLabel?.toLowerCase().includes('3d');
+
+  // Unique per-instance ids so multiple popovers on one page never collide
+  // (a shared hardcoded id let a label click toggle the wrong plot's checkbox).
+  const uid = useId();
+  const legendId = `${uid}-show-legend`;
+  const connectedId = `${uid}-show-connected`;
+  const contrastId = `${uid}-maximize-contrast`;
 
   return (
     <Popover>
@@ -158,11 +169,11 @@ export function ChartEditPopover({
           </div>
           <div className="flex items-center gap-2">
             <Checkbox
-              id="chart-show-legend"
+              id={legendId}
               checked={config.showLegend}
               onCheckedChange={(c) => onConfigChange('showLegend', c === true)}
             />
-            <Label htmlFor="chart-show-legend" className="text-xs cursor-pointer">
+            <Label htmlFor={legendId} className="text-xs cursor-pointer">
               Show legend
             </Label>
           </div>
@@ -202,13 +213,32 @@ export function ChartEditPopover({
           {showConnectedLineOption && config.showConnectedLine !== undefined && (
             <div className="flex items-center gap-2">
               <Checkbox
-                id="chart-show-connected"
+                id={connectedId}
                 checked={config.showConnectedLine}
                 onCheckedChange={(c) => onConfigChange('showConnectedLine', c === true)}
               />
-              <Label htmlFor="chart-show-connected" className="text-xs cursor-pointer">
+              <Label htmlFor={connectedId} className="text-xs cursor-pointer">
                 Connect points with lines
               </Label>
+            </div>
+          )}
+          {config.maximizeContrast !== undefined && (
+            <div className="flex items-start gap-2 border-t pt-3">
+              <Checkbox
+                id={contrastId}
+                checked={config.maximizeContrast}
+                onCheckedChange={(c) => onConfigChange('maximizeContrast', c === true)}
+              />
+              <div className="grid gap-0.5">
+                <Label htmlFor={contrastId} className="text-xs cursor-pointer">
+                  Maximise contrast
+                </Label>
+                <p className="text-[11px] leading-snug text-muted-foreground">
+                  Recolour the shown cells from a high-contrast, colour-blind-safe palette
+                  so similar cells stand apart. Line styles &amp; markers stay on; the tree
+                  and identity colours elsewhere are unchanged.
+                </p>
+              </div>
             </div>
           )}
         </div>

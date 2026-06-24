@@ -31,7 +31,7 @@ import { useCellSelection } from '@/contexts/CellSelectionContext';
 import { useDataRefresh } from '@/contexts/DataRefreshContext';
 import { putCellAnnotation } from '@/lib/api';
 import { useCellRecordIndexQuery } from '@/hooks/useCellData';
-import type { IndexCellRaw } from '@/lib/cellTypes';
+import type { IndexCell } from '@/lib/cellTypes';
 import { TAG_CATALOG } from '@/lib/cellTags';
 
 type IndexStatus = 'loading' | 'loaded' | 'error';
@@ -48,7 +48,7 @@ export function CellDetailPanel() {
   } = useCellSelection();
   const { triggerDataRefresh } = useDataRefresh();
   const { data: indexData, isLoading: indexLoading, isError: indexError } = useCellRecordIndexQuery();
-  const cellIndex = (indexData?.cells ?? []) as IndexCellRaw[];
+  const cellIndex = (indexData?.cells ?? []) as IndexCell[];
   const indexStatus: IndexStatus = indexLoading ? 'loading' : indexError ? 'error' : 'loaded';
   const [localNote, setLocalNote] = useState<string>('');
   const [localTags, setLocalTags] = useState<string[]>([]);
@@ -58,7 +58,7 @@ export function CellDetailPanel() {
   const selectedCells = useMemo(() => {
     if (selectedCellIds.length === 0) return [];
     const byId = new Map(cellIndex.map((c) => [c.idNo, c]));
-    return selectedCellIds.map((id) => byId.get(id)).filter(Boolean) as IndexCellRaw[];
+    return selectedCellIds.map((id) => byId.get(id)).filter(Boolean) as IndexCell[];
   }, [selectedCellIds, cellIndex]);
 
   const singleCell = selectedCells.length === 1 ? selectedCells[0] : null;
