@@ -6,7 +6,7 @@ export interface MasterPlotBridgeValue {
   setHoveredIdNo: (id: number | null, source?: 'plot1' | 'plot2') => void;
   clearHoverIfFrom: (source: 'plot1' | 'plot2') => void;
   /**
-   * Shared cross-view brush (03 · FR-2). When non-null, every overview view
+   * Shared cross-view brush. When non-null, every overview view
    * dims cells whose idNo is NOT in this set (cross-highlight). Any view can be
    * the producer; `brushSource` tags it so a producer can avoid reacting to its
    * own brush. null = no brush active.
