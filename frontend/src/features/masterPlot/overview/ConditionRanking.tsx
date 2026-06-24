@@ -18,7 +18,6 @@ import {
 import { cathodeColor } from '@/lib/cellColorScheme';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { CondStatCard } from './shared';
-import { useBrushDim } from './useBrushDim';
 
 export default function ConditionRanking({
   conditions,
@@ -35,7 +34,6 @@ export default function ConditionRanking({
   pinnedKeys?: Set<string>;
   onTogglePin?: (key: string) => void;
 }) {
-  const brush = useBrushDim();
   const stats = useMemo(() => computeCondStats(conditions, metric), [conditions, metric]);
 
   const rows = useMemo(() => {
@@ -189,7 +187,7 @@ export default function ConditionRanking({
                         left: `${pct(v)}%`,
                         top: `calc(50% + ${(dotJitter(c.idNo) * 12).toFixed(1)}px)`,
                         backgroundColor: colour,
-                        opacity: brush.passes(c.idNo) ? 0.85 : 0.1,
+                        opacity: 0.85,
                       }}
                       title={`${c.cellName}: ${metric.format(v)} ${metric.unit} — click to inspect`}
                       aria-label={`Inspect cell ${c.cellName}`}

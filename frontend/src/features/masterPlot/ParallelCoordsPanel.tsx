@@ -7,17 +7,18 @@ import { Label } from '@/components/ui/label';
 import { LoadingIndicator } from '@/components/LoadingIndicator';
 import { SearchInput } from '@/components/SearchInput';
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
-import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import {
   type CellMetricRow,
   type DimKey,
@@ -30,11 +31,9 @@ import type { RateScope } from '@/lib/api';
 import { MASTER_PLOT_CHART_HEIGHT_PX } from '@/lib/masterPlotLayout';
 import {
   ADDABLE_AXES,
-  type BrushState,
   type PCAxisDef,
   axisDescription,
   axisLabel,
-  computeBrushPassing,
   continuousNorm,
   defaultParallelCoordAxes,
   findAddableAxis,
@@ -156,6 +155,31 @@ function strokePolyline(ctx: CanvasRenderingContext2D, pts: ({ x: number; y: num
   if (drew) ctx.stroke();
 }
 
+/** Hover info card for an axis head — mirrors the GCD tooltip (Info icon + concise
+ *  one-line definition). Renders nothing for axes without a description. */
+function AxisInfoTooltip({ ax }: { ax: PCAxisDef }) {
+  const desc = axisDescription(ax);
+  if (!desc) return null;
+  return (
+    <TooltipProvider delayDuration={150}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            onClick={(ev) => ev.stopPropagation()}
+            aria-label={`About ${axisLabel(ax)}`}
+            className="flex h-4 w-4 cursor-help items-center justify-center text-muted-foreground hover:text-foreground"
+          >
+            <Info className="h-3.5 w-3.5" />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="right" className="max-w-xs text-xs leading-relaxed">
+          {desc}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 export interface MasterPlot2PanelProps {
   visibleCells: string[];
   cathodeFilter: string;
@@ -185,7 +209,7 @@ export default function MasterPlot2Panel({
 }: MasterPlot2PanelProps) {
   const { selectedCellIds, handleCellSelect, addToSelection, removeFromSelection, clearSelection } =
     useCellSelection();
-  const { hoveredIdNo, setHoveredIdNo, clearHoverIfFrom, setBrushPassingIds } = useMasterPlotBridge();
+  const { hoveredIdNo, setHoveredIdNo, clearHoverIfFrom } = useMasterPlotBridge();
 
   const rateQuery = useRatePerformanceQuery({ scope: rateScope });
   const indexQuery = useCellRecordIndexQuery();
@@ -203,7 +227,6 @@ export default function MasterPlot2Panel({
   // a dominant category (e.g. 141 lines) can't bury the 12-line ones. null = all.
   const [isolatedKey, setIsolatedKey] = useState<string | null>(null);
   const [axes, setAxes] = useState<PCAxisDef[]>(() => defaultParallelCoordAxes());
-  const [brushes, setBrushes] = useState<BrushState>({});
 
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -228,9 +251,6 @@ export default function MasterPlot2Panel({
     plotBoxRoRef.current = ro;
     measure();
   }, []);
-
-  const brushDragRef = useRef<{ axisId: string; n0: number; n1: number } | null>(null);
-  const suppressClickRef = useRef(false);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -333,8 +353,8 @@ export default function MasterPlot2Panel({
   // real line onto the baseline. Clamp the *axis domain* to a robust percentile
   // window (p1–p99) so the scale carries information for the bulk of cells; cells
   // outside the window are clipped to the ends and counted as overflow for the
-  // subtitle. This is purely a display transform — getAxisNumericValue / brush
-  // math see the real values; only the normalisation window is clamped.
+  // subtitle. This is purely a display transform — getAxisNumericValue sees the
+  // real values; only the normalisation window is clamped.
   const continuousExtents = useMemo(() => {
     const m = new Map<string, { min: number; max: number; nLow: number; nHigh: number; rawMin: number; rawMax: number }>();
     const percentile = (sorted: number[], q: number) => {
@@ -389,35 +409,6 @@ export default function MasterPlot2Panel({
     }
     return m;
   }, [axes, plotRows]);
-
-  const brushPassing = useMemo(() => {
-    if (Object.keys(brushes).length === 0) return null;
-    return computeBrushPassing(plotRows, axes, brushes, categoricalDomains, continuousExtents);
-  }, [plotRows, axes, brushes, categoricalDomains, continuousExtents]);
-
-  const brushKey =
-    Object.keys(brushes).length === 0
-      ? ''
-      : brushPassing
-        ? [...brushPassing].sort((a, b) => a - b).join(',')
-        : 'empty';
-
-  // Publish this view's brush to the shared cross-view state while parcoords is
-  // mounted. NOTE: deliberately no unmount cleanup — the brush is cross-view, so
-  // it must survive switching to another overview view (the BrushBar clears it).
-  // Only clear it here when the user explicitly empties the brush within parcoords.
-  const hadBrushRef = useRef(false);
-  useEffect(() => {
-    const hasBrush = Object.keys(brushes).length > 0;
-    if (hasBrush && brushPassing) {
-      setBrushPassingIds(brushPassing, 'parcoords');
-      hadBrushRef.current = true;
-    } else if (!hasBrush && hadBrushRef.current) {
-      // User cleared the brush inside parcoords → clear the shared state too.
-      setBrushPassingIds(null, 'parcoords');
-      hadBrushRef.current = false;
-    }
-  }, [brushKey, brushPassing, brushes, setBrushPassingIds]);
 
   const lineColourDomain = useMemo(() => {
     const s = new Set<string>();
@@ -531,25 +522,6 @@ export default function MasterPlot2Panel({
     [axes, colW],
   );
 
-  const axisIndexAt = useCallback(
-    (lx: number): number => {
-      const n = axes.length;
-      if (n === 0) return -1;
-      if (lx < MARGIN_L || lx >= MARGIN_L + n * colW) return -1;
-      const i = Math.floor((lx - MARGIN_L) / colW);
-      return i >= 0 && i < n ? i : -1;
-    },
-    [colW, axes.length],
-  );
-
-  const normFromMouseY = useCallback(
-    (ly: number) => {
-      const t = (ly - trackTop) / Math.max(1e-6, trackH);
-      return Math.max(0, Math.min(1, t));
-    },
-    [trackTop, trackH],
-  );
-
   /** Screen-space crossings for a row, one per axis (null where the cell has no value). */
   const rowPoints = useCallback(
     (row: CellMetricRow, idx: number): ({ x: number; y: number } | null)[] => {
@@ -620,9 +592,7 @@ export default function MasterPlot2Panel({
     const muted = isDark ? 'rgba(148,163,184,0.78)' : 'rgba(71,85,105,0.88)';
     // Higher-contrast colour reserved for numeric tick labels.
     const tickInk = isDark ? 'rgba(203,213,225,0.95)' : 'rgba(51,65,85,0.95)';
-    const brushFill = isDark ? 'rgba(249,115,22,0.35)' : 'rgba(234,88,12,0.28)';
     const trackBg = isDark ? 'rgba(148,163,184,0.16)' : 'rgba(100,116,139,0.14)';
-    const handleInk = isDark ? 'rgba(249,115,22,0.92)' : 'rgba(234,88,12,0.92)';
 
     const drawCapsule = (cx: number, top: number, h: number, w: number, fill: string) => {
       const r = w / 2;
@@ -708,7 +678,7 @@ export default function MasterPlot2Panel({
       const ax = axes[i];
       const x = getXForAxis(i);
       if (ax.kind === 'continuous' || ax.kind === 'per_cycle') {
-        // Brushable track capsule (affordance: "drag here to filter").
+        // Axis track: a faint capsule behind the vertical axis line.
         drawCapsule(x, trackTop, trackH, TRACK_W, trackBg);
         ctx.strokeStyle = muted;
         ctx.lineWidth = 1;
@@ -716,31 +686,6 @@ export default function MasterPlot2Panel({
         ctx.moveTo(x, trackTop);
         ctx.lineTo(x, trackTop + trackH);
         ctx.stroke();
-      }
-
-      const br = brushes[axes[i].id];
-      if (br) {
-        const lo = Math.min(br.n0, br.n1) * trackH;
-        const hi = Math.max(br.n0, br.n1) * trackH;
-        ctx.fillStyle = brushFill;
-        if (ax.kind === 'categorical') {
-          const xL = MARGIN_L + i * colW + CAT_STRIP_PAD;
-          const xR = MARGIN_L + (i + 1) * colW - CAT_STRIP_PAD;
-          ctx.fillRect(xL, trackTop + lo, xR - xL, hi - lo);
-        } else {
-          // Highlighted brushed segment inside the capsule + grab handles top/bottom.
-          drawCapsule(x, trackTop + lo, hi - lo, TRACK_W, brushFill);
-          ctx.fillStyle = handleInk;
-          for (const hy of [trackTop + lo, trackTop + hi]) {
-            ctx.fillRect(x - TRACK_W / 2 - 1, hy - 1, TRACK_W + 2, 2.5);
-          }
-        }
-      } else if (ax.kind === 'continuous' || ax.kind === 'per_cycle') {
-        // Idle grab handles to hint the track is draggable.
-        ctx.fillStyle = muted;
-        for (const hy of [trackTop, trackTop + trackH]) {
-          ctx.fillRect(x - TRACK_W / 2, hy - 1, TRACK_W, 2);
-        }
       }
     }
 
@@ -835,8 +780,6 @@ export default function MasterPlot2Panel({
       }
     }
 
-    const passing = brushPassing;
-    const dimOthers = passing != null && Object.keys(brushes).length > 0;
     // Per-line alpha pushed lower so the dense core resolves as
     // tonal build-up rather than a solid blob.
     const n = plotRows.length;
@@ -844,16 +787,14 @@ export default function MasterPlot2Panel({
     const lw = n > 400 ? 0.8 : n > 150 ? 1.0 : 1.2;
     const ctxGrey = isDark ? 'rgba(148,163,184,1)' : 'rgba(100,116,139,1)';
 
-    // A row is "muted" when it's filtered out by a brush, or when a legend group
-    // is isolated / de-emphasised and the row isn't in the focused group.
+    // A row is "muted" when a legend group is isolated and the row isn't in it.
     const isMuted = (row: CellMetricRow, idx: number): boolean => {
-      if (dimOthers && !passing?.has(row.idNo)) return true;
       if (isolatedKey != null && colourKeyForRow(row, idx) !== isolatedKey) return true;
       return false;
     };
 
     // Pass 1: muted rows as a desaturated grey context layer (curved, faint).
-    const anyMuted = dimOthers || isolatedKey != null;
+    const anyMuted = isolatedKey != null;
     if (anyMuted) {
       ctx.strokeStyle = ctxGrey;
       ctx.globalAlpha = isolatedKey != null ? 0.035 : 0.05;
@@ -868,11 +809,11 @@ export default function MasterPlot2Panel({
       ctx.globalAlpha = 1;
     }
 
-    // Pass 2: focused rows in colour. When a group is isolated (or a brush is
-    // active) the survivors are drawn bolder and more opaque so the focus pops
-    // against the faint muted layer; otherwise the most-populous
-    // group gets a small alpha haircut so it can't bury the smaller ones.
-    const focusBoost = isolatedKey != null || dimOthers;
+    // Pass 2: focused rows in colour. When a group is isolated the survivors are
+    // drawn bolder and more opaque so the focus pops against the faint muted
+    // layer; otherwise the most-populous group gets a small alpha haircut so it
+    // can't bury the smaller ones.
+    const focusBoost = isolatedKey != null;
     const focusAlpha = focusBoost ? Math.max(baseAlpha, 0.6) : baseAlpha;
     const focusLw = focusBoost ? lw + 0.6 : lw;
     for (let idx = 0; idx < plotRows.length; idx++) {
@@ -888,8 +829,6 @@ export default function MasterPlot2Panel({
     plotRows,
     axes,
     plotCanvasW,
-    brushes,
-    brushPassing,
     continuousExtents,
     categoricalDomains,
     getXForAxis,
@@ -921,8 +860,6 @@ export default function MasterPlot2Panel({
     ctx.drawImage(base, 0, 0);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    const passing = brushPassing;
-    const dimOthers = passing != null && Object.keys(brushes).length > 0;
     const hiId = hoveredIdNo;
     const selSet = new Set(selectedCellIds);
     if (hiId == null && selSet.size === 0) return;
@@ -962,13 +899,12 @@ export default function MasterPlot2Panel({
     for (let idx = 0; idx < plotRows.length; idx++) {
       const row = plotRows[idx];
       if (row.idNo !== hiId && !selSet.has(row.idNo)) continue;
-      const pass = !dimOthers || passing?.has(row.idNo);
-      const a = pass ? 1 : 0.2;
+      const a = 1;
       const lw = selSet.has(row.idNo) ? 2.75 : 2.5;
       // Outer halo so the focused path reads against a dense background.
       ctx.save();
       ctx.strokeStyle = halo;
-      ctx.globalAlpha = pass ? 0.6 : 0.12;
+      ctx.globalAlpha = 0.6;
       ctx.lineWidth = lw + 3.5;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
@@ -986,8 +922,6 @@ export default function MasterPlot2Panel({
   }, [
     plotRows,
     axes,
-    brushes,
-    brushPassing,
     hoveredIdNo,
     selectedCellIds,
     drawRowSegments,
@@ -1046,24 +980,6 @@ export default function MasterPlot2Panel({
     const rect = e.currentTarget.getBoundingClientRect();
     const lx = e.clientX - rect.left;
     const ly = e.clientY - rect.top;
-    const drag = brushDragRef.current;
-    if (drag) {
-      const n = normFromMouseY(ly);
-      drag.n1 = n;
-      setBrushes((b) => ({ ...b, [drag.axisId]: { n0: drag.n0, n1: n } }));
-      return;
-    }
-    // Cursor affordance: ns-resize over a brushable numeric track so
-    // it's obvious which axes accept a shift-drag range filter; default elsewhere.
-    const ai = axisIndexAt(lx);
-    let overTrack = false;
-    if (ai >= 0 && ly >= trackTop && ly <= trackTop + trackH) {
-      const ax = axes[ai];
-      if (ax.kind === 'continuous' || ax.kind === 'per_cycle') {
-        overTrack = Math.abs(lx - getXForAxis(ai)) <= 8;
-      }
-    }
-    e.currentTarget.style.cursor = overTrack ? 'ns-resize' : 'default';
     pendingHoverRef.current = { lx, ly };
     if (hoverRafRef.current == null) {
       hoverRafRef.current = requestAnimationFrame(() => {
@@ -1076,59 +992,7 @@ export default function MasterPlot2Panel({
     }
   };
 
-  const onCanvasPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!e.shiftKey) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const lx = e.clientX - rect.left;
-    const ly = e.clientY - rect.top;
-    const ai = axisIndexAt(lx);
-    if (ai < 0) return;
-    if (ly < trackTop || ly > trackTop + trackH) return;
-    const ax = axes[ai];
-    const n = normFromMouseY(ly);
-    brushDragRef.current = { axisId: ax.id, n0: n, n1: n };
-    e.currentTarget.setPointerCapture(e.pointerId);
-  };
-
-  const onCanvasPointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const drag = brushDragRef.current;
-    brushDragRef.current = null;
-    try {
-      e.currentTarget.releasePointerCapture(e.pointerId);
-    } catch {
-      /* noop */
-    }
-    if (!drag) return;
-    const lo = Math.min(drag.n0, drag.n1);
-    const hi = Math.max(drag.n0, drag.n1);
-    if (hi - lo < 0.02) {
-      setBrushes((b) => {
-        const { [drag.axisId]: _, ...rest } = b;
-        return rest;
-      });
-      return;
-    }
-    suppressClickRef.current = true;
-    setBrushes((b) => ({ ...b, [drag.axisId]: { n0: lo, n1: hi } }));
-  };
-
-  const onCanvasDblClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const lx = e.clientX - rect.left;
-    const ai = axisIndexAt(lx);
-    if (ai < 0) return;
-    const id = axes[ai].id;
-    setBrushes((b) => {
-      const { [id]: _, ...rest } = b;
-      return rest;
-    });
-  };
-
   const onCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (suppressClickRef.current) {
-      suppressClickRef.current = false;
-      return;
-    }
     const rect = e.currentTarget.getBoundingClientRect();
     const hit = pickRowAt(e.clientX - rect.left, e.clientY - rect.top);
     if (hit) {
@@ -1137,14 +1001,8 @@ export default function MasterPlot2Panel({
     }
   };
 
-  const clearAllBrushes = () => setBrushes({});
-
   const removeAxis = (id: string) => {
     setAxes((ax) => ax.filter((a) => a.id !== id));
-    setBrushes((b) => {
-      const { [id]: _, ...rest } = b;
-      return rest;
-    });
   };
 
   const addAxis = (id: string) => {
@@ -1180,39 +1038,29 @@ export default function MasterPlot2Panel({
       <div className="flex min-h-0 flex-1 flex-col gap-3 rounded-lg border border-border bg-card p-3 shadow-sm">
         <div className="flex items-center gap-1.5">
           <h2 className="text-sm font-semibold text-foreground">Parallel coordinates</h2>
-          <Popover>
-            <PopoverTrigger asChild>
-              <button
-                type="button"
-                aria-label="How to use this chart"
-                title="How to use this chart"
-                className="inline-flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              >
-                <HelpCircle className="h-3.5 w-3.5" />
-              </button>
-            </PopoverTrigger>
-            <PopoverContent align="start" className="w-80 text-xs">
-              <p className="font-medium text-foreground">How to use</p>
-              <ul className="mt-1.5 space-y-1 text-muted-foreground">
-                <li>Shift-drag a numeric axis to filter</li>
-                <li>Double-click an axis to clear its filter</li>
-                <li>Click a line to inspect that cell</li>
-                <li>× above an axis removes it · drag a head to reorder</li>
-                <li>The dashed column on the right adds a metric</li>
-                {legendEntries.length > 1 && <li>Click a legend swatch to isolate a group</li>}
-              </ul>
-              {axes.some((a) => a.confKind === 'retention') && (
-                <p className="mt-2 border-t border-border pt-2">
-                  <span className="font-medium text-foreground">Retention</span> depends on cycle
-                  count &amp; protocol — compare like-for-like by picking a single protocol in the
-                  page filter bar above.
-                </p>
-              )}
-            </PopoverContent>
-          </Popover>
+          <TooltipProvider delayDuration={150}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  aria-label="How to use this chart"
+                  className="inline-flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                  <HelpCircle className="h-3.5 w-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" align="start" className="max-w-xs text-xs leading-relaxed">
+                <p className="font-medium text-foreground">How to use</p>
+                <ul className="mt-1.5 space-y-1 text-muted-foreground">
+                  <li>Click a line to inspect a cell</li>
+                  {legendEntries.length > 1 && <li>Click a legend swatch to isolate a group</li>}
+                </ul>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
 
-        {/* Row 1: colour picker · search · legend chips · clear brushes */}
+        {/* Row 1: colour picker · search · legend chips */}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
           <span className="text-[10px] text-muted-foreground shrink-0">Line colour</span>
           <Select value={lineColour} onValueChange={(v) => setLineColour(v as DimKey)}>
@@ -1273,16 +1121,6 @@ export default function MasterPlot2Panel({
               })}
             </>
           )}
-
-          {Object.keys(brushes).length > 0 && (
-            <button
-              type="button"
-              className="ml-auto text-[11px] text-primary hover:underline"
-              onClick={clearAllBrushes}
-            >
-              Clear all brushes
-            </button>
-          )}
         </div>
 
         {/* Row 2: traced cells — only visible when cells are pinned */}
@@ -1336,18 +1174,12 @@ export default function MasterPlot2Panel({
                   ref={canvasRef}
                   className="block max-w-none touch-none cursor-default shrink-0"
                   onPointerMove={onCanvasPointerMove}
-                  onPointerDown={onCanvasPointerDown}
-                  onPointerUp={onCanvasPointerUp}
-                  onPointerLeave={() => {
-                    brushDragRef.current = null;
-                    clearHoverIfFrom('plot2');
-                  }}
+                  onPointerLeave={() => clearHoverIfFrom('plot2')}
                   onClick={onCanvasClick}
-                  onDoubleClick={onCanvasDblClick}
                 />
                 {/* Axis-head controls overlaid on the canvas, aligned via getXForAxis
                     (CSS px). The container is click-through; only the handles below
-                    capture pointer events, so brushing/hover on the plot is unaffected. */}
+                    capture pointer events, so hover on the plot is unaffected. */}
                 <div className="pointer-events-none absolute inset-0">
                   {axes.map((ax, i) => (
                     <div
@@ -1358,17 +1190,9 @@ export default function MasterPlot2Panel({
                       onDrop={(e) => onChipDrop(e, i)}
                       title="Drag to reorder · × to remove"
                       style={{ left: getXForAxis(i) + headerLabelW[i] / 2 + 5, top: 4 }}
-                      className="pointer-events-auto absolute flex items-center gap-0.5 cursor-grab active:cursor-grabbing"
+                      className="group pointer-events-auto absolute flex items-center gap-0.5 cursor-grab active:cursor-grabbing"
                     >
-                      {axisDescription(ax) && (
-                        <span
-                          title={axisDescription(ax)}
-                          onClick={(ev) => ev.stopPropagation()}
-                          className="flex h-4 w-4 cursor-help items-center justify-center text-muted-foreground hover:text-foreground"
-                        >
-                          <Info className="h-3 w-3" />
-                        </span>
-                      )}
+                      <AxisInfoTooltip ax={ax} />
                       <button
                         type="button"
                         aria-label={`Remove ${axisLabel(ax)}`}

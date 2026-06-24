@@ -115,6 +115,10 @@ function build3Scatter(datasets: RecordDataset[], opts: BuildGcdOpts): GcdFigure
       const chgCapRange = chargeSlice.length >= 2 ? Math.abs(chargeSlice[chargeSlice.length - 1].x - chargeSlice[0].x) : 0;
       const dchgCapRange = dchgSlice.length >= 2 ? Math.abs(dchgSlice[dchgSlice.length - 1].x - dchgSlice[0].x) : 0;
 
+      // Convention: solid line / filled circle = charge; dashed line / open circle = discharge.
+      // For multi-cell overlays the per-cell cellDash/cellSymbol take precedence (they
+      // already discriminate cells; adding a second encoding per direction clutters the plot).
+      const singleCell = datasets.length === 1;
       if (doCharge && chargeSlice.length >= 2 && chgCapRange >= MIN_CAP_MAH) {
         const xs: number[] = [];
         const ys: number[] = [];
@@ -130,7 +134,7 @@ function build3Scatter(datasets: RecordDataset[], opts: BuildGcdOpts): GcdFigure
           mode: showConnectedLine ? ('lines' as const) : ('markers' as const),
           name: `${namePrefix}Cycle ${cyc} (charge)`,
           ...(showConnectedLine
-            ? { line: { width: 1.5, color: cellColor, ...(cellDash ? { dash: cellDash } : {}) } }
+            ? { line: { width: 1.5, color: cellColor, dash: cellDash ?? 'solid' } }
             : { marker: { size: 3, color: cellColor, ...(cellSymbol ? { symbol: cellSymbol } : {}) } }),
           legendgroup: `${dataset.id}-${cyc}`,
           hovertemplate: `${dataset.label}<br>Cycle: ${cyc} (charge)<br>Capacity: %{x:.2f} ${capacityUnit}<br>Voltage: %{y:.3f} V<extra></extra>`,
@@ -151,8 +155,8 @@ function build3Scatter(datasets: RecordDataset[], opts: BuildGcdOpts): GcdFigure
           mode: showConnectedLine ? ('lines' as const) : ('markers' as const),
           name: `${namePrefix}Cycle ${cyc} (discharge)`,
           ...(showConnectedLine
-            ? { line: { width: 1.5, color: cellColor, ...(cellDash ? { dash: cellDash } : {}) } }
-            : { marker: { size: 3, color: cellColor, ...(cellSymbol ? { symbol: cellSymbol } : {}) } }),
+            ? { line: { width: 1.5, color: cellColor, dash: cellDash ?? 'dash' } }
+            : { marker: { size: 3, color: cellColor, symbol: singleCell ? 'circle-open' : (cellSymbol ?? 'circle') } }),
           legendgroup: `${dataset.id}-${cyc}`,
           hovertemplate: `${dataset.label}<br>Cycle: ${cyc} (discharge)<br>Capacity: %{x:.2f} ${capacityUnit}<br>Voltage: %{y:.3f} V<extra></extra>`,
         });
@@ -251,7 +255,7 @@ function buildCumulative(datasets: RecordDataset[], opts: BuildGcdOpts): GcdFigu
           type: 'scatter' as const,
           mode: 'lines' as const,
           name: `${namePrefix}Cycle ${cyc} (charge)`,
-          line: { width: 1.5, color: cellColor || '', ...(cellDash ? { dash: cellDash } : {}) },
+          line: { width: 1.5, color: cellColor || '', dash: cellDash ?? 'solid' },
           legendgroup: legendGroup,
           hovertemplate: `${dataset.label}<br>Cycle: ${cyc} (charge)<br>Cumulative: %{x:.2f} ${capacityUnit}<br>Voltage: %{y:.3f} V<extra></extra>`,
         });
@@ -271,7 +275,7 @@ function buildCumulative(datasets: RecordDataset[], opts: BuildGcdOpts): GcdFigu
           type: 'scatter' as const,
           mode: 'lines' as const,
           name: `${namePrefix}Cycle ${cyc} (discharge)`,
-          line: { width: 1.5, color: cellColor || '', ...(cellDash ? { dash: cellDash } : {}) },
+          line: { width: 1.5, color: cellColor || '', dash: cellDash ?? 'dash' },
           legendgroup: legendGroup,
           hovertemplate: `${dataset.label}<br>Cycle: ${cyc} (discharge)<br>Cumulative: %{x:.2f} ${capacityUnit}<br>Voltage: %{y:.3f} V<extra></extra>`,
         });

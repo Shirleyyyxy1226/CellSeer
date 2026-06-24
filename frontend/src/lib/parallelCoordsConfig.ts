@@ -1,5 +1,5 @@
 /**
- * Master Plot 2 — parallel coordinates: axis defs, cycle sampling, brush filtering.
+ * Master Plot 2 — parallel coordinates: axis defs and cycle sampling.
  */
 
 import type { CellMetricRow, DimKey } from '@/lib/cellMetricRows';
@@ -53,42 +53,19 @@ export interface PCAxisPerCycle {
 
 export type PCAxisDef = PCAxisCategorical | PCAxisContinuous | PCAxisPerCycle;
 
-/** Normalized vertical position: 0 = top (high value for continuous), 1 = bottom. */
-export type BrushRange = { n0: number; n1: number };
-
 export function axisLabel(def: PCAxisDef): string {
   return def.label;
 }
 
-/** A literature reference shown under an axis definition in its info card. */
-export interface AxisRef {
-  label: string;
-  href: string;
-}
-
-/** Rich explanation for an axis, surfaced behind a "?" on the axis head:
- *  a one/two-line definition plus optional vetted references. */
-export interface AxisInfo {
-  definition: string;
-  refs?: AxisRef[];
-}
-
-const AXIS_INFO: Record<string, AxisInfo> = {
-  ice: {
-    definition:
-      'Initial Coulombic Efficiency: discharge ÷ charge capacity of the first non-zero cycle. A low value flags irreversible loss to SEI formation. Computed from exported charge capacity only — no proxy.',
-    refs: [{ label: 'Smith et al., J. Electrochem. Soc. 2010', href: 'https://doi.org/10.1149/1.3268129' }],
-  },
-  ret_end: {
-    definition:
-      'Capacity retention: capacity late in life as a fraction of peak. It depends on cycle count and protocol, so compare like-for-like by picking a single protocol in the filter bar above.',
-    refs: [{ label: 'Wang et al., Front. Mech. Eng. 2021', href: 'https://doi.org/10.3389/fmech.2021.719718' }],
-  },
+/** Concise one-line definitions surfaced behind an info icon on the axis head. */
+const AXIS_DESCRIPTIONS: Record<string, string> = {
+  ice: 'CE of the first non-zero cycle',
+  ret_end: 'Depends on protocol — pick one above to compare like-for-like',
 };
 
-/** Optional rich definition + references for an axis, shown as an info card. */
-export function axisInfo(def: PCAxisDef): AxisInfo | undefined {
-  return AXIS_INFO[def.id];
+/** Optional one-line explanation for an axis, shown in a hover info card. */
+export function axisDescription(def: PCAxisDef): string | undefined {
+  return AXIS_DESCRIPTIONS[def.id];
 }
 
 function cycleIndexFor(row: CellMetricRow, instrumentCycle: number): number {
@@ -201,81 +178,6 @@ export function continuousNorm(v: number, vmin: number, vmax: number): number {
   const span = Math.max(1e-9, vmax - vmin);
   const n = (vmax - v) / span;
   return n < 0 ? 0 : n > 1 ? 1 : n;
-}
-
-export function brushOverlaps(a0: number, a1: number, b0: number, b1: number): boolean {
-  const loA = Math.min(a0, a1);
-  const hiA = Math.max(a0, a1);
-  const loB = Math.min(b0, b1);
-  const hiB = Math.max(b0, b1);
-  return hiA >= loB && hiB >= loA;
-}
-
-export interface BrushState {
-  /** axis id -> normalized brush [0,1] along axis track */
-  [axisId: string]: BrushRange;
-}
-
-export function computeBrushPassing(
-  rows: CellMetricRow[],
-  axes: PCAxisDef[],
-  brushes: BrushState,
-  categoricalDomains: Map<string, { domain: string[]; counts: Map<string, number> }>,
-  continuousExtents: Map<string, { min: number; max: number }>,
-): Set<number> {
-  const passing = new Set<number>();
-  const brushIds = Object.keys(brushes);
-  if (brushIds.length === 0) {
-    for (const r of rows) passing.add(r.idNo);
-    return passing;
-  }
-
-  for (const row of rows) {
-    let ok = true;
-    for (const bid of brushIds) {
-      const br = brushes[bid];
-      const def = axes.find((a) => a.id === bid);
-      if (!def) continue;
-      if (def.kind === 'categorical') {
-        const meta = categoricalDomains.get(def.id);
-        if (!meta) {
-          ok = false;
-          break;
-        }
-        const band = getCategoricalBand(row, def, meta.domain, meta.counts);
-        if (!band) {
-          ok = false;
-          break;
-        }
-        const c0 = band.n0;
-        const c1 = band.n1;
-        if (!brushOverlaps(br.n0, br.n1, c0, c1)) {
-          ok = false;
-          break;
-        }
-      } else {
-        const v = getAxisNumericValue(row, def);
-        if (v == null || Number.isNaN(v)) {
-          ok = false;
-          break;
-        }
-        const ex = continuousExtents.get(def.id);
-        if (!ex) {
-          ok = false;
-          break;
-        }
-        const nv = continuousNorm(v, ex.min, ex.max);
-        const lo = Math.min(br.n0, br.n1);
-        const hi = Math.max(br.n0, br.n1);
-        if (nv < lo || nv > hi) {
-          ok = false;
-          break;
-        }
-      }
-    }
-    if (ok) passing.add(row.idNo);
-  }
-  return passing;
 }
 
 /**

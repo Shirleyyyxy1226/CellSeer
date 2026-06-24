@@ -98,7 +98,6 @@ const GcdDashboard = ({
     // GCD curves are continuous V–Q lines — default to connected lines, not the
     // old scatter-dots (still toggleable via the chart Edit popover).
     showConnectedLine: true,
-    // Enables the "Maximise contrast" toggle in the chart Edit popover (R2).
     maximizeContrast: false,
   });
   const {
@@ -218,14 +217,22 @@ const GcdDashboard = ({
   const zoomFocusCycle = isSingleCell ? combinedHighlightCycle : null;
   const { traces, gcdTraceIndexToCell } = useMemo(() => {
     try {
+      // When the user has an explicit text filter, zoomFocusCycle highlights
+      // (dims non-focused cycles) but does not hide them — the typed filter wins.
+      // Without a text filter, zoomFocusCycle narrows to that single cycle (zoom).
+      const gcdAllowedCycles =
+        zoomFocusCycle != null && !allowedCycles ? new Set([zoomFocusCycle]) : gcdCycleSubset.set;
+      const gcdHighlightCycle = isSingleCell
+        ? (allowedCycles != null ? zoomFocusCycle : null)
+        : combinedHighlightCycle;
       const fig = buildGcdFigure(recordDatasets, {
         mode: 'scatter',
         direction: gcdDirection,
         showConnectedLine,
-        allowedCycles: zoomFocusCycle != null ? new Set([zoomFocusCycle]) : gcdCycleSubset.set,
+        allowedCycles: gcdAllowedCycles,
         maxCycles: MAX_CYCLES,
         maxPointsPerTrace: MAX_PTS_TRACE,
-        highlightCycle: isSingleCell ? null : combinedHighlightCycle,
+        highlightCycle: gcdHighlightCycle,
       });
       const traceIndexMap = new Map<number, { idNo: number; cellName: string }>();
       fig.traceIndexToCell.forEach((value, key) => {
@@ -235,7 +242,7 @@ const GcdDashboard = ({
     } catch (e) {
       return { traces: [] as Plotly.Data[], gcdTraceIndexToCell: new Map<number, { idNo: number; cellName: string }>() };
     }
-  }, [recordDatasets, gcdCycleSubset, showConnectedLine, gcdDirection, combinedHighlightCycle, isSingleCell, zoomFocusCycle]);
+  }, [recordDatasets, gcdCycleSubset, allowedCycles, showConnectedLine, gcdDirection, combinedHighlightCycle, isSingleCell, zoomFocusCycle]);
 
   // Multi-cell GCD colours lines by cell, so a discrete legend (one entry per
   // cell) is useful. Single-cell mode colours by cycle and already shows the

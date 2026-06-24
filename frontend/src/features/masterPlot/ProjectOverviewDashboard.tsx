@@ -35,10 +35,8 @@ import { summariesFromOverview } from './overview/aggregate';
 import { MAX_PINS, cellConditionKey, groupConditions } from './overview/conditions';
 import { MetricLockedNotice, MetricMassNotice, MetricUnavailableNotice } from './overview/shared';
 import { FilterBreadcrumb } from './overview/FilterBreadcrumb';
-import { BrushBar } from './overview/BrushBar';
 import { PairwiseCompare } from './overview/PairwiseCompare';
 import { useOverviewUrlState } from './overview/useOverviewUrlState';
-import { useMasterPlotBridge } from '@/contexts/MasterPlotBridgeContext';
 import { AttachProtocolButton, useAttachProtocol } from '@/features/protocol';
 import ConditionHeatmap from './overview/ConditionHeatmap';
 import ConditionRanking from './overview/ConditionRanking';
@@ -74,7 +72,6 @@ export default function ProjectOverviewDashboard(props: ProjectOverviewDashboard
   const { cathodeFilter, spacerFilter, separatorFilter, onCathodeFilter, onSeparatorFilter, onSpacerFilter } = props;
   const navigate = useNavigate();
   const { selectedCellIds, setSelectedCellIds } = useCellSelection();
-  const { brushPassingIds, setBrushPassingIds } = useMasterPlotBridge();
   const { open: openAttachProtocol } = useAttachProtocol();
 
   const [metricId, setMetricId] = useState('capacity-raw');
@@ -157,9 +154,6 @@ export default function ProjectOverviewDashboard(props: ProjectOverviewDashboard
   const loading =
     !indexReady ||
     (useAggregate ? overviewQuery.isLoading && !aggregate : rateQuery.isLoading);
-  // When the user promotes a cross-view brush via "Filter to brush", the
-  // passing id-set becomes a sticky hard filter on the shown cells.
-  const [brushFilterIds, setBrushFilterIds] = useState<Set<number> | null>(null);
   // Page-wide categorical filters for the Master Plot views. Cathode/Separator/
   // Spacer are owned upstream (props); Electrolyte/Protocol are owned here and apply
   // to every Master Plot view via the same `filtered` cohort.
@@ -203,14 +197,7 @@ export default function ProjectOverviewDashboard(props: ProjectOverviewDashboard
     setElectrolyteFilter('All');
     setProtocolFilter('All');
     setSelectedCellIds([]);
-    setBrushFilterIds(null);
-    setBrushPassingIds(null, 'overview');
-  }, [onCathodeFilter, onSeparatorFilter, onSpacerFilter, setSelectedCellIds, setBrushPassingIds]);
-
-  const filterToBrush = useCallback(() => {
-    if (brushPassingIds) setBrushFilterIds(new Set(brushPassingIds));
-    setBrushPassingIds(null, 'overview');
-  }, [brushPassingIds, setBrushPassingIds]);
+  }, [onCathodeFilter, onSeparatorFilter, onSpacerFilter, setSelectedCellIds]);
 
   // Prefer mAh/g when most cells actually have cathode mass; otherwise raw mAh.
   const specCoverage = useMemo(() => {
@@ -248,7 +235,6 @@ export default function ProjectOverviewDashboard(props: ProjectOverviewDashboard
           ((c.protocolName ?? '').trim() || '(no protocol)') !== protocolFilter
         )
           return false;
-        if (brushFilterIds && !brushFilterIds.has(c.idNo)) return false;
         return true;
       }),
     [
@@ -259,7 +245,6 @@ export default function ProjectOverviewDashboard(props: ProjectOverviewDashboard
       electrolyteFilter,
       protocolFilter,
       electrolyteByIdNo,
-      brushFilterIds,
     ],
   );
 
@@ -670,21 +655,11 @@ export default function ProjectOverviewDashboard(props: ProjectOverviewDashboard
           { label: 'Spacer', value: spacerFilter, onClear: () => onSpacerFilter('All') },
           { label: 'Electrolyte', value: electrolyteFilter, onClear: () => setElectrolyteFilter('All') },
           { label: 'Protocol', value: protocolFilter, onClear: () => setProtocolFilter('All') },
-          ...(brushFilterIds
-            ? [{ label: 'Brush', value: `${brushFilterIds.size} cells`, cleared: '', onClear: () => setBrushFilterIds(null) }]
-            : []),
         ]}
         selectionCount={selectedCellIds.length}
         onClearSelection={() => setSelectedCellIds([])}
         onClearAll={clearAllFilters}
       />}
-
-      {brushPassingIds != null && (
-        <BrushBar
-          passingCount={filtered.filter((c) => brushPassingIds.has(c.idNo)).length}
-          onFilterToBrush={filterToBrush}
-        />
-      )}
 
       {pinnedKeys.size > 0 && (
         <div className="mx-4 mt-2 flex flex-wrap items-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs dark:border-amber-700 dark:bg-amber-950">

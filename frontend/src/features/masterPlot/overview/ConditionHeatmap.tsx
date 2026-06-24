@@ -20,7 +20,6 @@ import { cathodeColor } from '@/lib/cellColorScheme';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useActiveRamp } from './RampContext';
 import { CondStatCard, RampLegend } from './shared';
-import { useBrushDim } from './useBrushDim';
 
 /** Max replicate tiles shown per row before collapsing to "+N more". */
 const MAX_TILES_PER_ROW = 80;
@@ -51,7 +50,6 @@ export default function ConditionHeatmap({
   // Cap replicate tiles per row so a huge cohort doesn't put thousands of DOM
   // nodes on screen (one tile = one cell); the rest collapse to "+N more".
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
-  const brush = useBrushDim();
 
   const stats = useMemo(() => computeCondStats(conditions, metric), [conditions, metric]);
 
@@ -312,7 +310,6 @@ export default function ConditionHeatmap({
                           const v = metric.value(cell);
                           const isInspected = cell.cellId === inspectedId;
                           const t = v != null ? norm(v) : 0;
-                          const dimmed = !brush.passes(cell.idNo);
                           return (
                             <button
                               key={cell.cellId}
@@ -324,13 +321,12 @@ export default function ConditionHeatmap({
                               }`}
                               style={
                                 v != null
-                                  ? { backgroundColor: rampColourFrom(ramp, t), color: rampTextFrom(ramp, t), opacity: dimmed ? 0.12 : 1 }
+                                  ? { backgroundColor: rampColourFrom(ramp, t), color: rampTextFrom(ramp, t) }
                                   : {
                                       backgroundColor: MISSING_TILE_BG,
                                       color: MISSING_TILE_FG,
                                       backgroundImage:
                                         'repeating-linear-gradient(45deg, hsl(var(--muted-foreground)/0.18) 0 1.5px, transparent 1.5px 5px)',
-                                      opacity: dimmed ? 0.12 : 1,
                                     }
                               }
                             >

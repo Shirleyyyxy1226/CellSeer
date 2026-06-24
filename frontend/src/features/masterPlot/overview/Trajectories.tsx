@@ -12,7 +12,6 @@ import { useMemo, useState } from 'react';
 import type { CellSummary, MetricDef } from './metrics';
 import type { CondRow } from './conditions';
 import { cathodeColor } from '@/lib/cellColorScheme';
-import { useBrushDim } from './useBrushDim';
 import {
   type TrajPanel,
   type TrajPoint,
@@ -47,14 +46,12 @@ function Panel({
   panel,
   colour,
   yUnit,
-  passes,
   onInspect,
   onApplyCondition,
 }: {
   panel: TrajPanel;
   colour: string;
   yUnit: string;
-  passes: (idNo: number) => boolean;
   onInspect?: (id: string) => void;
   onApplyCondition?: (cond: CondRow) => void;
 }) {
@@ -96,7 +93,7 @@ function Panel({
               fill="none"
               stroke={colour}
               strokeWidth={1}
-              strokeOpacity={passes(line.idNo) ? 0.28 : 0.05}
+              strokeOpacity={0.28}
               className="cursor-pointer transition-[stroke-opacity,stroke-width] hover:[stroke-opacity:1] hover:stroke-[2px]"
               onClick={() => onInspect?.(line.cellId)}
             >
@@ -148,7 +145,6 @@ export default function Trajectories({
   // Default to retention: own-peak normalisation makes cohorts of different
   // chemistries / capacity scales directly comparable across panels.
   const [yMode, setYMode] = useState<TrajYMode>('retention');
-  const brush = useBrushDim();
 
   const data = useMemo(() => buildTrajData(cells, metric, yMode), [cells, metric, yMode]);
 
@@ -194,7 +190,6 @@ export default function Trajectories({
               panel={panel}
               colour={cathodeColor(panel.cond.cathode)}
               yUnit={data.yUnit}
-              passes={brush.passes}
               onInspect={onInspect}
               onApplyCondition={onApplyCondition}
             />
