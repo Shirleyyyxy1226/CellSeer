@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback } from 'react';
+import { createContext, useContext, useState, useCallback, useMemo } from 'react';
 
 interface DataRefreshContextValue {
   dataVersion: number;
@@ -13,8 +13,9 @@ const DataRefreshContext = createContext<DataRefreshContextValue>({
 export function DataRefreshProvider({ children }: { children: React.ReactNode }) {
   const [dataVersion, setDataVersion] = useState(0);
   const triggerDataRefresh = useCallback(() => setDataVersion(v => v + 1), []);
+  const value = useMemo(() => ({ dataVersion, triggerDataRefresh }), [dataVersion, triggerDataRefresh]);
   return (
-    <DataRefreshContext.Provider value={{ dataVersion, triggerDataRefresh }}>
+    <DataRefreshContext.Provider value={value}>
       {children}
     </DataRefreshContext.Provider>
   );

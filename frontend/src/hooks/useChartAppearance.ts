@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import type {
   ChartAppearanceConfig,
   ChartAppearanceKey,
@@ -80,19 +80,41 @@ export function useChartAppearance(
     [],
   );
 
-  const config: ChartAppearanceConfig = {
-    chartTitle,
-    xAxisLabel,
-    yAxisLabel,
-    fontFamily,
-    titleFontSize,
-    labelFontSize,
-    legendFontSize,
-    showLegend,
-    legendPosition,
-    showConnectedLine,
-    maximizeContrast,
-  };
+  // Memoized so `config` (and the returned object) keep a STABLE identity when
+  // no field changed. Consumers pass `config`/the whole hook return into effect
+  // dependency arrays and child props; an unmemoized fresh object each render
+  // makes those effects/memos churn (a known infinite-loop hazard here).
+  const config = useMemo<ChartAppearanceConfig>(
+    () => ({
+      chartTitle,
+      xAxisLabel,
+      yAxisLabel,
+      fontFamily,
+      titleFontSize,
+      labelFontSize,
+      legendFontSize,
+      showLegend,
+      legendPosition,
+      showConnectedLine,
+      maximizeContrast,
+    }),
+    [
+      chartTitle,
+      xAxisLabel,
+      yAxisLabel,
+      fontFamily,
+      titleFontSize,
+      labelFontSize,
+      legendFontSize,
+      showLegend,
+      legendPosition,
+      showConnectedLine,
+      maximizeContrast,
+    ],
+  );
 
-  return { config, onConfigChange, setChartTitle };
+  return useMemo(
+    () => ({ config, onConfigChange, setChartTitle }),
+    [config, onConfigChange],
+  );
 }

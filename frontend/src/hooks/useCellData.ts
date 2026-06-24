@@ -8,7 +8,7 @@
  * dataVersion via DataRefreshContext (after uploads / metadata edits) moves
  * the key, which forces a refetch exactly like the old useEffect dependency.
  */
-import { useQueries, useQuery } from '@tanstack/react-query';
+import { useQueries, useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { useLocation } from 'react-router-dom';
 import {
   fetchCellRecord,
@@ -23,6 +23,31 @@ import { getProjectIdFromPathname } from '@/lib/projectScope';
 import { useDataRefresh } from '@/contexts/DataRefreshContext';
 
 const STALE_MS = 15 * 60_000;
+
+/** Fields consumers actually read off a per-cell query result. */
+export interface CellQueryResult {
+  data: unknown;
+  isLoading: boolean;
+  isError: boolean;
+}
+
+/**
+ * `combine` for the `useQueries` hooks below. `useQueries` returns a BRAND-NEW
+ * array (and fresh result objects) on every render even when the cached data is
+ * unchanged. Consuming that array directly drove an infinite render loop: the
+ * new array identity made downstream `useMemo`s recompute, which made child
+ * plots emit fresh legend arrays through their `onLegendItems` effect, which
+ * setState'd the parent, which re-rendered, which produced a new array again…
+ * ("Maximum update depth exceeded").
+ *
+ * Projecting to just the fields consumers use lets TanStack apply structural
+ * sharing to this output, so the returned array keeps a STABLE identity while
+ * the underlying data/loading/error state is unchanged. Module-level (stable
+ * reference) so the combine itself never forces a re-run.
+ */
+function combineCellQueries(results: UseQueryResult[]): CellQueryResult[] {
+  return results.map((r) => ({ data: r.data, isLoading: r.isLoading, isError: r.isError }));
+}
 
 function useProjectScopeKey(): string {
   const { pathname } = useLocation();
@@ -120,6 +145,7 @@ export function useCellRecordQueries(cellIds: string[]) {
       retry: (count: number, err: unknown) =>
         (err as { status?: number }).status !== 404 && count < 2,
     })),
+    combine: combineCellQueries,
   });
 }
 
@@ -136,5 +162,6 @@ export function useDifferentialQueries(cellIds: string[], direction: 'discharge'
       retry: (count: number, err: unknown) =>
         (err as { status?: number }).status !== 404 && count < 2,
     })),
+    combine: combineCellQueries,
   });
 }

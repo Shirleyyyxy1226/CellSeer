@@ -92,7 +92,7 @@ const RatePerformanceDashboard = (_: Props) => {
     maximizeContrast: false,
   });
   const { fontFamily, titleFontSize, labelFontSize, legendFontSize } = appearance.config;
-  useEffect(() => { appearance.setChartTitle(defaultChartTitle); }, [defaultChartTitle, appearance]);
+  useEffect(() => { appearance.setChartTitle(defaultChartTitle); }, [defaultChartTitle, appearance.setChartTitle]);
 
   const mainChart = useResizableChart();
   const initialVoltageChart = useResizableChart();

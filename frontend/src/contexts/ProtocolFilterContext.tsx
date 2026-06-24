@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useState } from 'react';
+import { createContext, useContext, useMemo, useState } from 'react';
 
 const ProtocolFilterContext = createContext<{
   protocolFilter: string;
@@ -7,7 +7,7 @@ const ProtocolFilterContext = createContext<{
 
 export function ProtocolFilterProvider({ children }: { children: React.ReactNode }) {
   const [protocolFilter, setProtocolFilter] = useState<string>('All');
-  const value = { protocolFilter, setProtocolFilter };
+  const value = useMemo(() => ({ protocolFilter, setProtocolFilter }), [protocolFilter]);
   return (
     <ProtocolFilterContext.Provider value={value}>
       {children}
