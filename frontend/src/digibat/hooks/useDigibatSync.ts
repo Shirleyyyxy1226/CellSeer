@@ -57,7 +57,6 @@ export function useDigibatSync(projectId: string | null) {
       collectionIds: string[];
       selectedRefcodes?: string[];
       includeCycling?: boolean;
-      maxItems?: number;
       dryRun?: boolean;
       fullResync?: boolean;
       verbose?: boolean;

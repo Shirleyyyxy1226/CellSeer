@@ -122,7 +122,6 @@ export function startDigibatSync(input: {
   collectionIds: string[];
   selectedRefcodes?: string[];
   includeCycling?: boolean;
-  maxItems?: number;
   dryRun?: boolean;
   fullResync?: boolean;
   verbose?: boolean;
@@ -136,7 +135,6 @@ export function startDigibatSync(input: {
       collectionIds: input.collectionIds,
       selectedRefcodes: input.selectedRefcodes ?? [],
       includeCycling: input.includeCycling ?? true,
-      maxItems: input.maxItems ?? null,
       dryRun: Boolean(input.dryRun),
       fullResync: Boolean(input.fullResync),
       verbose: Boolean(input.verbose),
