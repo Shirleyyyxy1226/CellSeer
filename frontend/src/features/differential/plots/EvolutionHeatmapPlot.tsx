@@ -6,8 +6,6 @@ import type { ExportContext } from '@/lib/exportUtils';
 
 interface Props {
   datasets: Dataset[];
-  /** Label for the capacity/voltage dimension (used on y-axis). */
-  xLabel?: string;
   /** Differential capacity label (dV/dQ or dQ/dV) — used in hover. */
   zLabel?: string;
   appearance?: ChartAppearanceConfig;
@@ -62,11 +60,11 @@ export function EvolutionHeatmapPlot({
     const family = appearance?.fontFamily ?? FALLBACK_FONT;
     const labelSize = appearance?.labelFontSize ?? FALLBACK_LABEL_SIZE;
     const titleSize = appearance?.titleFontSize ?? 11;
-    const legendSize = appearance?.legendFontSize ?? FALLBACK_LABEL_SIZE;
-    const showLegend = appearance?.showLegend ?? true;
     const baseFont = { size: labelSize, family };
 
     return {
+      // Legend is drawn as an HTML block below the plot (see ChartLegend).
+      uirevision: 'evo',
       xaxis: { title: { text: 'Cycle', font: baseFont }, gridcolor: '#e0e0e0', tickfont: baseFont },
       yaxis: { title: { text: `Peak |${yLabel}|`, font: baseFont }, gridcolor: '#e0e0e0', tickfont: baseFont },
       title: {
@@ -74,11 +72,8 @@ export function EvolutionHeatmapPlot({
         font: { size: titleSize, family },
       },
       font: baseFont,
-      showlegend: showLegend,
-      legend: showLegend
-        ? { orientation: 'h' as const, x: 0, y: -0.18, xanchor: 'left' as const, yanchor: 'top' as const, font: { size: legendSize, family } }
-        : undefined,
-      margin: { t: 36, r: 16, b: showLegend ? 90 : 56, l: 56 },
+      showlegend: false,
+      margin: { t: 36, r: 16, b: 56, l: 56 },
       ...(width != null ? { width } : {}),
       ...(height != null ? { height } : {}),
     };

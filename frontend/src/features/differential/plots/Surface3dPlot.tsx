@@ -23,7 +23,6 @@ interface Props {
   /** Render size (passed both to the wrapping element and Plotly layout). */
   width?: number;
   height?: number;
-  plotContainerRef?: React.RefObject<HTMLDivElement>;
   /** Called when a camera preset is clicked, signalling which 2D panel to open. */
   onOpenPanel?: (panel: 'profile' | 'evolution') => void;
   /** Resize handle rendered inside the plot area (above the footer strip). */
@@ -69,7 +68,6 @@ export function Surface3dPlot({
   width,
   height,
   exportContext,
-  plotContainerRef,
   onOpenPanel,
   ResizeHandle,
 }: Props) {
@@ -91,12 +89,10 @@ export function Surface3dPlot({
     const fontFamily = appearance?.fontFamily ?? FALLBACK_FONT_FAMILY;
     const titleSize = appearance?.titleFontSize ?? FALLBACK_TITLE_FONT_SIZE;
     const labelSize = appearance?.labelFontSize ?? FALLBACK_FONT_SIZE;
-    const legendSize = appearance?.legendFontSize ?? FALLBACK_FONT_SIZE;
     const tickSize = Math.max(9, labelSize - 1);
     const titleText = appearance?.chartTitle ?? title ?? '';
     const xText = appearance?.xAxisLabel ?? xLabel ?? '';
     const zText = appearance?.yAxisLabel ?? zLabel ?? '';
-    const showLegend = appearance?.showLegend ?? true;
 
     const baseFont = { size: labelSize, family: fontFamily };
     const tickFont = { size: tickSize, family: fontFamily };
@@ -111,7 +107,7 @@ export function Surface3dPlot({
     return {
       // Eye baked into uirevision so a preset change is applied; same eye keeps
       // the user's manual rotation across data updates.
-      uirevision: `${uirevision}|${eyeKey}|legend-${showLegend}`,
+      uirevision: `${uirevision}|${eyeKey}`,
       title: { text: titleText, font: { size: titleSize, family: fontFamily } },
       font: baseFont,
       ...restOverride,
@@ -129,28 +125,17 @@ export function Surface3dPlot({
         // up = z keeps the view upright (no roll); eye is state-driven.
         camera: { eye: cameraEye, up: { x: 0, y: 0, z: 1 } },
       },
-      showlegend: showLegend,
-      legend: showLegend
-        ? {
-            orientation: 'h' as const,
-            x: 0,
-            y: -0.05,
-            xanchor: 'left' as const,
-            yanchor: 'top' as const,
-            font: { size: legendSize, family: fontFamily },
-          }
-        : undefined,
+      // The series legend is rendered as a ChartLegend block below the plot
+      // (matching the 2D panels), not inside the Plotly figure.
+      showlegend: false,
       // Generous side/bottom margins so 3D axis titles never clip at the card edge.
-      margin: showLegend
-        ? { t: 32, r: 24, b: 80, l: 24 }
-        : { t: 32, r: 24, b: 48, l: 24 },
+      margin: { t: 32, r: 24, b: 48, l: 24 },
       ...(width != null ? { width } : {}),
       ...(plotH != null ? { height: plotH } : {}),
     };
   }, [uirevision, eyeKey, cameraEye, title, xLabel, zLabel, xValues, layoutOverride, appearance, width, plotH]);
 
-  const internalRef = useRef<HTMLDivElement>(null);
-  const ref = plotContainerRef ?? internalRef;
+  const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const el = ref.current;

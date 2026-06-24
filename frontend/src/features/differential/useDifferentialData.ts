@@ -141,7 +141,7 @@ export function useDifferentialData(
     // When the user has selected cells anywhere else in the app, the dV/dQ view
     // honours that selection and loads those cells (up to MAX_CELLS_LOAD) regardless
     // of the default landing window. This lets users pull up arbitrary cells
-    // (e.g. CEL-198) that fall outside the default top-N window, and lets power
+    // that fall outside the default top-N window, and lets power
     // users compare up to MAX_CELLS_LOAD cells deliberately.
     if (selectedIdNos.length > 0) {
       const selSet = new Set(selectedIdNos);

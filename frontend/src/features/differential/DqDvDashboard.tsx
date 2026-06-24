@@ -13,7 +13,6 @@ import { EvolutionHeatmapPlot } from './plots/EvolutionHeatmapPlot';
 import { buildDqDvFigure, type Dataset } from 'cellseer-lib';
 import { ResizableChartCard } from '@/components/ResizableChartCard';
 import { ChartEditPopover } from '@/components/ChartEditPopover';
-import { LegendToggleButton } from '@/components/LegendToggleButton';
 import { ChartLegend, type LegendItem } from '@/components/ChartLegend';
 import { useResizableChart } from '@/hooks/useResizableChart';
 import { useChartAppearance } from '@/hooks/useChartAppearance';
@@ -118,10 +117,10 @@ const DqDvDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
   const datasets = useMemo<Dataset[]>(() => {
     if (!data?.cellData?.length) return [];
     const shown = data.cellData.filter((cd) => filteredCellIds.has(cd.cell.id));
-    // R1: orthogonal dash/symbol keyed by within-condition replicate index over
+    // Orthogonal dash/symbol keyed by within-condition replicate index over
     // exactly the cells on screen, so overlaid same-hue replicates separate in
-    // the 2D view. Hue stays the identity colour (R2 contrast lives on the
-    // primary GCD/rate-perf views, not this cycle-dominated plot).
+    // the 2D view. Hue stays the identity colour (contrast mode not applied to
+    // this cycle-dominated plot).
     const matched = shown
       .map((cd) => cells.find((c) => c.cellId === cd.cell.id))
       .filter((c): c is NonNullable<typeof c> => !!c);
@@ -164,6 +163,18 @@ const DqDvDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
     [datasets],
   );
   const evoLegendItems = useMemo<LegendItem[]>(
+    () =>
+      datasets.map((d) => ({
+        label: d.label,
+        color: d.color ?? '#6b7280',
+        hasLine: true,
+        hasMarker: true,
+      })),
+    [datasets],
+  );
+  // 3D surface legend: one plain-name entry per cell, rendered below the plot
+  // (same ChartLegend block + toggle as the 2D panels).
+  const surfaceLegendItems = useMemo<LegendItem[]>(
     () =>
       datasets.map((d) => ({
         label: d.label,
@@ -298,7 +309,8 @@ const DqDvDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
               <ResizeHandle />
             </div>
           ) : (
-            <div className="relative bg-white dark:bg-card rounded" style={{ width, height }}>
+            <div className="flex flex-col" style={{ width, height }}>
+              <div className="relative bg-white dark:bg-card rounded shrink-0" style={{ width, height: Math.max(300, height - 84) }}>
               {isHeavy3D && !heavyRenderConfirmed ? (
                 <div className="flex flex-col items-center justify-center gap-4 h-full min-h-[420px] px-8 text-center">
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
@@ -327,7 +339,7 @@ const DqDvDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
                   uirevision="dqdv-3d"
                   layoutOverride={layout3D}
                   width={width}
-                  height={height}
+                  height={Math.max(300, height - 84)}
                   exportContext={exportContext}
                   onOpenPanel={openPanel}
                   ResizeHandle={ResizeHandle}
@@ -338,10 +350,15 @@ const DqDvDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
                 onConfigChange={surfaceAppearance.onConfigChange}
                 chartLabel="3D surface"
               />
-              <LegendToggleButton
+              </div>
+              <ChartLegend
+                items={surfaceLegendItems}
                 shown={surfaceAppearance.config.showLegend}
                 onToggle={() => surfaceAppearance.onConfigChange('showLegend', !surfaceAppearance.config.showLegend)}
                 chartLabel="3D surface"
+                fontSize={surfaceAppearance.config.legendFontSize}
+                maxHeight={56}
+                className="shrink-0"
               />
             </div>
           )}
