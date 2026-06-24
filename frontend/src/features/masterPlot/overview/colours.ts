@@ -62,6 +62,9 @@ export const MISSING_TILE_FG = 'hsl(var(--muted-foreground))';
  * the treemap always means "metric value", never "group identity". Plotly can't
  * resolve CSS variables, so we branch on the documented `dark` class the way the
  * other Plotly views in this app do.
+ *
+ * NOTE: consumed only by LibraryTreemap, which is in development and not
+ * currently mounted — these helpers are dormant until that view is re-enabled.
  */
 function isDarkMode(): boolean {
   return typeof document !== 'undefined' && document.documentElement.classList.contains('dark');

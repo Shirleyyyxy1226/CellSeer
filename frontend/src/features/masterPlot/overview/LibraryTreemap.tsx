@@ -3,6 +3,13 @@
  * (cathode → separator → spacer → cell). Tile area = cell count, colour =
  * selected metric (score space); branches colour by cohort mean. Clicking a
  * group zooms via the pathbar, clicking a cell opens the Inspector.
+ *
+ * STATUS: IN DEVELOPMENT — intentionally kept, but NOT currently mounted in the
+ * Master Plot view tabs. The live views are heatmap / ranking / trajectories /
+ * parallel coords (see ProjectOverviewDashboard); nothing imports this component
+ * yet. To re-enable it, add a 'treemap' case to the OverviewView type + the view
+ * tablist and render it like the other metric-driven views. Left in the tree so
+ * the work isn't lost.
  */
 import { useCallback, useMemo } from 'react';
 import type Plotly from 'plotly.js-strict-dist-min';

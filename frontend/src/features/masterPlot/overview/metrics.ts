@@ -6,6 +6,9 @@
  * To add a metric: extend CellSummary (and summariseCell) with the new
  * per-cell value, then append a MetricDef to METRICS — the heatmap,
  * ranking, treemap, metric selector and inspector pick it up automatically.
+ *
+ * NOTE: the treemap view (LibraryTreemap) is in development and not currently
+ * mounted; it still consumes this registry for when it is re-enabled.
  */
 import type { RatePerfCell } from '@/lib/cellTypes';
 import { linregSlope } from './stats';

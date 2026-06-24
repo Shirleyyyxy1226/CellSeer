@@ -61,9 +61,9 @@ export function useRatePerformanceQuery(options?: { enabled?: boolean; scope?: R
 /**
  * Master Plot overview aggregate: per-condition stats + per-cell
  * scalars, with no per-cycle arrays. A fraction of the rate-performance payload,
- * used to drive the condition views (heatmap / ranking / treemap)
- * for large projects. Disabled by default — the orchestrator enables it only
- * above the cell-count threshold.
+ * used to drive the condition views (heatmap / ranking; the treemap view is in
+ * development and not currently mounted) for large projects. Disabled by
+ * default — the orchestrator enables it only above the cell-count threshold.
  */
 export function useMasterPlotOverviewQuery(options?: { enabled?: boolean }) {
   const { dataVersion } = useDataRefresh();

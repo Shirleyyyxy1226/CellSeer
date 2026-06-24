@@ -5,7 +5,8 @@
  * the metric-driven views in this provider with the resolved ramp array. Views
  * and legends read it with `useActiveRamp()` and colour via
  * `rampColourFrom(activeRamp, t)` / `rampTextFrom(activeRamp, t)`, so swapping
- * the picker recolours every tile/treemap/legend without prop-drilling. The
+ * the picker recolours every tile/treemap/legend without prop-drilling (note:
+ * the treemap view is in development and not currently mounted). The
  * default value is the registry default (viridis) — so a view rendered outside
  * a provider is unchanged.
  */
