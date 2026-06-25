@@ -688,7 +688,10 @@ export function CircuitTreeMindmap(props: CircuitTreeMindmapProps) {
       if (c) return cellIdentityColor(c);
       return cellIdentityColor({ cellName: m.rawVal || `cell-${m.uid}` });
     }
-    // Branch node: try perceptual / pathToColorMap; otherwise use lineage.
+    // Branch node: prefer the categorical perceptual palette (the same
+    // assignColourMapPerceptual(hierCols) the Rate Performance chart bands use,
+    // so tree and chart match exactly and deterministically); fall back to the
+    // hue-mean path colour, then lineage. Keyed by level so it follows reorder.
     const pathKey = (function () {
       const segs: string[] = [];
       let cur: NodeMeta | undefined = m;
@@ -698,10 +701,10 @@ export function CircuitTreeMindmap(props: CircuitTreeMindmapProps) {
       }
       return segs.join('|');
     })();
-    const fromPath = pathToColorMap?.get(pathKey);
-    if (fromPath) return fromPath;
     const fromMap = (colourMaps[m.depth - 1] ?? {})[m.rawVal];
     if (fromMap) return fromMap;
+    const fromPath = pathToColorMap?.get(pathKey);
+    if (fromPath) return fromPath;
     return m.lineageBase;
   };
 

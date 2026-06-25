@@ -4,7 +4,7 @@
  */
 
 import type { TreeFilterPath } from '@/components/tree/treeTypes';
-import { formatNodeLabel } from './treeUtils';
+import { formatNodeLabel, assignColourMapPerceptual } from './treeUtils';
 import type { ColStats, LabelDecoration } from './treeUtils';
 import {
   buildCellColorMap,
@@ -373,6 +373,27 @@ function colorForPath(pathKey: string, pathToColorMap?: Map<string, string>): st
   return pathToColorMap?.get(pathKey) ?? fallbackPathColor(pathKey);
 }
 
+/**
+ * Categorical branch/group colour shared with the hierarchy tree, so a chart
+ * band uses the exact colour its child node shows in the tree. The tree colours
+ * a node at depth D via `assignColourMapPerceptual(hierCols)[D-1][rawVal]`; a
+ * pathKey's last `|`-segment is exactly that node at level `segs.length - 1`, so
+ * this returns the identical colour. It is keyed only by `hierCols`, so it
+ * follows hierarchy reorder automatically. Falls back to the hue-mean path
+ * colour when a value isn't present in the perceptual map (formatting/metadata
+ * edge cases), so it never throws.
+ */
+export function colorForHierPath(
+  pathKey: string,
+  perceptualMaps: Record<string, string>[],
+  pathToColorMap?: Map<string, string>,
+): string {
+  const segs = pathKey.split('|');
+  const lvl = segs.length - 1;
+  const val = segs[lvl];
+  return perceptualMaps[lvl]?.[val] ?? colorForPath(pathKey, pathToColorMap);
+}
+
 function colorForIndividualCell(cell: CellColorAttrs): string {
   return colorFromCellIdentity(cell);
 }
@@ -449,6 +470,11 @@ export function buildTraces(opts: TraceOptions): AggregatedTrace[] {
 
   const { field, parentField, composite, fieldHeader, parentHeader } = getGrouping(path, detailDepth, hierCols);
 
+  // Categorical colours shared with the hierarchy tree: each aggregated band
+  // takes the colour its child node shows in the tree. Keyed only by hierCols,
+  // so it follows hierarchy reorder. See colorForHierPath.
+  const perceptualMaps = assignColourMapPerceptual(hierCols);
+
   if (normalizeHeaderKey(field) === 'cell' && !composite) {
     return filteredCells.map((row) => {
       const yVals = seriesForCell(row);
@@ -497,7 +523,7 @@ export function buildTraces(opts: TraceOptions): AggregatedTrace[] {
         name: displayName,
         x: cycles,
         y: values,
-        color: colorForPath(pathKey, pathToColorMap),
+        color: colorForHierPath(pathKey, perceptualMaps, pathToColorMap),
         isAggregated: !isSingleCell,
         hasCrate: isSingleCell ? hasCrate : false,
         cRates: isSingleCell && hasCrate ? firstCell?.cRates : undefined,

@@ -14,13 +14,14 @@ import { useTreeFilter } from '@/contexts/TreeFilterContext';
 import { useProtocolFilter } from '@/contexts/ProtocolFilterContext';
 import {
   buildPathToColorMap,
+  colorForHierPath,
   getColorForCell,
   getMaxDetailDepth,
   resolveHierarchyCellValue,
 } from '@/lib/ratePerfAggregation';
 import { useProjectHierarchy } from '@/contexts/ProjectHierarchyContext';
 import type { RatePerfCell as CyclingCell } from '@/lib/cellTypes';
-import { formatNodeLabel } from '@/lib/treeUtils';
+import { assignColourMapPerceptual, formatNodeLabel } from '@/lib/treeUtils';
 import { VoltageTimePlot, type VoltageTimeCellRecord, type VoltageTimePlotConfig } from './plots/VoltageTimePlot';
 import { RatePerformancePlot } from './plots/RatePerformancePlot';
 import { hasRatePerfTraces } from './plots/ratePerfTraceCheck';
@@ -336,6 +337,8 @@ const RatePerformanceDashboard = (_: Props) => {
     if (grouped.size === 0) return null;
 
     const pathPrefix = treeFilterPath.map((p) => p.val).filter(Boolean).join('|');
+    // Same categorical scheme as the chart bands and the tree nodes.
+    const perceptualMaps = assignColourMapPerceptual(activeAnalysis.hierCols);
     const items: NodePreviewItem[] = Array.from(grouped.entries())
       .map(([rawValue, cells]) => {
         const yVals: number[] = [];
@@ -356,7 +359,7 @@ const RatePerformanceDashboard = (_: Props) => {
             activeAnalysis.labelDecorations,
           ) || rawValue,
           count: cells.length,
-          color: pathToColorMap.get(pathKey) ?? '#6b7280',
+          color: colorForHierPath(pathKey, perceptualMaps, pathToColorMap),
           minY,
           maxY,
         };
