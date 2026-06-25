@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRatePerformanceQuery, useCellRecordQueries } from '@/hooks/useCellData';
 import { useCellSelection } from '@/contexts/CellSelectionContext';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, ChevronUp, Layers } from 'lucide-react';
+import { ChevronUp, Layers } from 'lucide-react';
+import { SelectionPrompt } from '@/components/SelectionPrompt';
 import { ChartEditPopover, type ChartAppearanceConfig, type ChartAppearanceKey } from '@/components/ChartEditPopover';
 import { ChartLegend, type LegendItem } from '@/components/ChartLegend';
 import { ResizableChartCard } from '@/components/ResizableChartCard';
@@ -500,17 +501,7 @@ const RatePerformanceDashboard = (_: Props) => {
                       {cyclingData === null ? (
                         <p>No rate performance data found.</p>
                       ) : treeFilterPath.length === 0 && !multiselectionMode ? (
-                        <div className="flex flex-col items-center gap-3 text-center px-8">
-                          <div className="flex items-center gap-2 text-primary/70">
-                            <ArrowLeft className="h-5 w-5 shrink-0" />
-                            <span className="text-sm font-medium text-foreground">
-                              Select a node in the hierarchy tree
-                            </span>
-                          </div>
-                          <p className="text-xs text-muted-foreground max-w-xs">
-                            Click any branch or leaf in the left sidebar to load its rate performance data here.
-                          </p>
-                        </div>
+                        <SelectionPrompt title="Select a node in the hierarchy tree" />
                       ) : direction === 'charge' ? (
                         <p>No {directionLabelLower} capacity data for the current selection.</p>
                       ) : (

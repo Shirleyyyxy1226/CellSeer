@@ -53,10 +53,6 @@ interface DifferentialApiResponse {
 
 // Explicit selection may pull up to this many cells for side-by-side comparison.
 const MAX_CELLS_LOAD = 6;
-// Default landing view loads a small representative set so the comparative plots
-// are immediately useful without the slow/overwhelming load of all cells; users
-// refine via the tree/selection (capped at MAX_CELLS_LOAD).
-const DEFAULT_CELLS_LOAD = 4;
 
 function matchesSpacer(spacerFilter: string, spacerMm: number | null): boolean {
   if (spacerFilter === 'All') return true;
@@ -143,19 +139,16 @@ export function useDifferentialData(
     // of the default landing window. This lets users pull up arbitrary cells
     // that fall outside the default top-N window, and lets power
     // users compare up to MAX_CELLS_LOAD cells deliberately.
-    if (selectedIdNos.length > 0) {
-      const selSet = new Set(selectedIdNos);
-      return cellIndex
-        .filter((c) => selSet.has(c.idNo) && matchesFilters(c))
-        .sort(sortFn)
-        .slice(0, MAX_CELLS_LOAD);
-    }
-
-    // Default landing view: render a small representative set (DEFAULT_CELLS_LOAD)
-    // so the comparative dV/dQ plots are useful on first paint while staying fast
-    // (dV/dQ records are the heaviest payloads). Users refine the set deliberately
-    // via the explicit-selection branch above.
-    return cellIndex.filter(matchesFilters).sort(sortFn).slice(0, DEFAULT_CELLS_LOAD);
+    // Plot ONLY the explicitly selected cells. With no cell selection (e.g. a
+    // group/branch node is active, or nothing is selected) there are no cells to
+    // load, so the dashboard shows a "select a cell" prompt instead of plotting
+    // an arbitrary default set.
+    if (selectedIdNos.length === 0) return [];
+    const selSet = new Set(selectedIdNos);
+    return cellIndex
+      .filter((c) => selSet.has(c.idNo) && matchesFilters(c))
+      .sort(sortFn)
+      .slice(0, MAX_CELLS_LOAD);
     // selectionKey participates so identity-only array changes don't cause refetches.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cellIndex, cathodeFilter, separatorFilter, spacerFilter, readyCellIds, selectionKey]);

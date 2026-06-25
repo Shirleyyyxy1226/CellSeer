@@ -269,6 +269,18 @@ export function nodeLeftEdge(depth: number, x: number, isLeaf: boolean): number 
 }
 
 /** Collect path from root to target node (for filtering). Returns [{header, val}, ...]. Includes leaf when target is a leaf (for individual cell selection). */
+/**
+ * True when a tree-filter path points at an individual cell (a leaf click),
+ * rather than a group/branch node. Leaf clicks are encoded by
+ * `getPathFromRootToNode` with a synthetic last segment `{ header: 'Cell', … }`;
+ * branch paths end in a hierarchy column header. Views that only plot per-cell
+ * data (GCD / dV/dQ / dQ/dV) use this to ignore group selections.
+ */
+export function isCellSelectionPath(path: Array<{ header: string; val: string }>): boolean {
+  const last = path[path.length - 1];
+  return !!last && last.header.trim().toLowerCase() === 'cell';
+}
+
 export function getPathFromRootToNode(
   node: TreeNode,
   target: TreeNode,
