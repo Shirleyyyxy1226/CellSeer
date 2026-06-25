@@ -251,8 +251,8 @@ const DqDvDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
     labelFontSize: 10,
     legendFontSize: 10,
   });
-  useEffect(() => { surfaceAppearance.setChartTitle(title3d); }, [title3d, surfaceAppearance]);
-  useEffect(() => { peakAppearance.setChartTitle(title2d); }, [title2d, peakAppearance]);
+  useEffect(() => { surfaceAppearance.setChartTitle(title3d); }, [title3d, surfaceAppearance.setChartTitle]);
+  useEffect(() => { peakAppearance.setChartTitle(title2d); }, [title2d, peakAppearance.setChartTitle]);
 
   // Legend visibility is now per-plot, owned by each plot's appearance config
   // (the eye toggle and the edit-popover checkbox both write the same value).
