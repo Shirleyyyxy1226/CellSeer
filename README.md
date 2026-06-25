@@ -23,6 +23,15 @@ Licensed under the [MIT License](LICENSE). Copyright (c) 2026 Shirley Xiong.
 
 ## Quick start
 
+### 0. Start PostgreSQL
+
+If you don't have PostgreSQL running locally, spin up just the database container:
+
+```bash
+POSTGRES_PASSWORD=dev docker compose up -d db
+export CELLSEER_DATABASE_URL="postgresql://cellseer:dev@localhost/cellseer"
+```
+
 ### 1. Install dependencies
 
 ```bash
