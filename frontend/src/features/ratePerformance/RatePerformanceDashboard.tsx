@@ -90,7 +90,6 @@ const RatePerformanceDashboard = (_: Props) => {
     chartTitle: defaultChartTitle,
     xAxisLabel: 'Cycle number',
     yAxisLabel: 'Capacity (mAh g⁻¹)',
-    showConnectedLine: false,
     maximizeContrast: false,
   });
   const { fontFamily, titleFontSize, labelFontSize, legendFontSize } = appearance.config;
@@ -293,7 +292,7 @@ const RatePerformanceDashboard = (_: Props) => {
         // Font knobs are shared with the main chart on purpose.
         appearance.onConfigChange(key, value);
       }
-      // legendPosition / showConnectedLine: intentionally no-op
+      // legendPosition: intentionally no-op
       // (these are hardcoded for the initial-voltage chart).
     },
     [appearance],
@@ -465,7 +464,6 @@ const RatePerformanceDashboard = (_: Props) => {
                           direction={direction}
                           detailDepth={detailDepth}
                           metadataByIdNo={metadataByIdNo}
-                          showConnectedLine={appearance.config.showConnectedLine ?? false}
                           config={appearance.config}
                           width={width}
                           height={height}
@@ -476,7 +474,6 @@ const RatePerformanceDashboard = (_: Props) => {
                       <ChartEditPopover
                         config={appearance.config}
                         onConfigChange={appearance.onConfigChange}
-                        showConnectedLineOption
                         chartLabel="Rate performance"
                       />
                       <ResizeHandle />
