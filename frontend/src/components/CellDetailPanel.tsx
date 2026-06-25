@@ -17,6 +17,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -46,6 +47,10 @@ export function CellDetailPanel() {
     refetchAnnotations,
     dismissDetailPanel,
   } = useCellSelection();
+  const queryClient = useQueryClient();
+  // Structural changes (metadata edit, file upload, protocol attach) still bump
+  // the global dataVersion so every view refetches. Saving a note/tag does not,
+  // to avoid remounting the hierarchy sidebar (see handleSave).
   const { triggerDataRefresh } = useDataRefresh();
   const { data: indexData, isLoading: indexLoading, isError: indexError } = useCellRecordIndexQuery();
   const cellIndex = (indexData?.cells ?? []) as IndexCell[];
@@ -106,11 +111,14 @@ export function CellDetailPanel() {
       }
       // Close the panel for prompt feedback, but keep the selection so any
       // selection-driven plots (e.g. dQ/dV, dV/dQ) stay rendered for the
-      // cell the user just annotated. Tags refetch and the cell index (which
-      // carries `cell.notes`) refreshes in the background.
+      // cell the user just annotated. Refetch tags, and invalidate only the
+      // cell index (which carries `cell.notes`) so it refreshes in place. A
+      // global dataVersion bump would change every query key and briefly empty
+      // the cell index, remounting the hierarchy sidebar and losing its
+      // expand/scroll state.
       dismissDetailPanel();
       void refetchAnnotations();
-      triggerDataRefresh();
+      void queryClient.invalidateQueries({ queryKey: ['cell-record-index'] });
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Failed to save annotation.');
     } finally {
@@ -123,7 +131,7 @@ export function CellDetailPanel() {
     localTags,
     refetchAnnotations,
     dismissDetailPanel,
-    triggerDataRefresh,
+    queryClient,
     indexStatus,
   ]);
 

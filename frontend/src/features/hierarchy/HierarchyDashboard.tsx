@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { HierarchyEditor } from '@/components/tree/HierarchyEditor';
 import { CircuitTreeMindmap } from '@/components/tree/CircuitTreeMindmap';
 import { LoadingIndicator } from '@/components/LoadingIndicator';
@@ -16,7 +16,7 @@ export function HierarchyDashboard() {
   const { handleCellSelect, clearSelection, annotationsByCell, multiselectionMode, setMultiselectionMode, selectedCellIds, setSelectedCellIds } =
     useCellSelection();
   const { treeFilterPath, setTreeFilterPath } = useTreeFilter();
-  const { apiData, loading, error, activeJs, setHierarchyOrder, resetHierarchyOrder } =
+  const { apiData, loading, error, activeJs, setHierarchyOrder, resetHierarchyOrder, reloadHierarchy } =
     useProjectHierarchy();
   const [collapsedPreLeafNodeKeys, setCollapsedPreLeafNodeKeys] = useState<Set<string>>(new Set());
   const [collapsedBranchKeys, setCollapsedBranchKeys] = useState<Set<string>>(new Set());
@@ -58,6 +58,32 @@ export function HierarchyDashboard() {
     const t = setTimeout(() => setLoadTimedOut(true), 15_000);
     return () => clearTimeout(t);
   }, [loading, apiData]);
+
+  const [refreshStatus, setRefreshStatus] = useState<{ ok: boolean; total: number; time: string } | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const manualRefreshPendingRef = useRef(false);
+
+  const handleRefresh = useCallback(() => {
+    manualRefreshPendingRef.current = true;
+    setRefreshing(true);
+    setRefreshStatus(null);
+    void reloadHierarchy();
+  }, [reloadHierarchy]);
+
+  const rowCount = apiData?.parsed?.rows?.length ?? 0;
+  const prevLoadingRef = useRef(loading);
+  useEffect(() => {
+    const wasLoading = prevLoadingRef.current;
+    prevLoadingRef.current = loading;
+    if (!manualRefreshPendingRef.current) return;
+    if (wasLoading && !loading) {
+      manualRefreshPendingRef.current = false;
+      setRefreshing(false);
+      const total = rowCount;
+      const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      setRefreshStatus({ ok: !error, total, time });
+    }
+  }, [loading, rowCount, error]);
 
   useEffect(() => {
     if (!tree) {
@@ -217,6 +243,20 @@ export function HierarchyDashboard() {
           >
             Collapse all
           </button>
+          <button type="button" onClick={() => { void handleRefresh(); }} disabled={refreshing} title="Refresh hierarchy"
+            className="h-8 px-2.5 text-[10.5px] rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors inline-flex items-center gap-1.5 disabled:opacity-50">
+            <svg aria-hidden width="12" height="12" viewBox="0 0 24 24" fill="none" className={refreshing ? 'animate-spin' : ''}>
+              <path d="M21 12a9 9 0 11-9-9c2.52 0 4.93 1 6.74 2.74L21 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M21 3v5h-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            Refresh
+          </button>
+          {refreshStatus && !refreshStatus.ok && (
+            <span className="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-medium bg-destructive/10 text-destructive border border-destructive/20">Refresh failed</span>
+          )}
+          {refreshStatus && refreshStatus.ok && (
+            <span className="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-800">✓ {refreshStatus.total > 0 ? `${refreshStatus.total} cells · ` : ''}{refreshStatus.time}</span>
+          )}
           {/* Single / Multi toggle — mirrors the sidebar control */}
           <div className="flex items-center rounded-md border border-input shadow-sm overflow-hidden ml-1" role="group" aria-label="Selection mode">
             <button

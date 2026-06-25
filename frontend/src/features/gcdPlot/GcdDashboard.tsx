@@ -96,9 +96,6 @@ const GcdDashboard = ({
     chartTitle: GCD_TITLE_DEFAULT,
     xAxisLabel: GCD_X_DEFAULT,
     yAxisLabel: 'Voltage (V)',
-    // GCD curves are continuous V–Q lines — default to connected lines, not the
-    // old scatter-dots (still toggleable via the chart Edit popover).
-    showConnectedLine: true,
     maximizeContrast: false,
   });
   const {
@@ -109,7 +106,6 @@ const GcdDashboard = ({
     titleFontSize,
     labelFontSize,
     legendFontSize,
-    showConnectedLine,
     maximizeContrast,
   } = appearance.config;
 
@@ -229,7 +225,7 @@ const GcdDashboard = ({
       const fig = buildGcdFigure(recordDatasets, {
         mode: 'scatter',
         direction: gcdDirection,
-        showConnectedLine,
+        showConnectedLine: true,
         allowedCycles: gcdAllowedCycles,
         maxCycles: MAX_CYCLES,
         maxPointsPerTrace: MAX_PTS_TRACE,
@@ -243,7 +239,7 @@ const GcdDashboard = ({
     } catch (e) {
       return { traces: [] as Plotly.Data[], gcdTraceIndexToCell: new Map<number, { idNo: number; cellName: string }>() };
     }
-  }, [recordDatasets, gcdCycleSubset, allowedCycles, showConnectedLine, gcdDirection, combinedHighlightCycle, isSingleCell, zoomFocusCycle]);
+  }, [recordDatasets, gcdCycleSubset, allowedCycles, gcdDirection, combinedHighlightCycle, isSingleCell, zoomFocusCycle]);
 
   // Multi-cell GCD colours lines by cell, so a discrete legend (one entry per
   // cell) is useful. Single-cell mode colours by cycle and already shows the
@@ -495,7 +491,6 @@ const GcdDashboard = ({
     chartTitle: 'Rate performance',
     xAxisLabel: 'Cycle number',
     yAxisLabel: 'Discharge capacity (mAh)',
-    showConnectedLine: false,
     maximizeContrast: false,
   });
 
@@ -928,7 +923,6 @@ const GcdDashboard = ({
                       <ChartEditPopover
                         config={appearance.config}
                         onConfigChange={appearance.onConfigChange}
-                        showConnectedLineOption
                         chartLabel="GCD"
                       />
                       <ResizeHandle />
@@ -991,7 +985,6 @@ const GcdDashboard = ({
                         direction="discharge"
                         detailDepth={0}
                         metadataByIdNo={metadataByIdNo}
-                        showConnectedLine={ratePerfAppearance.config.showConnectedLine ?? false}
                         config={ratePerfAppearance.config}
                         width={width}
                         height={height}
@@ -1000,7 +993,6 @@ const GcdDashboard = ({
                       <ChartEditPopover
                         config={ratePerfAppearance.config}
                         onConfigChange={ratePerfAppearance.onConfigChange}
-                        showConnectedLineOption
                         chartLabel="Rate performance"
                       />
                       <ResizeHandle />

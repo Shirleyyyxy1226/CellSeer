@@ -32,9 +32,6 @@ export function useChartAppearance(
   const [legendPosition, setLegendPosition] = useState<'in' | 'right-bottom'>(
     initial.legendPosition ?? 'right-bottom',
   );
-  const [showConnectedLine, setShowConnectedLine] = useState<boolean | undefined>(
-    initial.showConnectedLine,
-  );
   const [maximizeContrast, setMaximizeContrast] = useState<boolean | undefined>(
     initial.maximizeContrast,
   );
@@ -69,9 +66,6 @@ export function useChartAppearance(
         case 'legendPosition':
           setLegendPosition(value as 'in' | 'right-bottom');
           break;
-        case 'showConnectedLine':
-          setShowConnectedLine((value as boolean | undefined) ?? false);
-          break;
         case 'maximizeContrast':
           setMaximizeContrast((value as boolean | undefined) ?? false);
           break;
@@ -95,7 +89,6 @@ export function useChartAppearance(
       legendFontSize,
       showLegend,
       legendPosition,
-      showConnectedLine,
       maximizeContrast,
     }),
     [
@@ -108,7 +101,6 @@ export function useChartAppearance(
       legendFontSize,
       showLegend,
       legendPosition,
-      showConnectedLine,
       maximizeContrast,
     ],
   );
