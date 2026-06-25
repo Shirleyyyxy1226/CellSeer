@@ -1,46 +1,25 @@
 """File upload endpoints."""
 
 import json
-import sqlite3
 import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
 
-from config import DB_PATH
+from db import get_db, _PGConn
 from loaders.test_types import get_loader, test_type_manifest
-from project_scope import ensure_project_exists, ensure_project_schema, normalize_project_id
+from project_scope import ensure_project_exists, normalize_project_id
 
 router = APIRouter()
 
 
-# Opens a DB connection for tracking upload task progress.
-
-def _upload_db() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
+def _upload_db() -> _PGConn:
+    from db import _PGConn
+    import psycopg2
+    from config import DATABASE_URL
+    from project_scope import ensure_project_schema
+    conn = _PGConn(psycopg2.connect(DATABASE_URL))
     ensure_project_schema(conn)
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS upload_task (
-          id         TEXT PRIMARY KEY,
-          project_id TEXT NOT NULL DEFAULT 'default',
-          filename   TEXT NOT NULL,
-          file_type  TEXT,
-          item_count INTEGER NOT NULL DEFAULT 1,
-          status     TEXT NOT NULL DEFAULT 'queued',
-          message    TEXT,
-          progress   INTEGER DEFAULT 0,
-          created_at TEXT DEFAULT (datetime('now')),
-          updated_at TEXT DEFAULT (datetime('now'))
-        )
-        """
-    )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_upload_task_created ON upload_task(created_at DESC)"
-    )
-    conn.commit()
     return conn
 
 
@@ -175,7 +154,7 @@ async def upload_file(
         WHERE project_id=?
           AND filename=?
           AND status IN ('queued','processing')
-          AND updated_at >= datetime('now', '-20 minutes')
+          AND updated_at >= NOW() - INTERVAL '20 minutes'
         """,
         (project_id, filename),
     ).fetchone()

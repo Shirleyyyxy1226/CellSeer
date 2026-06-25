@@ -20,8 +20,9 @@ except Exception:
     pass
 
 # Database
-DB_PATH = Path(
-    os.environ.get("CELLSEER_DB_PATH", str(PROJECT_ROOT / "backend" / "cellseer.db"))
+DATABASE_URL: str = os.environ.get(
+    "CELLSEER_DATABASE_URL",
+    "postgresql://localhost/cellseer",
 )
 
 # Data dirs

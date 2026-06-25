@@ -3,11 +3,10 @@
 import json
 import math
 import re
-import sqlite3
 import threading
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import polars as pl
 from fastapi import APIRouter, HTTPException
@@ -36,10 +35,10 @@ def _cell_number_token(cell_id: str | None) -> int | None:
         return None
 
 
-def _dedupe_index_rows(rows: list[sqlite3.Row]) -> list[sqlite3.Row]:
-    out: dict[object, sqlite3.Row] = {}
+def _dedupe_index_rows(rows: list[dict]) -> list[dict]:
+    out: dict[object, dict] = {}
 
-    def score(r: sqlite3.Row) -> tuple[int, int]:
+    def score(r: dict) -> tuple[int, int]:
         has_id_no = 1 if r["id_no"] is not None else 0
         prefixed = 1 if (r["cell_id"] and str(r["cell_id"]).upper().startswith("P")) else 0
         return (has_id_no, prefixed)
@@ -82,7 +81,8 @@ def _get_cell_record_index(project_id: str) -> dict:
         with get_db() as conn:
             rows = conn.execute(
                 """
-                SELECT c.rowid AS _rowid, c.id_no, c.cell_id, c.batch, c.category, c.repeat,
+                SELECT ROW_NUMBER() OVER (ORDER BY c.cell_id) AS _rowid,
+                       c.id_no, c.cell_id, c.batch, c.category, c.repeat,
                        c.cathode, c.cathode_diameter_mm, c.cathode_mass,
                        c.anode, c.anode_diameter_mm, c.anode_mass, c.np_ratio,
                        c.separator_type, c.separator_diameter_mm,
@@ -110,7 +110,7 @@ def _get_cell_record_index(project_id: str) -> dict:
                 """,
                 (project_id,),
             ).fetchall()
-    except sqlite3.OperationalError:
+    except Exception:
         # DB-only mode: if DB schema isn't initialised, return empty index (no JSON fallback).
         return {"cells": []}
     rows = _dedupe_index_rows(rows)
@@ -384,7 +384,7 @@ def _cycle_capacity_summary(cycling_uri: str) -> tuple[list[int], list[float], l
     return result
 
 
-def _build_rate_payload_for_cell(row: sqlite3.Row) -> dict | None:
+def _build_rate_payload_for_cell(row: dict) -> dict | None:
     id_no = _safe_int(row["id_no"])
     if id_no is None:
         return None
@@ -452,7 +452,7 @@ def _build_rate_payload_for_cell(row: sqlite3.Row) -> dict | None:
 
 
 def _parse_cell_level_protocol(
-    row: sqlite3.Row,
+    row: dict,
 ) -> tuple[str | None, list[dict], dict[int, float]]:
     """Materialise the ``cell.protocol_segments`` blob into the same shape
     that :func:`_parse_protocol_meta` returns: a display label, the cleaned
@@ -524,7 +524,7 @@ def _load_rate_cells_uncached(project_id: str) -> tuple[list[dict], list[str]]:
                 """,
                 (project_id,),
             ).fetchall()
-    except sqlite3.OperationalError:
+    except Exception:
         return ([], [])
 
     # Parquet reads dominate the cold build and release the GIL inside polars —
@@ -581,7 +581,7 @@ def _rate_cells_fingerprint(project_id: str) -> tuple | None:
                 (project_id,),
             ).fetchone()
         return (tuple(ds), tuple(cell))
-    except sqlite3.OperationalError:
+    except Exception:
         return None
 
 
@@ -1180,7 +1180,7 @@ def _synth_protocol_name(segments: list[dict]) -> str:
 
 
 def _write_cell_protocol(
-    conn: sqlite3.Connection,
+    conn: Any,
     project_id: str,
     cell_id: str,
     segments_json: str,

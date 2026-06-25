@@ -23,7 +23,6 @@ class CyclingFileLoader(BaseTestTypeLoader):
         update_progress: Callable[[int, str], None],
         ingest_options: Optional[dict[str, Any]] = None,
     ) -> dict:
-        from config import DB_PATH
         from cellseer.db.sqlite_backend import SQLiteBackend
         from cellseer.ingest import ingest_cycling_file
 
@@ -36,7 +35,7 @@ class CyclingFileLoader(BaseTestTypeLoader):
             tmp.write(file_bytes)
             tmp_path = tmp.name
         try:
-            db = SQLiteBackend(DB_PATH)
+            db = SQLiteBackend(None)
             options = ingest_options or {}
             project_id = options.get("projectId")
             if project_id and hasattr(db, "set_project_scope"):

@@ -268,7 +268,7 @@ def import_collection(
     conn = db._connect()
     ensure_project_exists(conn, project_id, collection_id)
     # Record start time so we can detect cells that were removed from the upstream collection.
-    run_started_at = conn.execute("SELECT datetime('now')").fetchone()[0]
+    run_started_at = conn.execute("SELECT NOW() AS ts").fetchone()["ts"]
     conn.close()
     db.set_project_scope(project_id)
 
@@ -591,7 +591,7 @@ def run_sync_cli(argv: list[str] | None = None) -> int:
         required=True,
         help="Comma-separated collection IDs",
     )
-    parser.add_argument("--db-path", default="backend/cellseer.db", help="CellSeer SQLite DB path")
+    parser.add_argument("--db-path", default="", help="Ignored (PostgreSQL connection from CELLSEER_DATABASE_URL)")
     parser.add_argument("--data-lake-dir", default="data_lake", help="CellSeer data-lake directory")
     parser.add_argument("--max-items", type=int, default=None)
     parser.add_argument("--since", default=None, help="Reserved for future incremental filtering")

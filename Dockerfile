@@ -22,20 +22,18 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_NO_CACHE_DIR=1 \
-    # All runtime data lives under /data so a single volume mount covers
-    # the SQLite DB, parquet cache, and any user-uploaded files.
-    CELLSEER_DB_PATH=/data/cellseer.db \
+    # Parquet cache and user-uploaded files live under /data.
     CELLSEER_DATA_DIR=/data/data \
     CELLSEER_DATA_LAKE_DIR=/data/data_lake \
     CELLSEER_FRONTEND_DIST=/app/frontend/dist
 
 WORKDIR /app
 
-# System packages: sqlite3 CLI for the backup script, curl for healthcheck,
-# tini as PID 1 for clean signal handling under docker compose.
+# System packages: postgresql-client for the backup script (pg_dump),
+# curl for healthcheck, tini as PID 1 for clean signal handling.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-       sqlite3 \
+       postgresql-client \
        curl \
        tini \
        ca-certificates \

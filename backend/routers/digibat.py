@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 import uuid
 from typing import Any
 from urllib.parse import quote
@@ -9,7 +8,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel, Field
 
-from config import DB_PATH, DATALAB_API_KEY, DATALAB_BASE_URL, DATALAB_TIMEOUT
+from config import DATALAB_API_KEY, DATALAB_BASE_URL, DATALAB_TIMEOUT
 from db import get_db
 from digibat.client import DigibatClient
 from digibat.config import DigibatConfig
@@ -48,7 +47,7 @@ class DigibatSyncRequest(BaseModel):
     verbose: bool = False
 
 
-def _project_connection(conn: sqlite3.Connection, project_id: str) -> dict[str, Any] | None:
+def _project_connection(conn: Any, project_id: str) -> dict[str, Any] | None:
     row = conn.execute(
         """
         SELECT project_id, base_url, api_key, key_source, updated_at
@@ -60,7 +59,7 @@ def _project_connection(conn: sqlite3.Connection, project_id: str) -> dict[str, 
     return dict(row) if row else None
 
 
-def _effective_config(conn: sqlite3.Connection, project_id: str) -> DigibatConfig:
+def _effective_config(conn: Any, project_id: str) -> DigibatConfig:
     connection = _project_connection(conn, project_id)
     if connection and connection.get("api_key"):
         return DigibatConfig(
@@ -93,7 +92,7 @@ def _run_sync_task(
         full_resync=request.fullResync,
         verbose=request.verbose,
     )
-    sync_collections(config=config, db_path=str(DB_PATH), options=options, run_id=run_id)
+    sync_collections(config=config, db_path="", options=options, run_id=run_id)
 
 
 @router.post("/api/digibat/connect")
@@ -141,8 +140,7 @@ def create_manual_project(req: ManualProjectRequest):
                 """
                 INSERT INTO cell (project_id, cell_id, id_no, notes)
                 VALUES (?, ?, ?, ?)
-                ON CONFLICT(cell_id) DO UPDATE SET
-                  project_id = excluded.project_id,
+                ON CONFLICT(project_id, cell_id) DO UPDATE SET
                   id_no = excluded.id_no,
                   notes = excluded.notes
                 """,
@@ -152,7 +150,7 @@ def create_manual_project(req: ManualProjectRequest):
     return {"ok": True, "projectId": project_id}
 
 
-def _running_collection_ids(conn: sqlite3.Connection, project_id: str) -> dict[str, list[str]]:
+def _running_collection_ids(conn: Any, project_id: str) -> dict[str, list[str]]:
     """Return mapping {run_id: [collection_ids]} for every still-`running` row.
 
     Rows from older versions of the app may have NULL collection_ids_json; we

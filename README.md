@@ -17,7 +17,7 @@ Licensed under the [MIT License](LICENSE). Copyright (c) 2026 Shirley Xiong.
 ```
 .
 ├── frontend/   # React + Vite UI
-├── backend/    # FastAPI + SQLite
+├── backend/    # FastAPI + PostgreSQL
 └── data/       # raw input files (optional)
 ```
 
@@ -66,40 +66,29 @@ Open [http://localhost:8080](http://localhost:8080). The frontend proxies `/api`
 | DIGIBAT sync | POST | `/api/projects/{project_id}/digibat/sync` |
 | DIGIBAT status | GET | `/api/projects/{project_id}/digibat/status` |
 
-## Custom database
+## Database
 
-By default the backend uses `backend/cellseer.db` and `data_lake/`. To use your own:
+The backend requires a PostgreSQL database. Set the connection URL via:
 
 ```bash
-export CELLSEER_DB_PATH="/path/to/your.db"
+export CELLSEER_DATABASE_URL="postgresql://user@localhost/cellseer"
 export CELLSEER_DATA_LAKE_DIR="/path/to/data_lake"
 python -m uvicorn backend.api:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-### Minimum required tables and columns
+The schema (11 tables) is created automatically on first startup — no migration needed. To start fresh, drop and recreate the database, then re-upload your data.
 
-**project:** `id` (TEXT), `name` (TEXT)
-
-**cell:** `project_id`, `cell_id` (unique), `id_no` (integer label), optional: `cathode`, `anode`, `electrolyte`, `separator_type`, `spacer_mm`, `deleted_at`
-
-**dataset:** `project_id`, `cell_id`, `name`, `storage_kind`, `storage_uri`, `data_format`
-
-Required dataset names: `cycling` (for rate performance), `discharge_dqdv`, `discharge_dvdq` (for differential plots).
-
-### Check your DB is compatible
+### Check your DB
 
 ```bash
-sqlite3 "/path/to/your.db" "
-.tables
-SELECT COUNT(*) FROM project;
-SELECT COUNT(*) FROM cell;
-SELECT COUNT(*) FROM dataset WHERE name='cycling';
-"
+psql cellseer -c "\dt"
+psql cellseer -c "SELECT COUNT(*) FROM cell;"
+psql cellseer -c "SELECT COUNT(*) FROM dataset WHERE name='cycling';"
 ```
 
 ## DIGIBAT sync
 
-CellSeer can mirror DIGIBAT collections into local SQLite + parquet so dashboards work offline.
+CellSeer can mirror DIGIBAT collections into local PostgreSQL + Parquet so dashboards work offline.
 
 ### Configuration
 
@@ -117,7 +106,7 @@ DATALAB_TIMEOUT=60
 python backend/scripts/sync_digibat.py \
   --project "your-project-name" \
   --collections "your-collection-name" \
-  --db-path "backend/cellseer.db" \
+  \
   --data-lake-dir "data_lake"
 ```
 
@@ -138,7 +127,7 @@ Useful flags:
   python backend/scripts/sync_digibat.py \
     --project "your-project-name" \
     --collections "your-collection-name" \
-    --db-path "backend/cellseer.db" \
+    \
     --data-lake-dir "data_lake" \
   >> backend/logs/digibat-sync.log 2>&1
 ```

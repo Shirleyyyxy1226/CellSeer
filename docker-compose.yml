@@ -10,17 +10,40 @@
 #                          TLS is handled at Cloudflare's edge. No inbound ports
 #                          on the host, no router config, no Let's Encrypt.
 #
-# The `app` service runs in both modes. SQLite + parquet cache live on a single
-# named volume so backups are one file tree.
+# The `app` service runs in both modes. PostgreSQL data lives on the `pg-data`
+# volume; Parquet files live on `cellseer-data`. Back up both for full recovery.
 
 services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: cellseer
+      POSTGRES_USER: cellseer
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    networks:
+      - cellseer
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cellseer -d cellseer"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   app:
     build:
       context: .
       dockerfile: Dockerfile
     image: cellseer:latest
     restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
     environment:
+      # PostgreSQL connection (schema auto-created on first startup)
+      CELLSEER_DATABASE_URL: postgresql://cellseer:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@db/cellseer
+
       # Shared bearer token for all clients. Required in production —
       # if unset, the backend serves /api/* with no auth at all.
       CELLSEER_API_TOKEN: ${CELLSEER_API_TOKEN:?CELLSEER_API_TOKEN must be set}
@@ -35,9 +58,7 @@ services:
       DATALAB_API_KEY: ${DATALAB_API_KEY:-}
       DATALAB_TIMEOUT: ${DATALAB_TIMEOUT:-60}
     volumes:
-      # All mutable runtime state. The Dockerfile points
-      # CELLSEER_DB_PATH, CELLSEER_DATA_DIR and CELLSEER_DATA_LAKE_DIR
-      # into subpaths of /data so a single mount covers everything.
+      # Parquet data lake and uploaded files.
       - cellseer-data:/data
     # Not published to the host — Caddy / cloudflared reach it over the
     # internal docker network on port 8000.
@@ -100,6 +121,7 @@ services:
       - cellseer
 
 volumes:
+  pg-data:
   cellseer-data:
   caddy-data:
   caddy-config:

@@ -21,7 +21,6 @@ cycles present — so it works on differential data that has no attached protoco
 
 from __future__ import annotations
 
-import sqlite3
 import threading
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
@@ -164,7 +163,7 @@ def _load_peak_shift_rows(project_id: str) -> list[dict]:
                 """,
                 (project_id,),
             ).fetchall()
-    except sqlite3.OperationalError:
+    except Exception:
         return []
 
     uris = [(r["cell_id"], r["uri"]) for r in rows if r["cell_id"] and r["uri"]]

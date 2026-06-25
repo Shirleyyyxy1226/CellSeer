@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import sqlite3
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -22,12 +21,12 @@ class RenameProjectRequest(BaseModel):
     name: str
 
 
-def _project_summary(conn: sqlite3.Connection, project_id: str) -> dict:
+def _project_summary(conn: Any, project_id: str) -> dict:
     row = conn.execute(
         """
         SELECT
           COUNT(*) AS cell_count,
-          GROUP_CONCAT(DISTINCT cathode) AS cathodes
+          STRING_AGG(DISTINCT cathode, ',') AS cathodes
         FROM cell
         WHERE project_id = ?
           AND deleted_at IS NULL
@@ -122,7 +121,7 @@ def delete_project(project_id: str):
         for table in ("dataset", "ingest_log", "cell_annotation", "upload_task", "cell"):
             try:
                 conn.execute(f"DELETE FROM {table} WHERE project_id = ?", (pid,))
-            except sqlite3.OperationalError:
+            except Exception:
                 pass
         deleted = conn.execute("DELETE FROM project WHERE id = ?", (pid,))
         conn.commit()

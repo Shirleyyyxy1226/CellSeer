@@ -21,7 +21,6 @@ API surface. User-created templates live alongside them and can be deleted.
 from __future__ import annotations
 
 import json
-import sqlite3
 import uuid
 from typing import Any, List, Optional
 
@@ -102,7 +101,7 @@ def _validate_segments(segments: List[ProtocolSegmentIn]) -> list[dict[str, Any]
     return cleaned
 
 
-def _row_to_template(row: sqlite3.Row) -> dict[str, Any]:
+def _row_to_template(row: dict) -> dict[str, Any]:
     try:
         segments = json.loads(row["segments_json"]) if row["segments_json"] else []
     except Exception:
@@ -142,7 +141,7 @@ def list_protocol_templates(projectId: str | None = None):
                    is_builtin, created_at, updated_at
             FROM protocol_template
             WHERE project_id = ?
-            ORDER BY is_builtin DESC, name COLLATE NOCASE ASC, created_at ASC
+            ORDER BY is_builtin DESC, LOWER(name) ASC, created_at ASC
             """,
             (project_id,),
         ).fetchall()

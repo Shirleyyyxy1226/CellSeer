@@ -1,9 +1,9 @@
 """
-SQLiteBackend — DBBackend implementation backed by the existing CellSeer SQLite schema.
+SQLiteBackend — DBBackend implementation (now backed by PostgreSQL).
 
 Storage model
 -------------
-- Cell metadata → `cell` table (one row per cell)
+- Cell metadata → `cell` table (one row per cell, PK = (project_id, cell_id))
 - Time-series data → Parquet files under data-lake storage, referenced by
   `dataset.storage_uri` and companion metadata columns.
 
@@ -12,7 +12,8 @@ Reading back is lazy: storage URI → pl.read_parquet(...).lazy()
 from __future__ import annotations
 
 import json
-import sqlite3
+import psycopg2
+import psycopg2.extras
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional
 
@@ -26,17 +27,38 @@ if TYPE_CHECKING:
     from cellseer.project import Project
 
 
+def _adapt_sql(sql: str) -> str:
+    return sql.replace("?", "%s").replace("datetime('now')", "NOW()")
+
+
+class _PGConn:
+    def __init__(self, pg_conn) -> None:
+        self._conn = pg_conn
+
+    def execute(self, sql: str, params=None):
+        sql = _adapt_sql(sql)
+        cur = self._conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(sql, params if params is not None else ())
+        return cur
+
+    def commit(self) -> None:
+        self._conn.commit()
+
+    def rollback(self) -> None:
+        self._conn.rollback()
+
+    def close(self) -> None:
+        self._conn.close()
+
+
 class SQLiteBackend(DBBackend):
     """
-    Wraps an existing (or new) CellSeer SQLite database.
-
-    Parameters
-    ----------
-    db_path : Path | str
-        Path to the SQLite file. Created if it does not exist.
+    DBBackend implementation backed by PostgreSQL.
+    Name kept for backwards compatibility with existing imports.
     """
 
     def __init__(self, db_path: Path | str) -> None:
+        # db_path ignored — connection comes from DATABASE_URL in config
         self.db_path = Path(db_path)
         self.project_id = DEFAULT_PROJECT_ID
         self._ensure_schema()
@@ -52,17 +74,12 @@ class SQLiteBackend(DBBackend):
     # Schema management
     # ------------------------------------------------------------------
 
-    def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        return conn
+    def _connect(self) -> _PGConn:
+        from config import DATABASE_URL
+        return _PGConn(psycopg2.connect(DATABASE_URL))
 
     def _ensure_schema(self) -> None:
-        schema_path = Path(__file__).resolve().parents[2] / "schema.sql"
-        db_is_new = (not self.db_path.exists()) or self.db_path.stat().st_size == 0
         conn = self._connect()
-        if db_is_new and schema_path.exists():
-            conn.executescript(schema_path.read_text())
         ensure_project_schema(conn)
         ensure_project_exists(conn, self.project_id)
         conn.commit()
@@ -95,8 +112,7 @@ class SQLiteBackend(DBBackend):
                     spacer_mm, repeat, do_formation, do_ratetest, do_eis,
                     anode_mass, cathode_mass, notes
                 ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                ON CONFLICT(cell_id) DO UPDATE SET
-                    project_id=excluded.project_id,
+                ON CONFLICT(project_id, cell_id) DO UPDATE SET
                     id_no=excluded.id_no, batch=excluded.batch,
                     category=excluded.category, cathode=excluded.cathode,
                     cathode_diameter_mm=excluded.cathode_diameter_mm,
