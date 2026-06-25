@@ -25,12 +25,12 @@
           "n": 0
         },
         "ce": {
-          "mean": 100,
+          "mean": null,
           "sd": null,
           "cv": null,
           "sem": null,
           "ciHalf": null,
-          "n": 1
+          "n": 0
         },
         "cycles": {
           "mean": 3,
@@ -41,30 +41,6 @@
           "n": 1
         },
         "retention": {
-          "mean": null,
-          "sd": null,
-          "cv": null,
-          "sem": null,
-          "ciHalf": null,
-          "n": 0
-        },
-        "fade-rate": {
-          "mean": null,
-          "sd": null,
-          "cv": null,
-          "sem": null,
-          "ciHalf": null,
-          "n": 0
-        },
-        "cycle-life-80": {
-          "mean": null,
-          "sd": null,
-          "cv": null,
-          "sem": null,
-          "ciHalf": null,
-          "n": 0
-        },
-        "ce-trend": {
           "mean": null,
           "sd": null,
           "cv": null,
@@ -99,12 +75,12 @@
           "n": 4
         },
         "ce": {
-          "mean": 100,
-          "sd": 0,
-          "cv": 0,
-          "sem": 0,
-          "ciHalf": 0,
-          "n": 4
+          "mean": null,
+          "sd": null,
+          "cv": null,
+          "sem": null,
+          "ciHalf": null,
+          "n": 0
         },
         "cycles": {
           "mean": 10,
@@ -115,30 +91,6 @@
           "n": 4
         },
         "retention": {
-          "mean": null,
-          "sd": null,
-          "cv": null,
-          "sem": null,
-          "ciHalf": null,
-          "n": 0
-        },
-        "fade-rate": {
-          "mean": null,
-          "sd": null,
-          "cv": null,
-          "sem": null,
-          "ciHalf": null,
-          "n": 0
-        },
-        "cycle-life-80": {
-          "mean": null,
-          "sd": null,
-          "cv": null,
-          "sem": null,
-          "ciHalf": null,
-          "n": 0
-        },
-        "ce-trend": {
           "mean": null,
           "sd": null,
           "cv": null,
@@ -173,12 +125,12 @@
           "n": 0
         },
         "ce": {
-          "mean": 100,
+          "mean": null,
           "sd": null,
           "cv": null,
           "sem": null,
           "ciHalf": null,
-          "n": 1
+          "n": 0
         },
         "cycles": {
           "mean": 12,
@@ -195,30 +147,6 @@
           "sem": null,
           "ciHalf": null,
           "n": 0
-        },
-        "fade-rate": {
-          "mean": null,
-          "sd": null,
-          "cv": null,
-          "sem": null,
-          "ciHalf": null,
-          "n": 0
-        },
-        "cycle-life-80": {
-          "mean": null,
-          "sd": null,
-          "cv": null,
-          "sem": null,
-          "ciHalf": null,
-          "n": 0
-        },
-        "ce-trend": {
-          "mean": null,
-          "sd": null,
-          "cv": null,
-          "sem": null,
-          "ciHalf": null,
-          "n": 0
         }
       }
     },
@@ -228,7 +156,7 @@
       "separatorType": "PP",
       "spacerMm": 1,
       "n": 2,
-      "flaggedCount": 1,
+      "flaggedCount": 0,
       "metrics": {
         "capacity-raw": {
           "mean": 81,
@@ -247,12 +175,12 @@
           "n": 0
         },
         "ce": {
-          "mean": 96.72897196261682,
-          "sd": 3.271028037383175,
-          "cv": 3.3816425120772915,
-          "sem": 3.271028037383175,
-          "ciHalf": 41.56168224299062,
-          "n": 2
+          "mean": null,
+          "sd": null,
+          "cv": null,
+          "sem": null,
+          "ciHalf": null,
+          "n": 0
         },
         "cycles": {
           "mean": 10,
@@ -263,30 +191,6 @@
           "n": 2
         },
         "retention": {
-          "mean": null,
-          "sd": null,
-          "cv": null,
-          "sem": null,
-          "ciHalf": null,
-          "n": 0
-        },
-        "fade-rate": {
-          "mean": null,
-          "sd": null,
-          "cv": null,
-          "sem": null,
-          "ciHalf": null,
-          "n": 0
-        },
-        "cycle-life-80": {
-          "mean": null,
-          "sd": null,
-          "cv": null,
-          "sem": null,
-          "ciHalf": null,
-          "n": 0
-        },
-        "ce-trend": {
           "mean": null,
           "sd": null,
           "cv": null,
@@ -304,11 +208,8 @@
       "flags": [],
       "peakCapacitySpec": 50,
       "peakCapacityRaw": 100,
-      "medianCE": 100,
+      "medianCE": null,
       "retention": null,
-      "fadeRatePctPer100": null,
-      "ceTrendPctPer100": null,
-      "cycleLife80": null,
       "cycleCount": 10,
       "capacityBasis": "mAh/g"
     },
@@ -318,11 +219,8 @@
       "flags": [],
       "peakCapacitySpec": 49,
       "peakCapacityRaw": 98,
-      "medianCE": 100,
+      "medianCE": null,
       "retention": null,
-      "fadeRatePctPer100": null,
-      "ceTrendPctPer100": null,
-      "cycleLife80": null,
       "cycleCount": 10,
       "capacityBasis": "mAh/g"
     },
@@ -332,11 +230,8 @@
       "flags": [],
       "peakCapacitySpec": 51,
       "peakCapacityRaw": 102,
-      "medianCE": 100,
+      "medianCE": null,
       "retention": null,
-      "fadeRatePctPer100": null,
-      "ceTrendPctPer100": null,
-      "cycleLife80": null,
       "cycleCount": 10,
       "capacityBasis": "mAh/g"
     },
@@ -348,11 +243,8 @@
       ],
       "peakCapacitySpec": 30,
       "peakCapacityRaw": 60,
-      "medianCE": 100,
+      "medianCE": null,
       "retention": null,
-      "fadeRatePctPer100": null,
-      "ceTrendPctPer100": null,
-      "cycleLife80": null,
       "cycleCount": 10,
       "capacityBasis": "mAh/g"
     },
@@ -362,27 +254,19 @@
       "flags": [],
       "peakCapacitySpec": null,
       "peakCapacityRaw": 80,
-      "medianCE": 100,
+      "medianCE": null,
       "retention": null,
-      "fadeRatePctPer100": null,
-      "ceTrendPctPer100": null,
-      "cycleLife80": null,
       "cycleCount": 10,
       "capacityBasis": "mAh"
     },
     {
       "cellId": "B-2",
       "condKey": "NMC|PP|1",
-      "flags": [
-        "ce-anomaly"
-      ],
+      "flags": [],
       "peakCapacitySpec": null,
       "peakCapacityRaw": 82,
-      "medianCE": 93.45794392523365,
+      "medianCE": null,
       "retention": null,
-      "fadeRatePctPer100": null,
-      "ceTrendPctPer100": null,
-      "cycleLife80": null,
       "cycleCount": 10,
       "capacityBasis": "mAh"
     },
@@ -394,11 +278,8 @@
       ],
       "peakCapacitySpec": null,
       "peakCapacityRaw": 50,
-      "medianCE": 100,
+      "medianCE": null,
       "retention": null,
-      "fadeRatePctPer100": null,
-      "ceTrendPctPer100": null,
-      "cycleLife80": null,
       "cycleCount": 3,
       "capacityBasis": "mAh"
     },
@@ -408,11 +289,8 @@
       "flags": [],
       "peakCapacitySpec": null,
       "peakCapacityRaw": 98,
-      "medianCE": 100,
+      "medianCE": null,
       "retention": null,
-      "fadeRatePctPer100": null,
-      "ceTrendPctPer100": null,
-      "cycleLife80": null,
       "cycleCount": 12,
       "capacityBasis": "mAh"
     }

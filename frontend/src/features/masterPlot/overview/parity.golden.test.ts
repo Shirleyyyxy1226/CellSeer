@@ -26,7 +26,6 @@ const GOLDEN = resolve(FIXTURE_DIR, 'parity_golden.json');
 
 const CELL_KEYS = [
   'peakCapacitySpec', 'peakCapacityRaw', 'medianCE', 'retention',
-  'fadeRatePctPer100', 'ceTrendPctPer100', 'cycleLife80',
   'cycleCount', 'capacityBasis',
 ] as const;
 
@@ -80,14 +79,13 @@ describe('parity golden (TS reference)', () => {
 
   // Coverage sanity — the fixture must actually exercise every code path the
   // parity test claims to cover, else "they match" is vacuous.
-  it('exercises cap-outlier, ce-anomaly, few-cycles and the null protocol metrics', () => {
+  it('exercises cap-outlier, few-cycles and the null protocol metrics', () => {
     const flagsOf = (id: string) => cells.find((c) => c.cellId === id)!.flags as string[];
     expect(flagsOf('A-4')).toContain('cap-outlier');
-    expect(flagsOf('B-2')).toContain('ce-anomaly');
     expect(flagsOf('C-1')).toContain('few-cycles');
-    // Protocol-scoped metrics are not computed yet, so they are null for every cell.
-    expect(cells.find((c) => c.cellId === 'D-1')!.cycleLife80).toBeNull();
+    // CE and retention are not computed yet, so they are null for every cell.
     expect(cells.find((c) => c.cellId === 'C-1')!.retention).toBeNull();
+    expect(cells.find((c) => c.cellId === 'B-2')!.medianCE).toBeNull();
     // B-1 has no specific capacity -> basis falls back to raw mAh.
     expect(cells.find((c) => c.cellId === 'B-1')!.capacityBasis).toBe('mAh');
   });

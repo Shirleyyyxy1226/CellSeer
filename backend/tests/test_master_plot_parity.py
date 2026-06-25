@@ -62,7 +62,6 @@ def test_overview_matches_ts_golden():
         assert mine["flags"] == gold["flags"], f"{cid}: flags"
         for k in (
             "peakCapacitySpec", "peakCapacityRaw", "medianCE", "retention",
-            "fadeRatePctPer100", "ceTrendPctPer100", "cycleLife80",
             "cycleCount", "capacityBasis",
         ):
             _assert_num_eq(mine[k], gold[k], f"cell {cid}.{k}")
@@ -81,16 +80,15 @@ def test_overview_matches_ts_golden():
 
 
 def test_fixture_actually_covers_the_paths():
-    """Guard against a vacuous pass: the fixture must hit every flag + a
-    non-null cycle-life, or 'parity' proves nothing."""
+    """Guard against a vacuous pass: the fixture must hit every flag, or
+    'parity' proves nothing."""
     cells, _ = _load()
     got = build_overview(cells)
     by_id = {c["cellId"]: c for c in got["cells"]}
     assert "cap-outlier" in by_id["A-4"]["flags"]
-    assert "ce-anomaly" in by_id["B-2"]["flags"]
     assert "few-cycles" in by_id["C-1"]["flags"]
-    # Protocol-scoped metrics are not computed yet, so they are null for every cell.
-    assert by_id["D-1"]["cycleLife80"] is None
+    # CE and retention are not computed yet, so they are null for every cell.
     assert by_id["C-1"]["retention"] is None
+    assert by_id["B-2"]["medianCE"] is None
     assert by_id["B-1"]["capacityBasis"] == "mAh"
     assert not math.isnan(by_id["A-1"]["peakCapacityRaw"])

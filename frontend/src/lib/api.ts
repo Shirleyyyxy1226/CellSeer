@@ -140,9 +140,6 @@ export interface OverviewCell {
   peakCapacityRaw: number | null;
   medianCE: number | null;
   retention: number | null;
-  fadeRatePctPer100: number | null;
-  ceTrendPctPer100: number | null;
-  cycleLife80: number | null;
   cycleCount: number;
   capacityBasis: 'mAh/g' | 'mAh';
 }

@@ -44,9 +44,6 @@ _METRIC_KEY = {
     "ce": "medianCE",
     "cycles": "cycleCount",  # special-cased: 0 -> None
     "retention": "retention",
-    "fade-rate": "fadeRatePctPer100",
-    "cycle-life-80": "cycleLife80",
-    "ce-trend": "ceTrendPctPer100",
 }
 
 
@@ -148,7 +145,6 @@ def summarise_cell(raw: dict) -> dict:
     cycles = raw.get("cycles") or []
     spec = raw.get("specificCapacityMahG")
     dch = raw.get("dischargeCapacityMah") or []
-    chg = raw.get("chargeCapacityMah") or []
 
     spec_series = _series_from(cycles, spec)
     raw_series = _series_from(cycles, dch)
@@ -158,30 +154,15 @@ def summarise_cell(raw: dict) -> dict:
     capacity_series = spec_series if spec_series else raw_series
     capacity_basis = "mAh/g" if spec_series else "mAh"
 
-    # CE only over meaningful cycles (>=5% of peak discharge).
-    ce_floor = (peak_capacity_raw or 0) * 0.05
-    ce_vals: list[float] = []
-    for i in range(len(cycles)):
-        c = chg[i] if i < len(chg) else None
-        d = dch[i] if i < len(dch) else None
-        if c is not None and d is not None and c > ce_floor and d > ce_floor and ce_floor > 0:
-            ce = (d / c) * 100
-            if 0 < ce < 150:
-                ce_vals.append(ce)
-    ce_vals.sort()
-    median_ce = percentile(ce_vals, 0.5) if ce_vals else None
-
     has_protocol = bool(raw.get("protocolSegments") or raw.get("protocol"))
 
-    # Protocol-scoped retention / fade rate / cycle life / CE drift are not yet
-    # implemented. Computed over the full cycle series they mix formation,
-    # rate-test and main-cycling phases into a misleading number, so they are
-    # left unset until segment-aware computation lands. The UI shows "coming
-    # soon" for these metrics once a protocol is attached.
+    # Median CE and capacity retention need the main-cycling phase isolated, which
+    # needs protocol segmentation; over the full (phase-mixed) cycle series they
+    # produce misleading values (a CE median can even exceed 100%). They stay None
+    # until segment-aware computation lands — the UI shows "coming soon". Fade rate
+    # / cycle-life / CE-drift were removed entirely for the same reason.
+    median_ce: Optional[float] = None
     retention: Optional[float] = None
-    fade_rate: Optional[float] = None
-    ce_trend: Optional[float] = None
-    cycle_life_80: Optional[float] = None
 
     return {
         "idNo": raw.get("idNo"),
@@ -195,9 +176,6 @@ def summarise_cell(raw: dict) -> dict:
         "peakCapacityRaw": peak_capacity_raw,
         "medianCE": median_ce,
         "retention": retention,
-        "fadeRatePctPer100": fade_rate,
-        "ceTrendPctPer100": ce_trend,
-        "cycleLife80": cycle_life_80,
         "capacityBasis": capacity_basis,
     }
 
@@ -274,9 +252,6 @@ def compute_flag_ids(summaries: list[dict]) -> dict[str, list[str]]:
             ids: list[str] = []
             if c["cellId"] in outlier_ids and c.get("peakCapacityRaw") is not None:
                 ids.append("cap-outlier")
-            mce = c.get("medianCE")
-            if mce is not None and (mce < 98 or mce > 102):
-                ids.append("ce-anomaly")
             cc = c.get("cycleCount", 0)
             if 0 < cc < 5:
                 ids.append("few-cycles")
@@ -326,7 +301,6 @@ def build_overview(raw_cells: list[dict], metrics: Optional[list[str]] = None) -
             "flags": flags.get(s["cellId"], []),
             **{k: s[k] for k in (
                 "peakCapacitySpec", "peakCapacityRaw", "medianCE", "retention",
-                "fadeRatePctPer100", "ceTrendPctPer100", "cycleLife80",
                 "cycleCount", "capacityBasis",
             )},
         }

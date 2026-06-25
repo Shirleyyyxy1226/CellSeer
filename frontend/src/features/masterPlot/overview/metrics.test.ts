@@ -20,15 +20,14 @@ function rawWith(spec: number[]): RatePerfCell {
 }
 
 describe('protocol-scoped metrics', () => {
-  // Retention / fade rate / cycle life / CE drift are not computed yet: over the
-  // full (phase-mixed) cycle series they are misleading, so they stay null until
+  // Median CE and capacity retention are not computed yet: over the full
+  // (phase-mixed) cycle series they are misleading, so they stay null until
   // segment-aware computation lands. The UI shows "coming soon" for them.
-  it('leaves retention, fade rate, cycle life and CE drift null', () => {
+  // (Fade rate / cycle life / CE drift were removed entirely.)
+  it('leaves median CE and retention null', () => {
     const c = summariseCell(rawWith([100, 96, 92, 88, 84, 80, 76, 72]));
+    expect(c.medianCE).toBeNull();
     expect(c.retention).toBeNull();
-    expect(c.fadeRatePctPer100).toBeNull();
-    expect(c.cycleLife80).toBeNull();
-    expect(c.ceTrendPctPer100).toBeNull();
   });
 });
 

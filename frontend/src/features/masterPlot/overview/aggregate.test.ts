@@ -30,9 +30,6 @@ function cell(over: Partial<OverviewCell> & { cellId: string; condKey: string })
     peakCapacityRaw: null,
     medianCE: null,
     retention: null,
-    fadeRatePctPer100: null,
-    ceTrendPctPer100: null,
-    cycleLife80: null,
     cycleCount: 0,
     capacityBasis: 'mAh',
     ...over,
@@ -84,9 +81,6 @@ function makeOverview(): MasterPlotOverview {
         peakCapacitySpec: 150.5,
         medianCE: 99.4,
         retention: 92.1,
-        fadeRatePctPer100: 1.2,
-        ceTrendPctPer100: -0.3,
-        cycleLife80: 120,
         cycleCount: 200,
         capacityBasis: 'mAh/g',
         flags: ['cap-outlier'],
@@ -139,9 +133,6 @@ describe('summariesFromOverview', () => {
     expect(a1.peakCapacitySpec).toBe(src.peakCapacitySpec);
     expect(a1.medianCE).toBe(src.medianCE);
     expect(a1.retention).toBe(src.retention);
-    expect(a1.fadeRatePctPer100).toBe(src.fadeRatePctPer100);
-    expect(a1.ceTrendPctPer100).toBe(src.ceTrendPctPer100);
-    expect(a1.cycleLife80).toBe(src.cycleLife80);
     expect(a1.cycleCount).toBe(src.cycleCount);
     expect(a1.capacityBasis).toBe('mAh/g');
 

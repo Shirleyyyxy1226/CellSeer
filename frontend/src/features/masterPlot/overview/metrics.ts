@@ -26,16 +26,14 @@ export interface CellSummary {
   peakCapacitySpec: number | null;
   /** Peak raw discharge capacity, mAh (95th percentile) — always computable from cycling data. */
   peakCapacityRaw: number | null;
-  /** Median coulombic efficiency over meaningful cycles, %. */
+  /** Median coulombic efficiency, %. Null until segment-aware (main-cycling-only)
+   *  computation lands — the full-series median mixes formation / rate-test /
+   *  main-cycling phases into a misleading value (it can even exceed 100%). The
+   *  UI shows "coming soon". */
   medianCE: number | null;
-  /** Capacity retention last/peak, % — only trustworthy with a protocol. */
+  /** Capacity retention last/peak, % — only trustworthy with a protocol. Null
+   *  until segment-aware computation lands; the UI shows "coming soon". */
   retention: number | null;
-  /** Capacity fade, % of peak lost per 100 cycles (positive = fading). Needs protocol to be clean. */
-  fadeRatePctPer100: number | null;
-  /** CE drift, percentage points per 100 cycles (0 = stable). Needs protocol to be clean. */
-  ceTrendPctPer100: number | null;
-  /** Cycle at which capacity first falls below 80% of peak (standard cycle-life). Needs protocol. */
-  cycleLife80: number | null;
   /**
    * dQ/dV dominant-peak voltage shift early→late, mV. Null until the
    * lazy peak-shift aggregate loads, or when the project has no differential
@@ -80,7 +78,6 @@ function peakOf(series: { cycle: number; value: number }[]): number | null {
 export function summariseCell(raw: RatePerfCell): CellSummary {
   const spec = raw.specificCapacityMahG ?? [];
   const dch = raw.dischargeCapacityMah ?? [];
-  const chg = raw.chargeCapacityMah ?? [];
   const cycles = raw.cycles ?? [];
 
   const specSeries = seriesFrom(cycles, spec);
@@ -93,34 +90,15 @@ export function summariseCell(raw: RatePerfCell): CellSummary {
   const capacitySeries = specSeries.length ? specSeries : rawSeries;
   const capacityBasis: 'mAh/g' | 'mAh' = specSeries.length ? 'mAh/g' : 'mAh';
 
-  // CE only over meaningful cycles (≥5% of peak discharge); rest/zero-current
-  // steps in raw exports otherwise flood the median with garbage ratios.
-  const ceFloor = (peakCapacityRaw ?? 0) * 0.05;
-  const ceVals: number[] = [];
-  for (let i = 0; i < cycles.length; i++) {
-    const c = chg[i];
-    const d = dch[i];
-    if (c != null && d != null && c > ceFloor && d > ceFloor && ceFloor > 0) {
-      const ce = (d / c) * 100;
-      if (ce > 0 && ce < 150) {
-        ceVals.push(ce);
-      }
-    }
-  }
-  ceVals.sort((a, b) => a - b);
-  const medianCE = ceVals.length ? percentile(ceVals, 0.5) : null;
-
   const hasProtocol = Boolean(raw.protocolSegments?.length || raw.protocol);
 
-  // Protocol-scoped retention / fade rate / cycle life / CE drift are not yet
-  // implemented. Computed over the full cycle series they mix formation,
-  // rate-test and main-cycling phases into a misleading number, so they stay
-  // null until segment-aware computation lands. The UI shows "coming soon" for
-  // these metrics once a protocol is attached.
+  // Median CE and capacity retention need the main-cycling phase isolated, which
+  // needs protocol segmentation; over the full (phase-mixed) cycle series they
+  // produce misleading values (a CE median can even exceed 100%). They stay null
+  // until segment-aware computation lands — the UI shows "coming soon". Fade rate
+  // / cycle-life / CE-drift were removed entirely for the same reason.
+  const medianCE: number | null = null;
   const retention: number | null = null;
-  const fadeRatePctPer100: number | null = null;
-  const ceTrendPctPer100: number | null = null;
-  const cycleLife80: number | null = null;
 
   return {
     idNo: raw.idNo,
@@ -136,9 +114,6 @@ export function summariseCell(raw: RatePerfCell): CellSummary {
     peakCapacityRaw,
     medianCE,
     retention,
-    fadeRatePctPer100,
-    ceTrendPctPer100,
-    cycleLife80,
     peakShiftMv: null,
     capacitySeries,
     capacityBasis,
@@ -221,7 +196,10 @@ export const METRICS: MetricDef[] = [
     id: 'ce',
     label: 'Coulombic efficiency',
     unit: '%',
-    requiresProtocol: false,
+    // Shelved: medianCE is null until segment-aware (main-cycling-only) CE lands;
+    // the full-series median is phase-mixed. Protocol-gated so the UI shows the
+    // lock → "coming soon" flow, same as retention.
+    requiresProtocol: true,
     higherIsBetter: true,
     value: (c) => c.medianCE,
     format: (v) => v.toFixed(2),
@@ -248,36 +226,6 @@ export const METRICS: MetricDef[] = [
     higherIsBetter: true,
     value: (c) => c.retention,
     format: (v) => v.toFixed(1),
-  },
-  {
-    id: 'fade-rate',
-    label: 'Fade rate',
-    unit: '%/100cyc',
-    requiresProtocol: true,
-    higherIsBetter: false, // less fade is better
-    value: (c) => c.fadeRatePctPer100,
-    format: (v) => v.toFixed(2),
-  },
-  {
-    id: 'cycle-life-80',
-    label: 'Cycle life (80%)',
-    unit: 'cyc',
-    requiresProtocol: true,
-    higherIsBetter: true, // surviving more cycles before 80% is better
-    value: (c) => c.cycleLife80,
-    format: (v) => v.toFixed(0),
-  },
-  {
-    id: 'ce-trend',
-    label: 'CE drift',
-    unit: 'pp/100cyc',
-    requiresProtocol: true,
-    // Literature: a rising CE (esp. early) is SEI stabilising — a positive sign;
-    // a falling CE signals accelerating degradation. So higher (more positive)
-    // slope is better — a plain monotonic metric, NOT on-target.
-    higherIsBetter: true,
-    value: (c) => c.ceTrendPctPer100,
-    format: (v) => (v >= 0 ? `+${v.toFixed(2)}` : v.toFixed(2)),
   },
   {
     id: 'dqdv-peak-shift',

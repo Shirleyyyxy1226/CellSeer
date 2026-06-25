@@ -145,8 +145,8 @@ export function continuousNorm(v: number, vmin: number, vmax: number): number {
  * (cathode/separator/spacer) plus peak capacity and ICE.
  * Retention and CE are deliberately NOT axes (here or as opt-ins): without protocol
  * segmentation their baseline / main-cycling window is undefined, so the values can
- * exceed 100% and mislead. Trend/slope/sparse metrics (fade rate, cycle-life-80,
- * CE drift, dQ/dV peak shift) are likewise excluded as unsuitable for a parallel plot.
+ * exceed 100% and mislead. The dQ/dV peak-shift metric is likewise excluded as
+ * unsuitable for a parallel plot.
  */
 export function defaultParallelCoordAxes(): PCAxisDef[] {
   return [

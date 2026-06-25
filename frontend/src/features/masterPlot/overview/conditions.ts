@@ -157,14 +157,6 @@ export function computeFlaggedCells(conditions: CondRow[]): Map<string, CellFlag
           needsProtocol: false,
         });
       }
-      if (c.medianCE != null && (c.medianCE < 98 || c.medianCE > 102)) {
-        flags.push({
-          id: 'ce-anomaly',
-          title: 'CE anomaly',
-          body: `Median coulombic efficiency ${c.medianCE.toFixed(2)}% is outside the 98–102% band.`,
-          needsProtocol: false,
-        });
-      }
       if (c.cycleCount > 0 && c.cycleCount < 5) {
         flags.push({
           id: 'few-cycles',
