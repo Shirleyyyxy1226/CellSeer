@@ -15,9 +15,11 @@ import {
   saveHierarchyOrder,
   type AnalyseResponse,
 } from '@/lib/analyseApi';
+import { useLocation } from 'react-router-dom';
 import type { TreeFilterPath } from '@/components/tree/treeTypes';
 import type { ParsedTable } from '@/lib/treeUtils';
 import { useDataRefresh } from '@/contexts/DataRefreshContext';
+import { getProjectIdFromPathname } from '@/lib/projectScope';
 
 interface ProjectHierarchyContextValue {
   loading: boolean;
@@ -181,9 +183,15 @@ export function ProjectHierarchyProvider({ children }: { children: React.ReactNo
     }
   }, [applyWithOrder]);
 
+  // Reload on mount, after a data refresh, AND whenever the project in the URL
+  // changes — the provider is global (mounted once above the routes), so without
+  // the projectId dependency navigating between projects would keep showing the
+  // previous project's tree until a full page refresh.
+  const { pathname } = useLocation();
+  const projectId = getProjectIdFromPathname(pathname);
   useEffect(() => {
     reloadHierarchy();
-  }, [reloadHierarchy, dataVersion]);
+  }, [reloadHierarchy, dataVersion, projectId]);
 
   const setHierarchyOrder = useCallback(
     async (nextJs: number[]) => {

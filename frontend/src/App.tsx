@@ -28,9 +28,13 @@ const App = () => (
         <MasterPlotBridgeProvider>
           <TreeFilterProvider>
             <ProtocolFilterProvider>
-              <ProjectHierarchyProvider>
-                <ProtocolDialogProvider>
-                  <BrowserRouter>
+              {/* Router wraps ProjectHierarchyProvider so the latter can watch the
+                  URL (useLocation) and reload the hierarchy/tree when the project
+                  in the path changes — otherwise switching projects shows the old
+                  tree until a full refresh. */}
+              <BrowserRouter>
+                <ProjectHierarchyProvider>
+                  <ProtocolDialogProvider>
                     <Routes>
                       <Route path="/" element={<HomePage />} />
                       <Route path="/digibat" element={<DigibatPage />} />
@@ -40,9 +44,9 @@ const App = () => (
                       {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                       <Route path="*" element={<NotFound />} />
                     </Routes>
-                  </BrowserRouter>
-                </ProtocolDialogProvider>
-              </ProjectHierarchyProvider>
+                  </ProtocolDialogProvider>
+                </ProjectHierarchyProvider>
+              </BrowserRouter>
             </ProtocolFilterProvider>
           </TreeFilterProvider>
         </MasterPlotBridgeProvider>
