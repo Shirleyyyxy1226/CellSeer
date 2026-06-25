@@ -1,10 +1,11 @@
 /**
- * Unit tests for summariesFromOverview, the adapter that turns the
- * server overview aggregate (scalar-only) into the CellSummary[] the condition
- * views consume. Verifies scalar mapping, condition resolution (cathode /
- * separator / spacer, incl. integer + fractional + null spacers), the
- * documented fallbacks (cellName→cellId, empty capacitySeries, [] flags,
- * index-as-idNo), and that the result re-groups into the same conditions.
+ * Unit tests for summariesFromOverview, the adapter that turns the server
+ * overview aggregate (scalar-only) into the CellSummary[] the condition views
+ * consume. Verifies scalar mapping, condition resolution (cathode / separator /
+ * spacer, incl. integer + fractional + null spacers), pass-through of the
+ * per-cell idNo / cellName / hasProtocol / protocolName, the empty capacitySeries
+ * (grafted later from the per-cycle payload), and that the result re-groups into
+ * the same conditions.
  */
 import { describe, expect, it } from 'vitest';
 import type { MasterPlotOverview, OverviewCell, OverviewCondition } from '@/lib/api';
@@ -14,18 +15,19 @@ import { cellConditionKey, groupConditions } from './conditions';
 function cond(over: Partial<OverviewCondition> & { key: string }): OverviewCondition {
   return {
     n: 0,
-    flaggedCount: 0,
     cathode: 'Unknown',
     separatorType: '—',
     spacerMm: null,
-    metrics: {},
     ...over,
   };
 }
 
 function cell(over: Partial<OverviewCell> & { cellId: string; condKey: string }): OverviewCell {
   return {
-    flags: [],
+    idNo: 0,
+    cellName: '',
+    hasProtocol: false,
+    protocolName: null,
     peakCapacitySpec: null,
     peakCapacityRaw: null,
     medianCE: null,
@@ -67,7 +69,7 @@ function makeOverview(): MasterPlotOverview {
     projectId: 'TEST',
     cellCount: 5,
     conditionCount: 3,
-    protocolCellCount: 0,
+    protocolCellCount: 3,
     conditions: {
       [condA.key]: condA,
       [condB.key]: condB,
@@ -77,17 +79,24 @@ function makeOverview(): MasterPlotOverview {
       cell({
         cellId: 'A-1',
         condKey: condA.key,
+        idNo: 101,
+        cellName: 'Alpha-1',
+        hasProtocol: true,
+        protocolName: 'C/20',
         peakCapacityRaw: 3.21,
         peakCapacitySpec: 150.5,
         medianCE: 99.4,
         retention: 92.1,
         cycleCount: 200,
         capacityBasis: 'mAh/g',
-        flags: ['cap-outlier'],
       }),
       cell({
         cellId: 'A-2',
         condKey: condA.key,
+        idNo: 102,
+        cellName: 'Alpha-2',
+        hasProtocol: true,
+        protocolName: 'C/20',
         peakCapacityRaw: 3.05,
         medianCE: 99.1,
         cycleCount: 198,
@@ -96,6 +105,8 @@ function makeOverview(): MasterPlotOverview {
       cell({
         cellId: 'B-1',
         condKey: condB.key,
+        idNo: 103,
+        cellName: 'Beta-1',
         peakCapacityRaw: 2.4,
         cycleCount: 50,
         capacityBasis: 'mAh',
@@ -103,15 +114,20 @@ function makeOverview(): MasterPlotOverview {
       cell({
         cellId: 'B-2',
         condKey: condB.key,
+        idNo: 104,
+        cellName: 'Beta-2',
         peakCapacityRaw: 2.5,
         retention: null,
         cycleCount: 4,
         capacityBasis: 'mAh',
-        flags: ['few-cycles'],
       }),
       cell({
         cellId: 'C-1',
         condKey: condC.key,
+        idNo: 105,
+        cellName: 'Gamma-1',
+        hasProtocol: true,
+        protocolName: 'C/10',
         peakCapacityRaw: 1.9,
         cycleCount: 10,
         capacityBasis: 'mAh',
@@ -160,18 +176,26 @@ describe('summariesFromOverview', () => {
     expect(summaries[4].spacerMm).toBeNull();
   });
 
-  it('applies documented fallbacks: cellName=cellId, empty series, [] flags, index idNo', () => {
+  it('passes real idNo / cellName / hasProtocol / protocolName through', () => {
     const ov = makeOverview();
     const summaries = summariesFromOverview(ov);
 
     summaries.forEach((s, i) => {
-      expect(s.cellName).toBe(s.cellId);
+      const src = ov.cells[i];
+      expect(s.idNo).toBe(src.idNo);
+      expect(s.cellName).toBe(src.cellName);
+      expect(s.hasProtocol).toBe(src.hasProtocol);
+      expect(s.protocolName).toBe(src.protocolName);
+      // capacitySeries is grafted later from the per-cycle payload; flags are
+      // derived client-side, so both start empty here.
       expect(s.capacitySeries).toEqual([]);
       expect(s.flags).toEqual([]);
-      expect(s.idNo).toBe(i); // stable array index
-      expect(s.hasProtocol).toBe(false);
-      expect(s.protocolName).toBeNull();
     });
+
+    expect(summaries[0].idNo).toBe(101);
+    expect(summaries[0].protocolName).toBe('C/20');
+    expect(summaries[2].hasProtocol).toBe(false);
+    expect(summaries[2].protocolName).toBeNull();
   });
 
   it('falls back to Unknown / — / null when condKey has no matching condition', () => {

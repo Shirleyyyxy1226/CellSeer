@@ -3,8 +3,8 @@
  * A "condition" is the experiment-design unit: its cells are replicates, so
  * cohort mean / SD / CV and replicate-relative flags all live here.
  */
-import type { CellFlag, CellSummary, MetricDef } from './metrics';
-import { meanCI, modifiedZScores, OUTLIER_Z } from './stats';
+import type { CellSummary, MetricDef } from './metrics';
+import { meanCI } from './stats';
 
 export type CondRow = {
   key: string;
@@ -126,49 +126,6 @@ export function dotJitter(idNo: number): number {
   h = Math.imul(h, 2246822519);
   h ^= h >>> 13;
   return ((h >>> 0) % 1000) / 1000 - 0.5;
-}
-
-/** Flags computed against each cell's replicate cohort (not project-wide). */
-export function computeFlaggedCells(conditions: CondRow[]): Map<string, CellFlag[]> {
-  const flagMap = new Map<string, CellFlag[]>();
-  for (const cond of conditions) {
-    // Robust within-cohort outlier detection (Iglewicz–Hoaglin modified
-    // Z-score on the median/MAD). Unlike the old "lowest decile" rule — which
-    // flagged ~10% of every large cohort by construction and nothing in small
-    // ones — this fires only on genuine outliers and needs ≥4 replicates.
-    const capCells = cond.cells.filter((c) => c.peakCapacityRaw != null);
-    const caps = capCells.map((c) => c.peakCapacityRaw as number);
-    const capZ = caps.length >= 4 ? modifiedZScores(caps) : null;
-    const capOutlierIds = new Map<string, number>();
-    if (capZ) {
-      capCells.forEach((c, i) => {
-        if (Math.abs(capZ[i]) > OUTLIER_Z) capOutlierIds.set(c.cellId, capZ[i]);
-      });
-    }
-    for (const c of cond.cells) {
-      const flags: CellFlag[] = [];
-      const z = capOutlierIds.get(c.cellId);
-      if (z != null && c.peakCapacityRaw != null) {
-        const dir = z < 0 ? 'below' : 'above';
-        flags.push({
-          id: 'cap-outlier',
-          title: 'Raw-capacity outlier',
-          body: `Peak capacity (${c.peakCapacityRaw.toFixed(2)} mAh) is a robust outlier (modified Z ${z.toFixed(1)}, ${dir} the cohort) within its ${cond.cells.length}-replicate cohort.`,
-          needsProtocol: false,
-        });
-      }
-      if (c.cycleCount > 0 && c.cycleCount < 5) {
-        flags.push({
-          id: 'few-cycles',
-          title: 'Very few usable cycles',
-          body: `Only ${c.cycleCount} cycles with non-zero capacity — the test may have failed early.`,
-          needsProtocol: false,
-        });
-      }
-      if (flags.length) flagMap.set(c.cellId, flags);
-    }
-  }
-  return flagMap;
 }
 
 // Pairwise significance (Welch's t + Benjamini–Hochberg) was removed along with

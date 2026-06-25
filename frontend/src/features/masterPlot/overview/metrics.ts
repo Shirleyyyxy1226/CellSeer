@@ -3,9 +3,13 @@
  * rate-performance payload, and the metric registry that drives every
  * overview visual (heatmap colour, ranking bars, treemap colour, KPIs).
  *
- * To add a metric: extend CellSummary (and summariseCell) with the new
- * per-cell value, then append a MetricDef to METRICS — the heatmap,
- * ranking, treemap, metric selector and inspector pick it up automatically.
+ * Per-cell scalars come from the server overview aggregate (see
+ * summariesFromOverview); this module owns the metric registry and the
+ * per-cycle capacity-series extraction the aggregate omits.
+ *
+ * To add a metric: extend CellSummary and the backend per-cell output, then
+ * append a MetricDef to METRICS — the heatmap, ranking, treemap, metric
+ * selector and inspector pick it up automatically.
  *
  * NOTE: the treemap view (LibraryTreemap) is in development and not currently
  * mounted; it still consumes this registry for when it is re-enabled.
@@ -37,8 +41,8 @@ export interface CellSummary {
   /**
    * dQ/dV dominant-peak voltage shift early→late, mV. Null until the
    * lazy peak-shift aggregate loads, or when the project has no differential
-   * data / the peak couldn't be reliably tracked. Populated by merge, not by
-   * summariseCell (it needs the differential Parquet, not the rate payload).
+   * data / the peak couldn't be reliably tracked. Populated by a separate merge
+   * (it needs the differential Parquet, not the rate payload).
    */
   peakShiftMv: number | null;
   /** Per-cycle capacity for the inspector sparkline (specific when available, else raw). */
@@ -69,56 +73,22 @@ function seriesFrom(cycles: number[], values: (number | null)[]): { cycle: numbe
   return out;
 }
 
-function peakOf(series: { cycle: number; value: number }[]): number | null {
-  if (!series.length) return null;
-  const vals = series.map((d) => d.value).sort((a, b) => a - b);
-  return percentile(vals, 0.95);
-}
-
-export function summariseCell(raw: RatePerfCell): CellSummary {
-  const spec = raw.specificCapacityMahG ?? [];
-  const dch = raw.dischargeCapacityMah ?? [];
+/**
+ * Per-cycle capacity series + basis for one cell, used by the inspector
+ * sparkline and the Trajectories view. The per-cell scalars (peak capacity,
+ * cycle count, …) come from the server overview aggregate; this extracts only
+ * the series the aggregate omits, from the lazily-fetched per-cycle payload.
+ */
+export function capacitySeriesForCell(raw: RatePerfCell): {
+  series: { cycle: number; value: number }[];
+  basis: 'mAh/g' | 'mAh';
+} {
   const cycles = raw.cycles ?? [];
-
-  const specSeries = seriesFrom(cycles, spec);
-  const rawSeries = seriesFrom(cycles, dch);
-  const peakCapacitySpec = peakOf(specSeries);
-  const peakCapacityRaw = peakOf(rawSeries);
-
+  const specSeries = seriesFrom(cycles, raw.specificCapacityMahG ?? []);
   // Specific capacity needs cathode mass, which DIGIBAT cells often lack —
   // fall back to raw mAh so every cell still gets a sparkline.
-  const capacitySeries = specSeries.length ? specSeries : rawSeries;
-  const capacityBasis: 'mAh/g' | 'mAh' = specSeries.length ? 'mAh/g' : 'mAh';
-
-  const hasProtocol = Boolean(raw.protocolSegments?.length || raw.protocol);
-
-  // Median CE and capacity retention need the main-cycling phase isolated, which
-  // needs protocol segmentation; over the full (phase-mixed) cycle series they
-  // produce misleading values (a CE median can even exceed 100%). They stay null
-  // until segment-aware computation lands — the UI shows "coming soon". Fade rate
-  // / cycle-life / CE-drift were removed entirely for the same reason.
-  const medianCE: number | null = null;
-  const retention: number | null = null;
-
-  return {
-    idNo: raw.idNo,
-    cellId: raw.cellId,
-    cellName: raw.cellName || raw.cellId,
-    cathode: raw.cathode || 'Unknown',
-    separatorType: raw.separatorType || '—',
-    spacerMm: raw.spacerMm,
-    hasProtocol,
-    protocolName: raw.protocol ?? null,
-    cycleCount: capacitySeries.length,
-    peakCapacitySpec,
-    peakCapacityRaw,
-    medianCE,
-    retention,
-    peakShiftMv: null,
-    capacitySeries,
-    capacityBasis,
-    flags: [],
-  };
+  if (specSeries.length) return { series: specSeries, basis: 'mAh/g' };
+  return { series: seriesFrom(cycles, raw.dischargeCapacityMah ?? []), basis: 'mAh' };
 }
 
 export interface MetricDef {

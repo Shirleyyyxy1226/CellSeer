@@ -108,34 +108,26 @@ export const fetchRatePerformance = (
 };
 
 /**
- * Master Plot overview aggregate. Per-condition stats + a compact
- * per-cell *scalar* table — no per-cycle arrays — for the condition views at
- * scale, where shipping the full rate-performance payload would freeze the tab.
- * Mirror of the client metric pipeline; see backend/master_plot_overview.py.
+ * Master Plot overview aggregate: a per-condition category map and a per-cell
+ * scalar table for the condition views. The per-cell scalars are the source of
+ * truth; the frontend derives condition statistics and flags from them.
+ * See backend/master_plot_overview.py.
  */
-export interface OverviewCondStat {
-  mean: number | null;
-  sd: number | null;
-  cv: number | null;
-  sem: number | null;
-  ciHalf: number | null;
-  n: number;
-}
-
 export interface OverviewCondition {
   key: string;
   cathode: string;
   separatorType: string;
   spacerMm: number | null;
   n: number;
-  flaggedCount: number;
-  metrics: Record<string, OverviewCondStat>;
 }
 
 export interface OverviewCell {
   cellId: string;
   condKey: string;
-  flags: string[];
+  idNo: number;
+  cellName: string;
+  hasProtocol: boolean;
+  protocolName: string | null;
   peakCapacitySpec: number | null;
   peakCapacityRaw: number | null;
   medianCE: number | null;
