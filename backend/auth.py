@@ -21,9 +21,9 @@ import os
 from typing import Iterable
 
 from fastapi import FastAPI
-from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
+from starlette.types import ASGIApp, Scope, Receive, Send
 
 
 PROTECTED_PREFIXES: tuple[str, ...] = ("/api/",)
@@ -53,21 +53,39 @@ def _is_protected(path: str, protected: Iterable[str]) -> bool:
     return any(path.startswith(prefix) for prefix in protected)
 
 
-class BearerTokenMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
+class BearerTokenMiddleware:
+    """Pure-ASGI bearer-token gate.
+
+    Deliberately NOT a starlette BaseHTTPMiddleware: that wrapper buffers the
+    response through an anyio stream and, on starlette 0.35.x, raises
+    ``RuntimeError: No response returned`` (surfaced as a 500) when the client
+    disconnects mid-request — which the SPA does routinely (React StrictMode
+    double-mount aborts, rapid cell-selection cancelling in-flight fetches).
+    A pure-ASGI passthrough hands disconnects straight to the server without
+    that failure mode, and adds nothing to the request path when auth is off.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
         expected = _expected_token()
-        if not expected:
-            return await call_next(request)
-        if not _is_protected(request.url.path, PROTECTED_PREFIXES):
-            return await call_next(request)
-        supplied = _extract_token(request)
+        if not expected or not _is_protected(scope.get("path", ""), PROTECTED_PREFIXES):
+            await self.app(scope, receive, send)
+            return
+        supplied = _extract_token(Request(scope))
         if supplied is None or not hmac.compare_digest(supplied, expected):
-            return JSONResponse(
+            response = JSONResponse(
                 {"detail": "Missing or invalid API token"},
                 status_code=401,
                 headers={"WWW-Authenticate": 'Bearer realm="cellseer"'},
             )
-        return await call_next(request)
+            await response(scope, receive, send)
+            return
+        await self.app(scope, receive, send)
 
 
 def install(app: FastAPI) -> None:
