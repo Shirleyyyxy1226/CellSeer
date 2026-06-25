@@ -548,7 +548,7 @@ export default function ProjectOverviewDashboard(props: ProjectOverviewDashboard
         {METRIC_DRIVEN_VIEWS.includes(view) && (
           <div className="ml-auto flex items-center gap-2 border-l pl-3">
             <Select value={metricId} onValueChange={setMetricId}>
-              <SelectTrigger className="h-8 w-[230px] text-sm bg-muted border-input shadow-sm" aria-label="Heatmap metric">
+              <SelectTrigger className="h-8 w-[256px] whitespace-nowrap text-sm bg-muted border-input shadow-sm [&>span]:truncate" aria-label="Heatmap metric">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
