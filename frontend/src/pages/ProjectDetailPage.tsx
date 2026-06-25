@@ -6,6 +6,7 @@ import {
   ChevronDown,
   ChevronRight,
   CloudDownload,
+  FileDown,
   LayoutDashboard,
   RefreshCw,
   Upload,
@@ -383,9 +384,19 @@ export default function ProjectDetailPage() {
             {/* Compact upload strip */}
             <div className="rounded-lg border border-border bg-card p-3">
               <div className="mb-2 flex items-center justify-between">
-                <span className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
-                  Upload data
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+                    Upload data
+                  </span>
+                  <a
+                    href="/metadata_template.xlsx"
+                    download
+                    className="inline-flex items-center gap-1 text-[10px] text-primary hover:underline"
+                  >
+                    <FileDown className="h-3 w-3" />
+                    Metadata template
+                  </a>
+                </div>
                 <span className="text-[10.5px] text-muted-foreground">
                   Metadata cols {readiness?.metadataColumnCount ?? 0} · Cycling files{' '}
                   {readiness?.cyclingFileCount ?? 0}
