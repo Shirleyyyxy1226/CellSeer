@@ -4,8 +4,8 @@ Produces the per-cell scalar table and the condition category map served by
 ``GET /api/master-plot/overview``, the source of truth for the per-cell metric
 columns.
 
-Condition statistics (mean / SD / CV / CI) and replicate flags are computed on
-the frontend, over the filtered cohort, so this module does not compute them.
+Condition statistics (mean / SD / CV / CI) are computed on the frontend, over
+the filtered cohort, so this module does not compute them.
 
 ``percentile`` is a round-index percentile (round-half-up) to match the client
 formula for the same per-cycle input.
@@ -108,7 +108,7 @@ def build_overview(raw_cells: list[dict]) -> dict:
     """Per-condition category map and per-cell scalar table.
 
     The shape returned by ``GET /api/master-plot/overview``. Condition statistics
-    and flags are computed on the frontend, not here.
+    are computed on the frontend, not here.
     """
     summaries = [summarise_cell(c) for c in raw_cells]
 

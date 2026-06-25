@@ -4,10 +4,7 @@ import {
   ciOverlap,
   clamp01,
   linregSlope,
-  mad,
   meanCI,
-  modifiedZScores,
-  OUTLIER_Z,
   sampleSd,
   studentTwoSidedP,
   tCritical95,
@@ -50,19 +47,6 @@ describe('meanCI', () => {
     expect(ci.mean).toBe(7);
     expect(ci.half).toBeNull();
     expect(ci.sem).toBeNull();
-  });
-});
-
-describe('mad + modifiedZScores', () => {
-  it('flags a genuine outlier and leaves the cohort clean', () => {
-    const vals = [10, 10.2, 9.8, 10.1, 30]; // 30 is the outlier
-    expect(mad(vals)).toBeGreaterThan(0);
-    const z = modifiedZScores(vals);
-    expect(Math.abs(z[4])).toBeGreaterThan(OUTLIER_Z);
-    for (let i = 0; i < 4; i++) expect(Math.abs(z[i])).toBeLessThan(OUTLIER_Z);
-  });
-  it('flags nothing when MAD is zero (degenerate cohort)', () => {
-    expect(modifiedZScores([5, 5, 5, 5])).toEqual([0, 0, 0, 0]);
   });
 });
 

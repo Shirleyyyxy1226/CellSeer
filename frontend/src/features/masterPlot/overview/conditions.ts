@@ -1,7 +1,7 @@
 /**
  * Condition (cathode × separator × spacer) grouping and cohort statistics.
  * A "condition" is the experiment-design unit: its cells are replicates, so
- * cohort mean / SD / CV and replicate-relative flags all live here.
+ * cohort mean / SD / CV all live here.
  */
 import type { CellSummary, MetricDef } from './metrics';
 import { meanCI } from './stats';

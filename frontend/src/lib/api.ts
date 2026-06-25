@@ -110,7 +110,7 @@ export const fetchRatePerformance = (
 /**
  * Master Plot overview aggregate: a per-condition category map and a per-cell
  * scalar table for the condition views. The per-cell scalars are the source of
- * truth; the frontend derives condition statistics and flags from them.
+ * truth; the frontend derives condition statistics from them.
  * See backend/master_plot_overview.py.
  */
 export interface OverviewCondition {

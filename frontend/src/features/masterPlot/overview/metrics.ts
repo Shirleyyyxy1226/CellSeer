@@ -48,14 +48,6 @@ export interface CellSummary {
   /** Per-cycle capacity for the inspector sparkline (specific when available, else raw). */
   capacitySeries: { cycle: number; value: number }[];
   capacityBasis: 'mAh/g' | 'mAh';
-  flags: CellFlag[];
-}
-
-export interface CellFlag {
-  id: string;
-  title: string;
-  body: string;
-  needsProtocol: boolean;
 }
 
 export function percentile(sorted: number[], p: number): number {

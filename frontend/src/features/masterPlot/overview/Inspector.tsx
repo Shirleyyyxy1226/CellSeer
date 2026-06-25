@@ -1,7 +1,7 @@
 /**
  * Inspector side panel — per-cell drill-down shared by the heatmap, ranking
- * and trajectories views: capacity sparkline, protocol state, key stats, cohort
- * flags, and jump-to-detail-tab buttons.
+ * and trajectories views: capacity sparkline, protocol state, key stats, and
+ * jump-to-detail-tab buttons.
  */
 import { ArrowRight, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';

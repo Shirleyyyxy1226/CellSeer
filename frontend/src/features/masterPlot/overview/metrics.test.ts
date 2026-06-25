@@ -37,7 +37,6 @@ function summary(partial: Partial<CellSummary>): CellSummary {
     peakShiftMv: null,
     capacitySeries: [],
     capacityBasis: 'mAh',
-    flags: [],
     ...partial,
   };
 }

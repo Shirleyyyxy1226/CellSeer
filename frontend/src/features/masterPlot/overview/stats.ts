@@ -62,31 +62,6 @@ export function median(sorted: number[]): number {
   return n % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
-/** Median absolute deviation (robust dispersion). */
-export function mad(values: number[]): number {
-  if (values.length < 2) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  const med = median(sorted);
-  const devs = values.map((v) => Math.abs(v - med)).sort((a, b) => a - b);
-  return median(devs);
-}
-
-/**
- * Iglewicz–Hoaglin modified Z-scores: 0.6745·(x − median) / MAD.
- * Robust to the outliers themselves (unlike mean/SD). Returns 0 for every
- * point when MAD = 0 (degenerate cohort) so nothing is spuriously flagged.
- */
-export function modifiedZScores(values: number[]): number[] {
-  const m = mad(values);
-  if (m === 0) return values.map(() => 0);
-  const sorted = [...values].sort((a, b) => a - b);
-  const med = median(sorted);
-  return values.map((v) => (0.6745 * (v - med)) / m);
-}
-
-/** Conventional modified-Z outlier threshold. */
-export const OUTLIER_Z = 3.5;
-
 /** Do two 95% CIs overlap? Used to qualify "best" / significance claims. */
 export function ciOverlap(a: MeanCI, b: MeanCI): boolean {
   if (a.low == null || a.high == null || b.low == null || b.high == null) return true;

@@ -2,7 +2,7 @@
 
 Returns a per-condition category map and a per-cell scalar table for the overview.
 The per-cell scalars are the source of truth for the metric columns; the frontend
-derives condition statistics and flags from them. Wires the cached cell loader to
+derives condition statistics from them. Wires the cached cell loader to
 build_overview, inheriting the per-file cycle-summary cache and parallel Parquet
 reads.
 """

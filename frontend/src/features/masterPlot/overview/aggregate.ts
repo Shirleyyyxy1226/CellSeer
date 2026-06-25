@@ -2,7 +2,7 @@
  * Adapts the server overview aggregate into the CellSummary shape the condition
  * views consume. The overview is the source of truth for the per-cell scalars;
  * these summaries feed the groupConditions → computeCondStats pipeline, which
- * derives condition statistics and flags client-side (over the filtered cohort).
+ * derives condition statistics client-side (over the filtered cohort).
  *
  * The one field the aggregate does NOT carry is capacitySeries (the per-cycle
  * sparkline): it stays empty here and is grafted on from the lazily-fetched
@@ -31,7 +31,6 @@ export function summariesFromOverview(ov: MasterPlotOverview): CellSummary[] {
       peakShiftMv: null,
       capacitySeries: [],
       capacityBasis: c.capacityBasis,
-      flags: [],
     };
   });
 }

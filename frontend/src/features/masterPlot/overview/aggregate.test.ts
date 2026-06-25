@@ -186,10 +186,9 @@ describe('summariesFromOverview', () => {
       expect(s.cellName).toBe(src.cellName);
       expect(s.hasProtocol).toBe(src.hasProtocol);
       expect(s.protocolName).toBe(src.protocolName);
-      // capacitySeries is grafted later from the per-cycle payload; flags are
-      // derived client-side, so both start empty here.
+      // capacitySeries is grafted later from the per-cycle payload, so it
+      // starts empty here.
       expect(s.capacitySeries).toEqual([]);
-      expect(s.flags).toEqual([]);
     });
 
     expect(summaries[0].idNo).toBe(101);

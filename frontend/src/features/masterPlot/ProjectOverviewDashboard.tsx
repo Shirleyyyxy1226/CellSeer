@@ -1,6 +1,6 @@
 /**
  * Master Plot tab orchestrator. Owns the shared state (metric, view,
- * inspected cell), derives summaries/conditions/flags from the shared data
+ * inspected cell), derives summaries/conditions from the shared data
  * hooks, and routes between the five views:
  *
  *   heatmap / ranking / trajectories — metric-driven views (overview/ modules)
