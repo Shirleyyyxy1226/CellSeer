@@ -341,6 +341,20 @@ def analyse_columns(
         return True
 
     candidates = [s for s in stats if is_candidate(s)]
+    if not candidates:
+        # Small / sparse projects (only a few cells, or columns with missing
+        # values) can fail every threshold above, leaving the hierarchy-order
+        # picker empty. Fall back to any usable column (not a leaf / id / flag
+        # column, not notes / replicate, with at least 2 distinct values) so the
+        # picker still offers dimensions to reorder and add.
+        candidates = [
+            s
+            for s in stats
+            if s.j not in excluded_js
+            and not s.is_notes
+            and not s.is_replicate
+            and s.cardinality > 1
+        ]
     string_cands = [s for s in candidates if not s.is_numeric]
     numeric_cands = [s for s in candidates if s.is_numeric]
 
@@ -357,6 +371,23 @@ def analyse_columns(
         + sorted(non_redundant_numerics, key=lambda s: s.j)
     )
     hier_cols = ordered[:max_levels]
+
+    # Candidates for the hierarchy-order PICKER (drag-to-reorder / click-to-add).
+    # Broader than `ordered`: it must also include the leaf / id / flag columns,
+    # because those appear in the ACTIVE hierarchy and the editor needs them to
+    # render and reorder the active chips; plus any column the strict
+    # is_candidate rejected (common on tiny projects). `ordered` still seeds the
+    # DEFAULT levels; this only widens what the user can pick from.
+    ordered_js = {s.j for s in ordered}
+    picker_extra = [
+        s
+        for s in stats
+        if s.j not in ordered_js
+        and not s.is_notes
+        and not s.is_replicate
+        and s.cardinality >= 1
+    ]
+    picker_candidates = ordered + sorted(picker_extra, key=lambda s: s.j)
 
     annotations = compute_annotations(
         hier_cols, stats, redundant_js, excluded_js, n, config
@@ -384,7 +415,7 @@ def analyse_columns(
         n=n,
         headers=headers,
         all_constants=constants,
-        all_candidates=ordered,
+        all_candidates=picker_candidates,
     )
 
 
