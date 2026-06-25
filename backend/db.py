@@ -1,7 +1,8 @@
-"""Shared database connection helper — PostgreSQL via psycopg2."""
+"""Shared database connection helper — PostgreSQL via psycopg2, pooled."""
 
 import psycopg2
 import psycopg2.extras
+import psycopg2.pool
 from contextlib import contextmanager
 
 from config import DATABASE_URL
@@ -41,18 +42,42 @@ class _PGConn:
         self._conn.close()
 
 
+# Module-level connection pool. Connections are reused across requests so we pay
+# the TCP + auth handshake once per pooled connection instead of on every
+# request — the main per-request cost introduced by the SQLite -> PostgreSQL
+# switch. ThreadedConnectionPool is safe for FastAPI's threadpool-run sync
+# endpoints. Pool is created lazily so importing this module never fails when
+# the database is briefly unreachable.
+_pool: psycopg2.pool.ThreadedConnectionPool | None = None
+
+
+def _get_pool() -> psycopg2.pool.ThreadedConnectionPool:
+    global _pool
+    if _pool is None:
+        _pool = psycopg2.pool.ThreadedConnectionPool(2, 20, DATABASE_URL)
+    return _pool
+
+
 @contextmanager
 def get_db():
-    raw = psycopg2.connect(DATABASE_URL)
+    pool = _get_pool()
+    raw = pool.getconn()
     conn = _PGConn(raw)
-    ensure_project_schema(conn)
+    ensure_project_schema(conn)  # cached after the first call (fast no-op)
+    raw.commit()  # persist any first-time schema DDL; an empty commit afterwards
     try:
         yield conn
     except Exception:
         raw.rollback()
         raise
     finally:
-        raw.close()
+        # Reset any leftover / aborted transaction before returning the
+        # connection to the pool, so the next borrower starts clean.
+        try:
+            raw.rollback()
+        except Exception:
+            pass
+        pool.putconn(raw)
 
 
 def get_or_404(conn, query: str, params: tuple, detail: str):
