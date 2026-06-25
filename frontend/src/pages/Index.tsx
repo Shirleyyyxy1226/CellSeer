@@ -32,7 +32,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'rateperf-hier', label: 'Rate Performance' },
   { key: 'voltagecap', label: 'GCD Plot' },
   { key: 'dvdq', label: 'dV/dQ 3D' },
-  { key: 'dqdv', label: 'dQ/dV Analysis' },
+  { key: 'dqdv', label: 'dQ/dV 3D' },
 ];
 
 interface TreeCell {

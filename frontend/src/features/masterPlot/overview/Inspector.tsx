@@ -128,7 +128,7 @@ export default function Inspector({
           {(
             [
               ['voltagecap', 'GCD curves'],
-              ['dqdv', 'dQ/dV analysis'],
+              ['dqdv', 'dQ/dV 3D'],
               ['rateperf-hier', 'Rate performance'],
             ] as [string, string][]
           ).map(([tab, label]) => (
