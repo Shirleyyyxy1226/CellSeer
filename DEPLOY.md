@@ -1,7 +1,7 @@
-# CellSeer v1 Deployment
+# CellSeer Deployment
 
-Single-container production deploy: FastAPI + built React frontend in one image,
-SQLite on a mounted volume, shared bearer token for auth.
+Two-container production stack: FastAPI + built React frontend in one image,
+PostgreSQL in a sidecar container, shared bearer token for auth.
 
 Three ways to expose it to the public internet — pick one:
 
@@ -18,9 +18,6 @@ Three ways to expose it to the public internet — pick one:
 
 The bearer-token, backups, sharing, and updating sections at the bottom apply
 to all three paths.
-
-When to graduate to v2: when you start seeing `SQLITE_BUSY` errors or want
-multiple app instances → migrate to Postgres (planned separately).
 
 ---
 
@@ -66,6 +63,7 @@ cp .env.example .env
 echo "CELLSEER_API_TOKEN=$(openssl rand -hex 32)" >> .env
 
 # Open .env in $EDITOR and set:
+#   POSTGRES_PASSWORD=<a strong password, e.g. CellSeer2026>
 #   CELLSEER_DOMAIN=cellseer.com
 #   CELLSEER_ALLOWED_ORIGINS=https://cellseer.com
 #   CF_TUNNEL_TOKEN=<paste the long token from step A2.2>
@@ -184,7 +182,7 @@ git clone https://github.com/<you>/CellSeer.git
 cd CellSeer
 cp .env.example .env
 echo "CELLSEER_API_TOKEN=$(openssl rand -hex 32)" >> .env
-# Edit .env: set CELLSEER_DOMAIN, CELLSEER_ALLOWED_ORIGINS, DATALAB_API_KEY
+# Edit .env: set POSTGRES_PASSWORD, CELLSEER_DOMAIN, CELLSEER_ALLOWED_ORIGINS, DATALAB_API_KEY
 # Leave CF_TUNNEL_TOKEN empty.
 
 # The Dockerfile copies a host-built frontend/dist (see Path A step A4
@@ -260,6 +258,8 @@ notepad .env
 
 In Notepad, fill in:
 
+- `POSTGRES_PASSWORD=` — a strong password (e.g. `CellSeer2026`). Required;
+  docker-compose refuses to start without it.
 - `CELLSEER_DOMAIN=cellseer.com`
 - `CELLSEER_ALLOWED_ORIGINS=https://cellseer.com`
 - `CELLSEER_API_TOKEN=` — generate a fresh one (don't reuse the one we
@@ -380,45 +380,43 @@ bad tokens on a 401, so users just need the new link to recover.
 
 ---
 
-## All paths: seeding data from your local DB
+## All paths: seeding data
 
-If you want to start from your existing local SQLite DB instead of empty:
-
-```bash
-# Make sure containers are running first.
-docker compose cp ./backend/cellseer.db app:/data/cellseer.db
-docker compose restart app
-```
-
-For local parquet caches in `data_lake/`:
+The PostgreSQL schema is created automatically on first startup — no migration
+script needed. Start fresh by uploading your metadata and cycling files through
+the UI, or copy across an existing Parquet data lake:
 
 ```bash
+# Copy a local data_lake/ tree into the running container's volume.
 # Path A (Mac, local Docker Desktop):
 docker compose cp ./data_lake app:/data/data_lake
 docker compose restart app
 
-# Path B (cloud VM):
-# First scp the tree up, then run the same docker compose cp on the VM.
+# Path B (cloud VM — scp first, then copy into the container):
+scp -r ./data_lake user@vm:~/CellSeer/data_lake
+# (on the VM)
+docker compose cp ./data_lake app:/data/data_lake
+docker compose restart app
 ```
 
-Or skip seeding and just run an initial DIGIBAT sync:
+Or run an initial DIGIBAT sync to pull data from upstream:
 
 ```bash
 docker compose exec app python backend/scripts/sync_digibat.py \
   --base-url "$DATALAB_BASE_URL" \
-  --api-key  "$DATALAB_API_KEY" \
-  --db-path  /data/cellseer.db
+  --api-key  "$DATALAB_API_KEY"
 ```
 
 ---
 
 ## All paths: backups
 
-The whole runtime state lives in the `cellseer-data` named volume. The
-nightly script snapshots SQLite and prunes old copies inside that volume:
+Runtime state lives across two named volumes: `pg-data` (PostgreSQL) and
+`cellseer-data` (Parquet files). The nightly script dumps the database with
+`pg_dump` and prunes old copies:
 
 ```bash
-# Inside the container (sqlite3 + gzip pre-installed by Dockerfile):
+# Run a backup now (DATABASE_URL is injected from the compose environment):
 docker compose exec -T app /app/scripts/backup.sh
 ```
 
@@ -464,14 +462,15 @@ $trigger = New-ScheduledTaskTrigger -Daily -At 3am
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -RunOnlyIfNetworkAvailable
 Register-ScheduledTask -TaskName "CellSeerBackup" `
     -Action $action -Trigger $trigger -Settings $settings `
-    -Description "Nightly SQLite backup of CellSeer" -User $env:USERNAME -RunLevel Highest
+    -Description "Nightly pg_dump backup of CellSeer" -User $env:USERNAME -RunLevel Highest
 ```
 
-For off-host copies, point Windows File History / OneDrive / any sync tool
-at the volume's exported backups, which Docker Desktop exposes under
+For off-host copies, have the Task Scheduler entry also `Copy-Item` the dump
+files out to a folder synced by OneDrive / File History. The backup script
+writes gzipped dumps into the `cellseer-data` volume; Docker Desktop exposes
+that volume under
 `\\wsl$\docker-desktop-data\data\docker\volumes\cellseer_cellseer-data\_data\backups`
-on Windows. (Easier: have the same Task Scheduler entry also `Copy-Item`
-the backups out to a regular folder you sync.)
+on Windows.
 
 ---
 
@@ -488,6 +487,17 @@ Data volume, Caddy / cloudflared, and tunnel auth are all untouched.
 ---
 
 ## Troubleshooting
+
+**`docker compose` fails with "POSTGRES_PASSWORD must be set."**
+Open `.env` and add `POSTGRES_PASSWORD=<your-password>`. Any non-empty string works;
+use the same value on every restart so the database can be unlocked.
+
+**App starts but every API call returns 500 / "could not connect to server".**
+The `app` container started before PostgreSQL was ready, or `POSTGRES_PASSWORD`
+in `.env` doesn't match what the `db` container was initialised with.
+- `docker compose logs db` — look for "database system is ready to accept connections."
+- If the password was changed after the volume was created, remove the volume and
+  re-upload data: `docker compose down -v && docker compose up -d`.
 
 **`docker compose --profile cloudflared up -d` fails with "CF_TUNNEL_TOKEN must be set."**
 Open `.env`, ensure `CF_TUNNEL_TOKEN=<long-string>` with no quotes / whitespace.
@@ -518,10 +528,6 @@ the docker-compose service name.
 - Set `CELLSEER_ALLOWED_ORIGINS=https://cellseer.com` in `.env` and
   `docker compose up -d --force-recreate app`. Empty value falls back to
   localhost-only.
-
-**`SQLITE_BUSY: database is locked` in the logs.**
-- One writer at a time is SQLite's hard limit. If you see this regularly,
-  it's the v2-trigger condition — time to plan the Postgres migration.
 
 **Mac: site goes down at night.**
 - The Mac is sleeping. Recheck step A6. `pmset -g sleep` on AC should be 0.
