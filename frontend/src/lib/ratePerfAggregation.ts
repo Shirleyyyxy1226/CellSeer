@@ -4,7 +4,7 @@
  */
 
 import type { TreeFilterPath } from '@/components/tree/treeTypes';
-import { formatNodeLabel } from './treeUtils';
+import { formatNodeLabel, assignColourMapPerceptual } from './treeUtils';
 import type { ColStats, LabelDecoration } from './treeUtils';
 import {
   buildCellColorMap,
@@ -14,13 +14,14 @@ import {
   getCellEncoding,
   pathColorFromHues,
 } from './cellColorScheme';
+import type { CellColorAttrs } from './cellColorScheme';
 import type { CellEncoding, LineDash, MarkerSymbol } from 'cellseer-lib';
 
 import type { RatePerfCell as CyclingCellLike } from '@/lib/cellTypes';
 
 const DEFAULT_COLOR = '#6b7280';
 
-function colorFromCellIdentity(cell: CyclingCellLike): string {
+function colorFromCellIdentity(cell: CellColorAttrs): string {
   return cellIdentityColor(cell);
 }
 
@@ -167,7 +168,7 @@ export function resolveHierarchyCellValue(
     const fromMeta = resolveValueFromRecord(metadataRow, field);
     if (fromMeta) return fromMeta;
   }
-  const fromCell = resolveValueFromRecord(cell as Record<string, unknown>, field);
+  const fromCell = resolveValueFromRecord(cell as unknown as Record<string, unknown>, field);
   if (fromCell) return fromCell;
   const normalized = normalizeHeaderKey(field);
   if (normalized === 'cell' || normalized === 'cell_id' || normalized === 'id_no' || normalized === 'idno') {
@@ -372,7 +373,28 @@ function colorForPath(pathKey: string, pathToColorMap?: Map<string, string>): st
   return pathToColorMap?.get(pathKey) ?? fallbackPathColor(pathKey);
 }
 
-function colorForIndividualCell(cell: CyclingCellLike): string {
+/**
+ * Categorical branch/group colour shared with the hierarchy tree, so a chart
+ * band uses the exact colour its child node shows in the tree. The tree colours
+ * a node at depth D via `assignColourMapPerceptual(hierCols)[D-1][rawVal]`; a
+ * pathKey's last `|`-segment is exactly that node at level `segs.length - 1`, so
+ * this returns the identical colour. It is keyed only by `hierCols`, so it
+ * follows hierarchy reorder automatically. Falls back to the hue-mean path
+ * colour when a value isn't present in the perceptual map (formatting/metadata
+ * edge cases), so it never throws.
+ */
+export function colorForHierPath(
+  pathKey: string,
+  perceptualMaps: Record<string, string>[],
+  pathToColorMap?: Map<string, string>,
+): string {
+  const segs = pathKey.split('|');
+  const lvl = segs.length - 1;
+  const val = segs[lvl];
+  return perceptualMaps[lvl]?.[val] ?? colorForPath(pathKey, pathToColorMap);
+}
+
+function colorForIndividualCell(cell: CellColorAttrs): string {
   return colorFromCellIdentity(cell);
 }
 
@@ -448,6 +470,11 @@ export function buildTraces(opts: TraceOptions): AggregatedTrace[] {
 
   const { field, parentField, composite, fieldHeader, parentHeader } = getGrouping(path, detailDepth, hierCols);
 
+  // Categorical colours shared with the hierarchy tree: each aggregated band
+  // takes the colour its child node shows in the tree. Keyed only by hierCols,
+  // so it follows hierarchy reorder. See colorForHierPath.
+  const perceptualMaps = assignColourMapPerceptual(hierCols);
+
   if (normalizeHeaderKey(field) === 'cell' && !composite) {
     return filteredCells.map((row) => {
       const yVals = seriesForCell(row);
@@ -496,7 +523,7 @@ export function buildTraces(opts: TraceOptions): AggregatedTrace[] {
         name: displayName,
         x: cycles,
         y: values,
-        color: colorForPath(pathKey, pathToColorMap),
+        color: colorForHierPath(pathKey, perceptualMaps, pathToColorMap),
         isAggregated: !isSingleCell,
         hasCrate: isSingleCell ? hasCrate : false,
         cRates: isSingleCell && hasCrate ? firstCell?.cRates : undefined,
@@ -544,7 +571,7 @@ export function buildTraces(opts: TraceOptions): AggregatedTrace[] {
 
 /** Get color for a cell (e.g. initial voltage chart). Same path string = same color everywhere. */
 export function getColorForCell(
-  cell: CyclingCellLike,
+  cell: CellColorAttrs,
   _treeFilterPath: TreeFilterPath,
   _hierCols: ColStats[],
   _pathToColorMap?: Map<string, string>,

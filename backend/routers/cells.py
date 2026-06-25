@@ -1330,37 +1330,3 @@ def set_cell_protocol_bulk(body: BulkCellProtocolUpdate, projectId: str | None =
     }
 
 
-class BatchCycleSummaryRequest(BaseModel):
-    cellIds: List[str]
-    cycles: List[int]
-    metrics: Optional[List[str]] = None
-
-
-@router.post("/api/batch-cycle-summary")
-def batch_cycle_summary(req: BatchCycleSummaryRequest, projectId: str | None = None):
-    """Batch sparse cycle metrics for many cells at once."""
-    project_id = normalize_project_id(projectId)
-    rate_cells, _ = _load_rate_cells(project_id)
-    by_cell_id = {str(c.get("cellId") or ""): c for c in rate_cells if c.get("cellId")}
-    out = []
-    for cell_id in req.cellIds:
-        cell = by_cell_id.get(str(cell_id))
-        if not cell:
-            continue
-        summary = _cycle_summary_for_cell(cell, req.cycles)
-        if req.metrics:
-            slim: dict = {
-                "cellId": summary.get("cellId", ""),
-                "idNo": summary.get("idNo", 0),
-                "cycles": [],
-            }
-            for block in summary["cycles"]:
-                entry = {"cycle": block["cycle"]}
-                for m in req.metrics:
-                    if m in block:
-                        entry[m] = block[m]
-                slim["cycles"].append(entry)
-            out.append(slim)
-        else:
-            out.append(summary)
-    return {"cells": out}

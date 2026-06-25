@@ -1,6 +1,6 @@
 /**
  * Master Plot tab orchestrator. Owns the shared state (metric, view,
- * inspected cell), derives summaries/conditions/flags from the shared data
+ * inspected cell), derives summaries/conditions from the shared data
  * hooks, and routes between the five views:
  *
  *   heatmap / ranking / trajectories — metric-driven views (overview/ modules)
@@ -27,15 +27,19 @@ import {
 } from '@/hooks/useCellData';
 import { useCellSelection } from '@/contexts/CellSelectionContext';
 import { currentProjectIdFromLocation } from '@/lib/projectScope';
-import { type CellSummary, METRICS, metricAvailability, metricScore, percentile, summariseCell } from './overview/metrics';
+import { type CellSummary, METRICS, metricAvailability, metricScore, percentile, capacitySeriesForCell } from './overview/metrics';
 import { DEFAULT_RAMP_ID, RAMPS, type RampId } from './overview/colours';
 import { RampProvider } from './overview/RampContext';
 import RampPicker from './overview/RampPicker';
 import { summariesFromOverview } from './overview/aggregate';
-import { MAX_PINS, cellConditionKey, groupConditions } from './overview/conditions';
-import { MetricLockedNotice, MetricMassNotice, MetricUnavailableNotice } from './overview/shared';
+import { MAX_PINS, groupConditions } from './overview/conditions';
+import {
+  MetricComingSoonNotice,
+  MetricLockedNotice,
+  MetricMassNotice,
+  MetricUnavailableNotice,
+} from './overview/shared';
 import { FilterBreadcrumb } from './overview/FilterBreadcrumb';
-import { PairwiseCompare } from './overview/PairwiseCompare';
 import { useOverviewUrlState } from './overview/useOverviewUrlState';
 import { AttachProtocolButton, useAttachProtocol } from '@/features/protocol';
 import ConditionHeatmap from './overview/ConditionHeatmap';
@@ -59,15 +63,6 @@ type OverviewView = 'heatmap' | 'ranking' | 'trajectories' | 'parcoords';
 /** Views driven by the shared metric selector (heatmap colour / ranking bars / trajectory sort). */
 const METRIC_DRIVEN_VIEWS: OverviewView[] = ['heatmap', 'ranking', 'trajectories'];
 
-/**
- * Project cell count at or above which the condition views switch from the
- * client-side per-cycle pipeline to the server overview aggregate.
- * Real replicate cohorts are a few hundred cells (client path stays the default
- * and is measured-fast); this only trips on large libraries like the 5k P5K
- * benchmark, where shipping the full payload would freeze the tab.
- */
-const AGGREGATE_CELL_THRESHOLD = 5000;
-
 export default function ProjectOverviewDashboard(props: ProjectOverviewDashboardProps) {
   const { cathodeFilter, spacerFilter, separatorFilter, onCathodeFilter, onSeparatorFilter, onSpacerFilter } = props;
   const navigate = useNavigate();
@@ -83,34 +78,23 @@ export default function ProjectOverviewDashboard(props: ProjectOverviewDashboard
   const [rampId, setRampId] = useState<RampId>(DEFAULT_RAMP_ID);
   const activeRamp = RAMPS[rampId];
 
-  // scale path. The full per-cycle rate-performance payload is
-  // ~6.6 MB at 5k cells and freezes the tab beyond that, yet the condition
-  // views (heatmap/ranking) only need per-cell scalars.
-  // So above a threshold we drive them from the lightweight overview aggregate
-  // and defer the full payload until a cell-level view (trajectories / inspector
-  // here; parcoords self-fetches) actually needs per-cycle data — and then we
-  // pull only the *drawn cohort* (the active dropdown filters), not the whole
-  // project. Below the threshold we keep today's measured-fast client
-  // path: one full fetch that builds everything. Gating uses the cheap index
-  // count as an upper bound on cycling cells, so the decision is made before any
-  // heavy fetch.
+  // The overview aggregate is the source of truth for the per-cell scalars that
+  // drive the condition views (heatmap/ranking). The full per-cycle payload is
+  // fetched lazily, scoped to the drawn cohort (the active dropdown filters),
+  // only when a cell-level view (trajectories / inspector; parcoords shares the
+  // scoped fetch) needs the per-cycle capacity series. The cell index loads for
+  // the electrolyte map and differential availability.
   const indexQuery = useCellRecordIndexQuery();
+  // Total cells in the project (the cheap index), shown in the KPI strip.
   const totalCellCount = indexQuery.data?.cells?.length ?? 0;
-  const indexReady = indexQuery.isSuccess;
-  const useAggregate = indexReady && totalCellCount >= AGGREGATE_CELL_THRESHOLD;
   const needsPerCycle = view === 'trajectories' || inspectedId != null;
 
-  // On the aggregate path scope the per-cycle fetch to the drawn cohort; on the
-  // small path leave it unscoped (the client path needs every cell to build all
-  // conditions). The same scope is handed to parcoords so the two share a fetch.
-  const rateScope = useAggregate
-    ? { cathode: cathodeFilter, separator: separatorFilter, spacer: spacerFilter }
-    : undefined;
+  const rateScope = { cathode: cathodeFilter, separator: separatorFilter, spacer: spacerFilter };
   const rateQuery = useRatePerformanceQuery({
-    enabled: indexReady && (!useAggregate || needsPerCycle),
+    enabled: needsPerCycle,
     scope: rateScope,
   });
-  const overviewQuery = useMasterPlotOverviewQuery({ enabled: useAggregate });
+  const overviewQuery = useMasterPlotOverviewQuery({ enabled: true });
   const rawCells = useMemo(() => rateQuery.data?.cells ?? [], [rateQuery.data]);
   const aggregate = overviewQuery.data ?? null;
 
@@ -124,44 +108,37 @@ export default function ProjectOverviewDashboard(props: ProjectOverviewDashboard
     return m;
   }, [peakShiftQuery.data]);
 
-  // Canonical list driving the condition views, filters and KPIs: the full
-  // client payload on the small path, the aggregate on the large path. On the
-  // large path it must NOT switch to the scoped per-cycle payload — that covers
-  // only the filtered cohort and would drop the other conditions. The lazy
-  // peak-shift scalars are merged in by cellId when present.
+  // Canonical list driving the condition views, filters and KPIs: the project-
+  // wide per-cell scalars from the overview aggregate. It must NOT switch to the
+  // scoped per-cycle payload — that covers only the filtered cohort and would
+  // drop the other conditions. The lazy peak-shift scalars are merged in by
+  // cellId when present (retention / CE stay null until segment-aware computation
+  // lands, so there is nothing else to gate per-cell).
   const summaries = useMemo<CellSummary[]>(() => {
-    const base = useAggregate
-      ? aggregate
-        ? summariesFromOverview(aggregate)
-        : []
-      : rawCells.map(summariseCell);
+    const base = aggregate ? summariesFromOverview(aggregate) : [];
     if (!peakShiftByCellId.size) return base;
     return base.map((c) =>
       peakShiftByCellId.has(c.cellId) ? { ...c, peakShiftMv: peakShiftByCellId.get(c.cellId)! } : c,
     );
-  }, [useAggregate, aggregate, rawCells, peakShiftByCellId]);
+  }, [aggregate, peakShiftByCellId]);
 
-  // Per-cycle enrichment for the cell-level views (trajectories / inspector):
-  // on the large path the scoped payload carries capacitySeries + real
-  // protocol/idNo the aggregate lacks. Empty on the small path (summaries are
-  // already full), so the enrichment below is a no-op there.
-  const perCycleByCellId = useMemo(() => {
-    const m = new Map<string, CellSummary>();
-    if (useAggregate) for (const r of rawCells) { const s = summariseCell(r); m.set(s.cellId, s); }
+  // Per-cycle capacity series for the cell-level views (trajectories / inspector),
+  // keyed by cellId. Built from the lazily-fetched scoped payload — empty until a
+  // cell-level view triggers that fetch, so the graft below is a no-op meanwhile.
+  const capacitySeriesByCellId = useMemo(() => {
+    const m = new Map<string, ReturnType<typeof capacitySeriesForCell>>();
+    for (const r of rawCells) m.set(r.cellId, capacitySeriesForCell(r));
     return m;
-  }, [useAggregate, rawCells]);
+  }, [rawCells]);
 
-  const loading =
-    !indexReady ||
-    (useAggregate ? overviewQuery.isLoading && !aggregate : rateQuery.isLoading);
+  const loading = overviewQuery.isLoading && !aggregate;
   // Page-wide categorical filters for the Master Plot views. Cathode/Separator/
   // Spacer are owned upstream (props); Electrolyte/Protocol are owned here and apply
   // to every Master Plot view via the same `filtered` cohort.
   const [electrolyteFilter, setElectrolyteFilter] = useState('All');
   const [protocolFilter, setProtocolFilter] = useState('All');
-  // Pinned conditions for side-by-side comparison (capped at MAX_PINS).
+  // Pinned conditions, highlighted across the heatmap / ranking views (capped at MAX_PINS).
   const [pinnedKeys, setPinnedKeys] = useState<Set<string>>(new Set());
-  const [comparePinned, setComparePinned] = useState(false);
 
   const togglePin = useCallback((key: string) => {
     setPinnedKeys((prev) => {
@@ -248,23 +225,21 @@ export default function ProjectOverviewDashboard(props: ProjectOverviewDashboard
     ],
   );
 
-  // "Compare pinned" narrows every view to just the pinned conditions, held
-  // side-by-side as the user flips views.
-  const pinnedActive = comparePinned && pinnedKeys.size > 0;
-  const displayCells = useMemo(
-    () => (pinnedActive ? filtered.filter((c) => pinnedKeys.has(cellConditionKey(c))) : filtered),
-    [filtered, pinnedActive, pinnedKeys],
-  );
+  const displayCells = filtered;
 
-  // The cell-level views (trajectories / inspector) need per-cycle data, so swap
-  // in the full per-cell summary where the scoped payload has loaded it. On the
-  // small path perCycleByCellId is empty, so this is displayCells unchanged.
+  // The cell-level views (trajectories / inspector) need the per-cycle capacity
+  // series, so graft it onto the aggregate-derived summary where the scoped
+  // payload has loaded it. Empty until that lazy fetch, so this is displayCells
+  // unchanged meanwhile.
   const displayCellsForDetail = useMemo(
     () =>
-      perCycleByCellId.size
-        ? displayCells.map((c) => perCycleByCellId.get(c.cellId) ?? c)
+      capacitySeriesByCellId.size
+        ? displayCells.map((c) => {
+            const s = capacitySeriesByCellId.get(c.cellId);
+            return s ? { ...c, capacitySeries: s.series, capacityBasis: s.basis } : c;
+          })
         : displayCells,
-    [displayCells, perCycleByCellId],
+    [displayCells, capacitySeriesByCellId],
   );
 
   // "Never cycled" cells: zero-constant rule — peak raw capacity not positive,
@@ -301,24 +276,22 @@ export default function ProjectOverviewDashboard(props: ProjectOverviewDashboard
   );
 
   const metric = METRICS.find((m) => m.id === metricId) ?? METRICS[0];
-  // Whether any cell has a resolved protocol — gates the protocol-locked metrics.
-  // On the full path this reads per-cell hasProtocol; on the aggregate path the
-  // per-cell flag is absent, so we use the project-level count from the endpoint.
-  const protocolMissing = useMemo(() => {
-    // On the aggregate path `summaries` are scalar-only (hasProtocol always
-    // false), so the project-level protocolCellCount is the only honest signal —
-    // and it must win even after a scoped per-cycle payload loads (which would
-    // otherwise flip the rawCells branch and falsely lock the metrics).
-    if (useAggregate) {
-      return aggregate ? aggregate.cellCount > 0 && aggregate.protocolCellCount === 0 : false;
-    }
-    return summaries.length > 0 && summaries.every((c) => !c.hasProtocol);
-  }, [useAggregate, summaries, aggregate]);
+  // Whether NO cell has a resolved protocol — gates the protocol-locked metrics.
+  // The overview ships real per-cell hasProtocol for every cell in the project,
+  // so this project-wide check is honest at any scale.
+  const protocolMissing = useMemo(
+    () => summaries.length > 0 && summaries.every((c) => !c.hasProtocol),
+    [summaries],
+  );
   // Mirror of protocolMissing for specific capacity: when no cell has a
   // cathode-mass-derived value (specCoverage 0), the spec metric is locked —
   // surfaced like a protocol lock (icon + "needs cathode mass"), not bare "no data".
   const massMissing = summaries.length > 0 && specCoverage === 0;
   const protocolLocked = metric.requiresProtocol && protocolMissing;
+  // A protocol-requiring metric with a protocol attached: the segment-aware
+  // computation is not built yet, so the view shows "coming soon" rather than a
+  // misleading full-series figure.
+  const protocolComingSoon = metric.requiresProtocol && !protocolMissing;
   const massLocked = !!metric.requiresMass && massMissing;
   const metricLocked = protocolLocked || massLocked;
   // per-metric coverage over the whole project (not the filtered
@@ -395,14 +368,7 @@ export default function ProjectOverviewDashboard(props: ProjectOverviewDashboard
     const massReady = n
       ? displayCells.filter((c) => c.peakCapacitySpec != null).length / n
       : 0;
-    const protocolReady =
-      useAggregate && aggregate
-        ? aggregate.cellCount
-          ? aggregate.protocolCellCount / aggregate.cellCount
-          : 0
-        : n
-          ? displayCells.filter((c) => c.hasProtocol).length / n
-          : 0;
+    const protocolReady = n ? displayCells.filter((c) => c.hasProtocol).length / n : 0;
     return {
       cellCount: n,
       chemistries: new Set(displayCells.map((c) => c.cathode)).size,
@@ -413,7 +379,7 @@ export default function ProjectOverviewDashboard(props: ProjectOverviewDashboard
       massReady,
       protocolReady,
     };
-  }, [displayCells, specCoverage, useAggregate, aggregate]);
+  }, [displayCells, specCoverage]);
 
   const inspected = inspectedId
     ? displayCellsForDetail.find((c) => c.cellId === inspectedId) ?? null
@@ -485,6 +451,8 @@ export default function ProjectOverviewDashboard(props: ProjectOverviewDashboard
   // (peak-shift) its lazy scalars are still loading. Shared by the metric views.
   const metricNotice = protocolLocked ? (
     <MetricLockedNotice metric={metric} action={attachProtocolAction} />
+  ) : protocolComingSoon ? (
+    <MetricComingSoonNotice />
   ) : massLocked ? (
     <MetricMassNotice metric={metric} action={setMassAction} />
   ) : metricUnavailable ? (
@@ -587,11 +555,23 @@ export default function ProjectOverviewDashboard(props: ProjectOverviewDashboard
                 {METRICS.map((m) => {
                   const unavailable = summaries.length > 0 && !metricAvailable[m.id];
                   const protocolLock = m.requiresProtocol && protocolMissing;
+                  const protocolSoon = m.requiresProtocol && !protocolMissing;
                   const massLock = !!m.requiresMass && massMissing;
-                  // Locks read as "fixable, needs X"; only genuinely-empty metrics say "no data".
-                  const reason = massLock ? ' — needs mass' : unavailable ? ' — no data' : '';
+                  // requiresProtocol metrics are intentionally null (segment-aware
+                  // computation is "coming soon"), so they must stay SELECTABLE — that
+                  // is the only way to reach the attach-protocol notice (no protocol)
+                  // and the coming-soon notice (protocol attached). Only genuinely-empty
+                  // NON-protocol metrics are disabled / read "no data".
+                  const disabled = unavailable && !m.requiresProtocol;
+                  const reason = massLock
+                    ? ' — needs mass'
+                    : protocolSoon
+                      ? ' — coming soon'
+                      : disabled
+                        ? ' — no data'
+                        : '';
                   return (
-                    <SelectItem key={m.id} value={m.id} disabled={unavailable}>
+                    <SelectItem key={m.id} value={m.id} disabled={disabled}>
                       <span className="inline-flex items-center gap-1.5">
                         <span>
                           {m.label}
@@ -669,30 +649,12 @@ export default function ProjectOverviewDashboard(props: ProjectOverviewDashboard
           </span>
           <button
             type="button"
-            onClick={() => setComparePinned((v) => !v)}
-            className={`ml-auto rounded-md border px-2 py-0.5 ${
-              comparePinned
-                ? 'border-amber-600 bg-amber-600 text-white'
-                : 'border-amber-400 text-amber-700 hover:bg-amber-100 dark:text-amber-300 dark:hover:bg-amber-900'
-            }`}
-          >
-            {comparePinned ? 'Comparing pinned' : 'Compare pinned'}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setPinnedKeys(new Set());
-              setComparePinned(false);
-            }}
-            className="rounded-md border border-border px-2 py-0.5 text-muted-foreground hover:text-foreground"
+            onClick={() => setPinnedKeys(new Set())}
+            className="ml-auto rounded-md border border-border px-2 py-0.5 text-muted-foreground hover:text-foreground"
           >
             Clear pins
           </button>
         </div>
-      )}
-
-      {pinnedActive && !metricLocked && (
-        <PairwiseCompare conditions={conditions} metric={metric} />
       )}
 
       {/* Body */}

@@ -6,6 +6,8 @@ import { useCellSelection } from '@/contexts/CellSelectionContext';
 import { useTreeFilter } from '@/contexts/TreeFilterContext';
 import { useProjectHierarchy } from '@/contexts/ProjectHierarchyContext';
 import { getColorForCell } from '@/lib/ratePerfAggregation';
+import { isCellSelectionPath } from '@/lib/treeUtils';
+import { SelectionPrompt } from '@/components/SelectionPrompt';
 import { buildCellEncodings, getCellEncoding } from '@/lib/cellColorScheme';
 import { Surface3dPlot } from './plots/Surface3dPlot';
 import { PeakAnalysisPlot } from './plots/PeakAnalysisPlot';
@@ -27,18 +29,31 @@ interface Props {
 const DqDvDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) => {
   const { multiselectionMode, selectedCellIds } = useCellSelection();
   const { treeFilterPath } = useTreeFilter();
+  const { apiData, matchPathToIdNos } = useProjectHierarchy();
   const [direction, setDirection] = useState<ChargeDirection>('discharge');
   const TRACE_WARN_THRESHOLD = 200;
   const [heavyRenderConfirmed, setHeavyRenderConfirmed] = useState(false);
+  // dQ/dV plots per-cell curves, so it responds ONLY to individual-cell
+  // selection: explicit selected cells (Multi mode / inspector drill-down) or a
+  // Single-mode leaf click (a treeFilterPath ending in the synthetic "Cell"
+  // segment). A group/branch selection resolves to no cells, so the dashboard
+  // shows a "select a cell" prompt instead of plotting the whole group.
+  const effectiveCellIdNos = useMemo(() => {
+    if (selectedCellIds.length > 0) return selectedCellIds;
+    if (isCellSelectionPath(treeFilterPath)) {
+      const matched = matchPathToIdNos(treeFilterPath);
+      return matched ? Array.from(matched) : [];
+    }
+    return [];
+  }, [selectedCellIds, treeFilterPath, matchPathToIdNos]);
   const { dqdvData, cells, loading, error, noDifferentialHint, noFilterMatch } = useDifferentialData(
     cathodeFilter,
     spacerFilter,
     separatorFilter,
     direction,
-    selectedCellIds,
+    effectiveCellIdNos,
   );
   const data = dqdvData;
-  const { apiData, matchPathToIdNos } = useProjectHierarchy();
   const activeAnalysis = apiData?.analysis ?? null;
 
   const pathToColorMap = useMemo(() => new Map<string, string>(), []);
@@ -194,8 +209,8 @@ const DqDvDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
   useEffect(() => { setHeavyRenderConfirmed(false); }, [datasets]);
 
   const { data: traces3d, layout: layout3D } = useMemo(
-    () => buildDqDvFigure(datasets, { mode: '3d', cycleIndex }),
-    [datasets, cycleIndex]
+    () => buildDqDvFigure(datasets, { mode: '3d', cycleIndex, selectedCycle }),
+    [datasets, cycleIndex, selectedCycle]
   );
   const { data: traces2d, layout: layout2D } = useMemo(
     () => buildDqDvFigure(datasets, {
@@ -251,8 +266,8 @@ const DqDvDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
     labelFontSize: 10,
     legendFontSize: 10,
   });
-  useEffect(() => { surfaceAppearance.setChartTitle(title3d); }, [title3d, surfaceAppearance]);
-  useEffect(() => { peakAppearance.setChartTitle(title2d); }, [title2d, peakAppearance]);
+  useEffect(() => { surfaceAppearance.setChartTitle(title3d); }, [title3d, surfaceAppearance.setChartTitle]);
+  useEffect(() => { peakAppearance.setChartTitle(title2d); }, [title2d, peakAppearance.setChartTitle]);
 
   // Legend visibility is now per-plot, owned by each plot's appearance config
   // (the eye toggle and the edit-popover checkbox both write the same value).
@@ -273,6 +288,14 @@ const DqDvDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
       Select one or more cells to plot dQ/dV curves.
     </div>
   );
+
+  if (!loading && effectiveCellIdNos.length === 0) {
+    return (
+      <div className="rounded-lg border border-border bg-card p-3 shadow-sm flex h-full min-h-[420px] items-center justify-center">
+        <SelectionPrompt title="Select a cell to begin" />
+      </div>
+    );
+  }
 
   if (!loading && !error && (noDifferentialHint || noFilterMatch)) {
     return (

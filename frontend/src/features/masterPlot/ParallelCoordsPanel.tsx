@@ -44,14 +44,7 @@ import {
 function axisUsesPercentTicks(ax: PCAxisDef): boolean {
   if (ax.kind === 'per_cycle') return ax.metric === 'retention' || ax.metric === 'ce';
   if (ax.kind !== 'continuous') return false;
-  return (
-    ax.scalar === 'retention_mean_main' ||
-    ax.scalar === 'retention_end' ||
-    ax.scalar === 'ce_mean_main' ||
-    ax.scalar === 'ce_main' ||
-    ax.scalar === 'formation_ce' ||
-    ax.scalar === 'ice'
-  );
+  return ax.scalar === 'ice';
 }
 
 function axisIsCapacity(ax: PCAxisDef): boolean {
@@ -61,10 +54,6 @@ function axisIsCapacity(ax: PCAxisDef): boolean {
 
 function axisIsCount(ax: PCAxisDef): boolean {
   return ax.kind === 'continuous' && ax.scalar === 'cycle_count';
-}
-
-function axisIsFade(ax: PCAxisDef): boolean {
-  return ax.kind === 'continuous' && ax.scalar === 'fade_rate';
 }
 
 /** SI-style abbreviation for large signed magnitudes (e.g. 14762 → 15k, -52107 → -52k). */
@@ -79,7 +68,6 @@ function abbreviateSigned(v: number): string {
 function formatNumericAxisTick(ax: PCAxisDef, v: number): string {
   if (axisUsesPercentTicks(ax)) return `${v.toFixed(1)}%`;
   if (axisIsCount(ax)) return `${Math.round(v)}`;
-  if (axisIsFade(ax)) return abbreviateSigned(v);
   if (Math.abs(v) >= 1000) return abbreviateSigned(v);
   return `${v.toFixed(2)}`;
 }
@@ -88,7 +76,6 @@ function formatNumericAxisTick(ax: PCAxisDef, v: number): string {
 function axisUnitSuffix(ax: PCAxisDef, capacityBasis: string): string {
   if (axisIsCapacity(ax)) return ` (${capacityBasis})`;
   if (axisUsesPercentTicks(ax)) return ' (%)';
-  if (axisIsFade(ax)) return ' (%/cyc)';
   if (axisIsCount(ax)) return ' (n)';
   return '';
 }

@@ -1,10 +1,10 @@
 /**
  * Condition (cathode × separator × spacer) grouping and cohort statistics.
  * A "condition" is the experiment-design unit: its cells are replicates, so
- * cohort mean / SD / CV and replicate-relative flags all live here.
+ * cohort mean / SD / CV all live here.
  */
-import type { CellFlag, CellSummary, MetricDef } from './metrics';
-import { benjaminiHochberg, meanCI, modifiedZScores, OUTLIER_Z, welchT } from './stats';
+import type { CellSummary, MetricDef } from './metrics';
+import { meanCI } from './stats';
 
 export type CondRow = {
   key: string;
@@ -128,89 +128,5 @@ export function dotJitter(idNo: number): number {
   return ((h >>> 0) % 1000) / 1000 - 0.5;
 }
 
-/** Flags computed against each cell's replicate cohort (not project-wide). */
-export function computeFlaggedCells(conditions: CondRow[]): Map<string, CellFlag[]> {
-  const flagMap = new Map<string, CellFlag[]>();
-  for (const cond of conditions) {
-    // Robust within-cohort outlier detection (Iglewicz–Hoaglin modified
-    // Z-score on the median/MAD). Unlike the old "lowest decile" rule — which
-    // flagged ~10% of every large cohort by construction and nothing in small
-    // ones — this fires only on genuine outliers and needs ≥4 replicates.
-    const capCells = cond.cells.filter((c) => c.peakCapacityRaw != null);
-    const caps = capCells.map((c) => c.peakCapacityRaw as number);
-    const capZ = caps.length >= 4 ? modifiedZScores(caps) : null;
-    const capOutlierIds = new Map<string, number>();
-    if (capZ) {
-      capCells.forEach((c, i) => {
-        if (Math.abs(capZ[i]) > OUTLIER_Z) capOutlierIds.set(c.cellId, capZ[i]);
-      });
-    }
-    for (const c of cond.cells) {
-      const flags: CellFlag[] = [];
-      const z = capOutlierIds.get(c.cellId);
-      if (z != null && c.peakCapacityRaw != null) {
-        const dir = z < 0 ? 'below' : 'above';
-        flags.push({
-          id: 'cap-outlier',
-          title: 'Raw-capacity outlier',
-          body: `Peak capacity (${c.peakCapacityRaw.toFixed(2)} mAh) is a robust outlier (modified Z ${z.toFixed(1)}, ${dir} the cohort) within its ${cond.cells.length}-replicate cohort.`,
-          needsProtocol: false,
-        });
-      }
-      if (c.medianCE != null && (c.medianCE < 98 || c.medianCE > 102)) {
-        flags.push({
-          id: 'ce-anomaly',
-          title: 'CE anomaly',
-          body: `Median coulombic efficiency ${c.medianCE.toFixed(2)}% is outside the 98–102% band.`,
-          needsProtocol: false,
-        });
-      }
-      if (c.cycleCount > 0 && c.cycleCount < 5) {
-        flags.push({
-          id: 'few-cycles',
-          title: 'Very few usable cycles',
-          body: `Only ${c.cycleCount} cycles with non-zero capacity — the test may have failed early.`,
-          needsProtocol: false,
-        });
-      }
-      if (flags.length) flagMap.set(c.cellId, flags);
-    }
-  }
-  return flagMap;
-}
-
-export interface PairwiseVerdict {
-  aKey: string;
-  bKey: string;
-  /** BH-adjusted p-value; null when either cohort has n<2 for the metric. */
-  p: number | null;
-  /** Significant at the 5% FDR level (p_adj < 0.05). */
-  significant: boolean;
-}
-
-/**
- * Pairwise Welch's t-tests across a set of conditions on the active metric,
- * with Benjamini–Hochberg FDR correction over the whole comparison family
- * Answers "are these conditions actually distinguishable?".
- */
-export function pairwiseSignificance(
-  conditions: CondRow[],
-  metric: MetricDef,
-): PairwiseVerdict[] {
-  const vals = conditions.map((c) =>
-    c.cells.map((cell) => metric.value(cell)).filter((v): v is number => v != null && Number.isFinite(v)),
-  );
-  const pairs: { aKey: string; bKey: string; p: number | null }[] = [];
-  for (let i = 0; i < conditions.length; i++) {
-    for (let j = i + 1; j < conditions.length; j++) {
-      pairs.push({ aKey: conditions[i].key, bKey: conditions[j].key, p: welchT(vals[i], vals[j]).p });
-    }
-  }
-  const adj = benjaminiHochberg(pairs.map((pr) => pr.p));
-  return pairs.map((pr, k) => ({
-    aKey: pr.aKey,
-    bKey: pr.bKey,
-    p: adj[k],
-    significant: adj[k] != null && (adj[k] as number) < 0.05,
-  }));
-}
+// Pairwise significance (Welch's t + Benjamini–Hochberg) was removed along with
+// the "Compare pinned" panel. welchT / benjaminiHochberg remain in stats.ts.

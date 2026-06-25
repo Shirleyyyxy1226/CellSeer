@@ -11,7 +11,8 @@ import { ChartEditPopover } from '@/components/ChartEditPopover';
 import { ChartLegend, type LegendItem } from '@/components/ChartLegend';
 import { ResizableChartCard } from '@/components/ResizableChartCard';
 import { CycleColorScale } from '@/components/CycleColorScale';
-import { ArrowLeft, Info, MousePointerClick } from 'lucide-react';
+import { Info } from 'lucide-react';
+import { SelectionPrompt } from '@/components/SelectionPrompt';
 import { LoadingIndicator } from '@/components/LoadingIndicator';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useChartAppearance } from '@/hooks/useChartAppearance';
@@ -95,9 +96,6 @@ const GcdDashboard = ({
     chartTitle: GCD_TITLE_DEFAULT,
     xAxisLabel: GCD_X_DEFAULT,
     yAxisLabel: 'Voltage (V)',
-    // GCD curves are continuous V–Q lines — default to connected lines, not the
-    // old scatter-dots (still toggleable via the chart Edit popover).
-    showConnectedLine: true,
     maximizeContrast: false,
   });
   const {
@@ -108,7 +106,6 @@ const GcdDashboard = ({
     titleFontSize,
     labelFontSize,
     legendFontSize,
-    showConnectedLine,
     maximizeContrast,
   } = appearance.config;
 
@@ -228,7 +225,7 @@ const GcdDashboard = ({
       const fig = buildGcdFigure(recordDatasets, {
         mode: 'scatter',
         direction: gcdDirection,
-        showConnectedLine,
+        showConnectedLine: true,
         allowedCycles: gcdAllowedCycles,
         maxCycles: MAX_CYCLES,
         maxPointsPerTrace: MAX_PTS_TRACE,
@@ -242,7 +239,7 @@ const GcdDashboard = ({
     } catch (e) {
       return { traces: [] as Plotly.Data[], gcdTraceIndexToCell: new Map<number, { idNo: number; cellName: string }>() };
     }
-  }, [recordDatasets, gcdCycleSubset, allowedCycles, showConnectedLine, gcdDirection, combinedHighlightCycle, isSingleCell, zoomFocusCycle]);
+  }, [recordDatasets, gcdCycleSubset, allowedCycles, gcdDirection, combinedHighlightCycle, isSingleCell, zoomFocusCycle]);
 
   // Multi-cell GCD colours lines by cell, so a discrete legend (one entry per
   // cell) is useful. Single-cell mode colours by cycle and already shows the
@@ -326,18 +323,17 @@ const GcdDashboard = ({
       recordDatasets.every((rd) => rd.cathodeMassG != null && rd.cathodeMassG > 0),
     [recordDatasets],
   );
-  const someCellsHaveMass = useMemo(
-    () => recordDatasets.some((rd) => rd.cathodeMassG != null && rd.cathodeMassG > 0),
-    [recordDatasets],
-  );
   const cumulativeXLabel = allCellsHaveMass
     ? 'Cumulative specific capacity (mAh g⁻¹)'
     : 'Cumulative capacity (mAh)';
-  const cumulativeBasisBadge = allCellsHaveMass
-    ? 'mass-normalised'
-    : someCellsHaveMass
-    ? 'mixed (some cells lack mass)'
-    : 'raw mAh';
+  // Per-cell basis: the cumulative builder normalises each cell independently
+  // (specific capacity when it has a cathode mass, raw mAh otherwise), so each
+  // small-multiple panel must carry its own axis label — a shared label would
+  // mislabel mass-having cells whenever the selection is mixed.
+  const cellCumulativeXLabel = (rd: RecordDataset) =>
+    rd.cathodeMassG != null && rd.cathodeMassG > 0
+      ? 'Cumulative specific capacity (mAh g⁻¹)'
+      : 'Cumulative capacity (mAh)';
 
   // Cumulative GCD lays every cycle end-to-end along cumulative capacity, so a
   // single cell already spans the full width — overlaying ≥2 cells is an
@@ -362,16 +358,16 @@ const GcdDashboard = ({
       } catch (e) {
         void e;
       }
-      return { id: rd.id, label: rd.label, data };
+      return { id: rd.id, label: rd.label, data, xLabel: cellCumulativeXLabel(rd) };
     });
   }, [useSmallMultiples, recordDatasets, allowedCycles, combinedHighlightCycle]);
 
-  const perCellCumulativeLayout = (label: string): Partial<Plotly.Layout> => ({
+  const perCellCumulativeLayout = (label: string, xLabel: string): Partial<Plotly.Layout> => ({
     autosize: true,
     font: { family: `${fontFamily}, sans-serif` },
     title: { text: `${label}: all cycles`, font: { size: Math.max(11, titleFontSize - 2) } },
     xaxis: {
-      title: { text: cumulativeXLabel, font: { size: Math.max(9, labelFontSize - 1) } },
+      title: { text: xLabel, font: { size: Math.max(9, labelFontSize - 1) } },
       tickfont: { size: Math.max(8, labelFontSize - 2) },
       gridcolor: 'rgba(128,128,128,0.2)',
     },
@@ -495,7 +491,6 @@ const GcdDashboard = ({
     chartTitle: 'Rate performance',
     xAxisLabel: 'Cycle number',
     yAxisLabel: 'Discharge capacity (mAh)',
-    showConnectedLine: false,
     maximizeContrast: false,
   });
 
@@ -729,14 +724,6 @@ const GcdDashboard = ({
 
           {combinedGcdTraces.length > 0 && useSmallMultiples && (
             <div className="space-y-2">
-              <div className="flex items-start gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-                <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-                <span>
-                  Cumulative GCD overlays poorly for multiple cells — showing one panel per cell (
-                  {cellsDataList.length}). Colour = cycle (early → late); basis: {cumulativeBasisBadge}. To
-                  compare cells <em>at the same cycle</em>, use the “GCD curves” section below.
-                </span>
-              </div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
                 {perCellCumulative.map((p) => (
                   <div key={p.id} className="rounded-lg border border-border bg-card p-2">
@@ -746,7 +733,7 @@ const GcdDashboard = ({
                           exportContext={exportContext}
                           key={`combined-sm-${p.id}`}
                           data={p.data}
-                          layout={perCellCumulativeLayout(p.label)}
+                          layout={perCellCumulativeLayout(p.label, p.xLabel)}
                           config={{ responsive: true }}
                           style={{ width: '100%', height: '100%' }}
                         />
@@ -936,7 +923,6 @@ const GcdDashboard = ({
                       <ChartEditPopover
                         config={appearance.config}
                         onConfigChange={appearance.onConfigChange}
-                        showConnectedLineOption
                         chartLabel="GCD"
                       />
                       <ResizeHandle />
@@ -959,16 +945,7 @@ const GcdDashboard = ({
                   />
                 ) : cellIndex !== null && filteredCells.length > 0 && traces.length === 0 && !cellDataLoading && !selectedCell ? (
                   /* ── Onboarding empty state: index loaded, cells exist, nothing selected yet ── */
-                  <div className="h-[420px] flex flex-col items-center justify-center gap-3 text-muted-foreground select-none">
-                    <div className="flex items-center gap-2 text-primary/70">
-                      <ArrowLeft className="h-5 w-5" />
-                      <MousePointerClick className="h-6 w-6" />
-                    </div>
-                    <p className="text-base font-semibold text-foreground">Select a cell to begin</p>
-                    <p className="text-sm text-center max-w-xs">
-                      Select a cell in the sidebar to begin. GCD voltage–capacity curves will appear here.
-                    </p>
-                  </div>
+                  <SelectionPrompt title="Select a cell to begin" className="h-[420px]" />
                 ) : (
                   /* ── Error / no-data states ── */
                   <div className="h-[420px] flex flex-col items-center justify-center text-muted-foreground gap-2">
@@ -1008,7 +985,6 @@ const GcdDashboard = ({
                         direction="discharge"
                         detailDepth={0}
                         metadataByIdNo={metadataByIdNo}
-                        showConnectedLine={ratePerfAppearance.config.showConnectedLine ?? false}
                         config={ratePerfAppearance.config}
                         width={width}
                         height={height}
@@ -1017,7 +993,6 @@ const GcdDashboard = ({
                       <ChartEditPopover
                         config={ratePerfAppearance.config}
                         onConfigChange={ratePerfAppearance.onConfigChange}
-                        showConnectedLineOption
                         chartLabel="Rate performance"
                       />
                       <ResizeHandle />

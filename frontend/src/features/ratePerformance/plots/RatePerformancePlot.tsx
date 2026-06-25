@@ -30,8 +30,6 @@ export interface RatePerformancePlotProps {
   detailDepth: number;
   /** Optional hierarchy metadata rows keyed by idNo for non-hardcoded grouping. */
   metadataByIdNo?: Map<number, Record<string, string>>;
-  /** Connect points with lines when each cycle has a known C-rate. */
-  showConnectedLine: boolean;
   /** Title / labels / fonts / legend; the Y-axis label is data-derived and overrides config.yAxisLabel. */
   config: ChartAppearanceConfig;
   width: number;
@@ -56,7 +54,6 @@ export function RatePerformancePlot({
   direction,
   detailDepth,
   metadataByIdNo,
-  showConnectedLine,
   config,
   width,
   height,
@@ -115,7 +112,6 @@ export function RatePerformancePlot({
     return buildRatePerformanceFigure(traceSpecs, {
       direction,
       useSpecificCapacity,
-      showConnectedLine,
       protocolSegments,
     });
   }, [
@@ -127,7 +123,6 @@ export function RatePerformancePlot({
     detailDepth,
     metadataByIdNo,
     pathToColorMap,
-    showConnectedLine,
     protocolSegments,
     config.maximizeContrast,
   ]);

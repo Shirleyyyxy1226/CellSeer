@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useState } from 'react';
+import { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import type { TreeFilterPath } from '@/components/tree/treeTypes';
 
 interface TreeFilterContextValue {
@@ -16,7 +16,10 @@ export function TreeFilterProvider({ children }: { children: React.ReactNode }) 
     },
     []
   );
-  const value: TreeFilterContextValue = { treeFilterPath, setTreeFilterPath };
+  const value = useMemo<TreeFilterContextValue>(
+    () => ({ treeFilterPath, setTreeFilterPath }),
+    [treeFilterPath, setTreeFilterPath],
+  );
   return (
     <TreeFilterContext.Provider value={value}>
       {children}

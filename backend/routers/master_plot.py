@@ -1,14 +1,10 @@
 """Master Plot overview aggregate endpoint.
 
-Returns per-condition aggregates + a compact per-cell scalar table for the
-overview, instead of the full per-cycle arrays that /api/rate-performance ships.
-At 50k cells that is ~hundreds of KB of JSON vs ~60 MB — the difference between
-an interactive overview and a frozen tab.
-
-The reduction (master_plot_overview.build_overview) is the proven twin of the
-client pipeline; see backend/tests/test_master_plot_parity.py. This router only
-wires the existing cached cell loader to it, so it inherits the per-file
-cycle-summary cache and parallel Parquet reads for free.
+Returns a per-condition category map and a per-cell scalar table for the overview.
+The per-cell scalars are the source of truth for the metric columns; the frontend
+derives condition statistics from them. Wires the cached cell loader to
+build_overview, inheriting the per-file cycle-summary cache and parallel Parquet
+reads.
 """
 
 from fastapi import APIRouter, Query
@@ -25,11 +21,8 @@ router = APIRouter()
 def master_plot_overview(projectId: str | None = Query(default=None)) -> dict:
     cells, _cathodes = _load_rate_cells(projectId)
     result = build_overview(cells)
-    # Project-level protocol presence. The aggregate ships per-cell scalars but
-    # not the protocol fields, yet the frontend needs to know whether ANY cell
-    # has a resolved protocol to gate the protocol-locked metrics (retention,
-    # fade, cycle-life, CE-drift). Computed here in the router from the raw
-    # cells so the parity-locked build_overview reduction stays untouched.
+    # How many cells have a resolved protocol — lets the frontend gate the
+    # protocol-locked metrics (retention, fade, cycle-life, CE-drift).
     protocol_cell_count = sum(
         1 for c in cells if c.get("protocolSegments") or c.get("protocol")
     )

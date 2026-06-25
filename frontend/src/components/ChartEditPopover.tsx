@@ -30,7 +30,6 @@ export interface ChartAppearanceConfig {
   legendFontSize: number;
   showLegend: boolean;
   legendPosition: 'in' | 'right-bottom';
-  showConnectedLine?: boolean;
   /** Recolour the shown cells from a high-contrast CVD-safe palette so
    *  visually-similar cells become easy to tell apart. Identity hues unchanged. */
   maximizeContrast?: boolean;
@@ -41,8 +40,6 @@ export type ChartAppearanceKey = keyof ChartAppearanceConfig;
 interface ChartEditPopoverProps {
   config: ChartAppearanceConfig;
   onConfigChange: <K extends ChartAppearanceKey>(key: K, value: ChartAppearanceConfig[K]) => void;
-  /** Show the "Connect points with lines" option (for rate performance charts) */
-  showConnectedLineOption?: boolean;
   /** Optional label to distinguish multiple charts */
   chartLabel?: string;
 }
@@ -50,7 +47,6 @@ interface ChartEditPopoverProps {
 export function ChartEditPopover({
   config,
   onConfigChange,
-  showConnectedLineOption = false,
   chartLabel,
 }: ChartEditPopoverProps) {
   const is3DSurface = chartLabel?.toLowerCase().includes('3d');
@@ -59,7 +55,6 @@ export function ChartEditPopover({
   // (a shared hardcoded id let a label click toggle the wrong plot's checkbox).
   const uid = useId();
   const legendId = `${uid}-show-legend`;
-  const connectedId = `${uid}-show-connected`;
   const contrastId = `${uid}-maximize-contrast`;
 
   return (
@@ -210,18 +205,6 @@ export function ChartEditPopover({
               </SelectContent>
             </Select>
           </div>
-          {showConnectedLineOption && config.showConnectedLine !== undefined && (
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id={connectedId}
-                checked={config.showConnectedLine}
-                onCheckedChange={(c) => onConfigChange('showConnectedLine', c === true)}
-              />
-              <Label htmlFor={connectedId} className="text-xs cursor-pointer">
-                Connect points with lines
-              </Label>
-            </div>
-          )}
           {config.maximizeContrast !== undefined && (
             <div className="flex items-start gap-2 border-t pt-3">
               <Checkbox
@@ -234,9 +217,7 @@ export function ChartEditPopover({
                   Maximise contrast
                 </Label>
                 <p className="text-[11px] leading-snug text-muted-foreground">
-                  Recolour the shown cells from a high-contrast, colour-blind-safe palette
-                  so similar cells stand apart. Line styles &amp; markers stay on; the tree
-                  and identity colours elsewhere are unchanged.
+                  Colour-blind-safe palette; line styles &amp; markers unchanged.
                 </p>
               </div>
             </div>

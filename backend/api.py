@@ -3,7 +3,7 @@
 
 Endpoints are organised by domain in backend/routers/:
   routers/analysis.py    — GET /api/hierarchy, POST /api/hierarchy/analyse, GET /api/health
-  routers/cells.py       — /api/cell-record-*, /api/rate-performance, /api/batch-cycle-summary
+  routers/cells.py       — /api/cell-record-*, /api/rate-performance
   routers/annotations.py — GET/PUT /api/cell-annotation/*, GET /api/cell-annotations
   routers/upload.py      — POST /api/upload, /api/upload/status/*, /api/upload/history, /api/upload/loaders
 """

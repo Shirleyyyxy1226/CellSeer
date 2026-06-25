@@ -7,6 +7,8 @@ import {
 import { useCellSelection } from '@/contexts/CellSelectionContext';
 import { useProjectHierarchy } from '@/contexts/ProjectHierarchyContext';
 import { useTreeFilter } from '@/contexts/TreeFilterContext';
+import { isCellSelectionPath } from '@/lib/treeUtils';
+import type { RatePerfCell } from '@/lib/cellTypes';
 
 /** Full record per cycle - PyProBE columns (Voltage [V], Capacity [Ah], Current [A], etc.) */
 export interface RecordCurve {
@@ -26,18 +28,11 @@ export interface VQCellIndex {
   datasets?: { name?: string }[];
 }
 
-/** Rate performance cell from rate-performance.json */
-export interface RatePerfCell {
-  idNo: number;
-  cellId: string;
-  cellName: string;
-  cycles: number[];
-  dischargeCapacityMah: number[];
-  chargeCapacityMah?: number[];
-  specificCapacityMahG: number[] | null;
-  cRates?: number[];
-  protocolSegments?: { cycleStart: number; cycleEnd: number; cRate: number }[];
-}
+/** Rate performance cell from rate-performance.json. Canonical shape lives in
+ *  cellTypes (includes cathode/separatorType/spacerMm needed by the colour and
+ *  rate-performance plot code); re-exported so GCD shares one definition rather
+ *  than a stale duplicate that drops the hierarchy fields. */
+export type { RatePerfCell };
 
 export interface VQCell extends VQCellIndex {
   curves: Record<string, RecordCurve>;
@@ -143,39 +138,30 @@ export function useGcdCellData({
 
   const cellsForCharts = useMemo(() => {
     if (!filteredCells.length) return [];
-    if (multiselectionMode && selectedCellIds.length > 0) {
-      return filteredCells
-        .filter((c) => selectedCellIds.includes(c.idNo))
-        .sort((a, b) => a.idNo - b.idNo);
+    // GCD plots per-cell curves, so it responds ONLY to individual-cell
+    // selection — never to a group/branch click. Multi mode overlays every
+    // checked cell; an explicit selection (e.g. drill-down from the Master Plot
+    // inspector) is honoured in either mode; in Single mode only a leaf (cell)
+    // click plots. A group/branch selection or no selection yields no cells, so
+    // the dashboard shows a "select a cell" prompt instead.
+    const bySelectedIds = () =>
+      filteredCells.filter((c) => selectedCellIds.includes(c.idNo)).sort((a, b) => a.idNo - b.idNo);
+    if (multiselectionMode) {
+      return selectedCellIds.length > 0 ? bySelectedIds() : [];
     }
-    if (treeFilterPath.length > 0) {
-      const matchedIdNos = matchPathToIdNos(treeFilterPath);
-      if (matchedIdNos && matchedIdNos.size > 0) {
-        const matched = filteredCells
-          .filter((c) => matchedIdNos.has(c.idNo))
-          .sort((a, b) => a.idNo - b.idNo);
-        // Single mode shows ONE cell: clicking a group node drills into the
-        // first cell of that group rather than overlaying every cell under it
-        // (use Multi mode to overlay the whole group).
-        return multiselectionMode ? matched : matched.slice(0, 1);
-      }
-      // Leaf clicks set treeFilterPath but may not resolve via path match; honour explicit cell selection.
-      if (!multiselectionMode && selectedCellIds.length > 0) {
-        return filteredCells
-          .filter((c) => selectedCellIds.includes(c.idNo))
-          .sort((a, b) => a.idNo - b.idNo);
-      }
-      return [];
-    }
-    // Honour an explicit selection (e.g. drill-down from the Master Plot inspector)
-    // even when no tree path is active, instead of defaulting to the first cell.
-    if (!multiselectionMode && selectedCellIds.length > 0) {
-      const selected = filteredCells
-        .filter((c) => selectedCellIds.includes(c.idNo))
-        .sort((a, b) => a.idNo - b.idNo);
+    if (selectedCellIds.length > 0) {
+      const selected = bySelectedIds();
       if (selected.length > 0) return selected;
     }
-    return filteredCells.slice(0, 1);
+    if (isCellSelectionPath(treeFilterPath)) {
+      const matchedIdNos = matchPathToIdNos(treeFilterPath);
+      if (matchedIdNos && matchedIdNos.size > 0) {
+        return filteredCells
+          .filter((c) => matchedIdNos.has(c.idNo))
+          .sort((a, b) => a.idNo - b.idNo);
+      }
+    }
+    return [];
   }, [filteredCells, multiselectionMode, selectedCellIds, treeFilterPath, matchPathToIdNos]);
 
   // One cached query per charted cell — selection toggles and tab revisits
@@ -219,8 +205,11 @@ export function useGcdCellData({
       const firstWithCurves = cellsForCharts.find((x) => !!cellRecordsByCell[x.idNo]?.curves);
       if (firstWithCurves) return firstWithCurves;
     }
-    return cellsForCharts[0] ?? filteredCells.find((c) => c.cellId === selectedCellId) ?? filteredCells[0];
-  }, [cellsForCharts, filteredCells, selectedCellId, cellRecordsByCell]);
+    // No fallback to filteredCells[0]: when nothing (or only a group) is
+    // selected, there is no selected cell, so the dashboard shows its
+    // "select a cell" prompt rather than auto-plotting an arbitrary cell.
+    return cellsForCharts[0] ?? null;
+  }, [cellsForCharts, selectedCellId, cellRecordsByCell]);
 
   const cellsDataList = useMemo((): VQCell[] => {
     if (cellsForCharts.length <= 1 && selectedCellData?.curves) return [selectedCellData];

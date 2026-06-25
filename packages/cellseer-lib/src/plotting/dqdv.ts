@@ -37,6 +37,30 @@ function baseColor(d: Dataset, idx: number): string {
   return d.color ?? cellColor(d.id, idx);
 }
 
+/**
+ * Resolve which of a cell's cycles to highlight.
+ *
+ * `cycleIndex` is a position in the dashboard's *global* union of every cell's
+ * cycles, but `dataset.cycles` holds only the cycles this cell actually has — so
+ * indexing it positionally highlights the wrong curve, or none at all when the
+ * index runs off the end, whenever a cell is missing cycles (dQ/dV is often
+ * computed only every Nth cycle). Match the requested cycle *number*
+ * (`selectedCycle`) exactly; if this cell does not have that cycle, highlight
+ * nothing for it. Fall back to the positional index only when no cycle number
+ * was supplied (legacy callers / tests).
+ */
+function resolveCycle(
+  dataset: Dataset,
+  selectedCycle: number | undefined,
+  cycleIndex: number,
+): Dataset['cycles'][number] | undefined {
+  if (selectedCycle != null) {
+    // Exact cycle-number match; if this cell lacks that cycle, highlight nothing.
+    return dataset.cycles.find((c) => c.cycle === selectedCycle);
+  }
+  return dataset.cycles[cycleIndex];
+}
+
 function voltageExtent(datasets: Dataset[]): [number, number] | undefined {
   let min = Number.POSITIVE_INFINITY;
   let max = Number.NEGATIVE_INFINITY;
@@ -57,12 +81,13 @@ function smallFont(): { size: number; family: 'Inter' } {
 }
 
 function build3D(datasets: Dataset[], opts: BuildDqDvOpts = {}): DqDvFigure {
-  const activeCycleIndex = opts.cycleIndex ?? -1;
   const traces: Plotly.Data[] = [];
   datasets.forEach((dataset, i) => {
     const color = baseColor(dataset, i);
     const total = dataset.cycles.length;
+    const active = resolveCycle(dataset, opts.selectedCycle, opts.cycleIndex ?? -1);
     dataset.cycles.forEach((cycle, idx) => {
+      const isActive = active != null && cycle.cycle === active.cycle;
       traces.push({
         x: cycle.x,
         y: new Array(cycle.x.length).fill(cycle.cycle),
@@ -71,10 +96,10 @@ function build3D(datasets: Dataset[], opts: BuildDqDvOpts = {}): DqDvFigure {
         mode: 'lines',
         name: `${dataset.label} - Cycle ${cycle.cycle}`,
         line: {
-          color: idx === activeCycleIndex ? color : cycleFadeColor(color, total <= 1 ? 1 : idx / (total - 1)),
-          width: idx === activeCycleIndex ? 5 : 2,
+          color: isActive ? color : cycleFadeColor(color, total <= 1 ? 1 : idx / (total - 1)),
+          width: isActive ? 5 : 2,
         },
-        opacity: idx === activeCycleIndex ? 1 : 0.6,
+        opacity: isActive ? 1 : 0.6,
         legendgroup: dataset.id,
         showlegend: idx === total - 1,
         hovertemplate: `${dataset.label}<br>Voltage: %{x:.2f} V<br>Cycle: %{y}<br>dQ/dV: %{z:.2f} mAh V⁻¹<extra></extra>`,
@@ -143,7 +168,7 @@ function build2D(datasets: Dataset[], opts: BuildDqDvOpts): DqDvFigure {
         connectgaps: false,
       });
 
-      const cycle = dataset.cycles[cycleIndex];
+      const cycle = resolveCycle(dataset, opts.selectedCycle, cycleIndex);
       if (!cycle) return;
       lines.push({
         x: cycle.x,
@@ -177,7 +202,7 @@ function build2D(datasets: Dataset[], opts: BuildDqDvOpts): DqDvFigure {
     const peaks: Plotly.Data[] = [];
     datasets.forEach((dataset, i) => {
       const color = baseColor(dataset, i);
-      const cycle = dataset.cycles[cycleIndex];
+      const cycle = resolveCycle(dataset, opts.selectedCycle, cycleIndex);
       if (!cycle) return;
       const baseline = baselineCycle != null
         ? dataset.cycles.find((c) => c.cycle === baselineCycle)

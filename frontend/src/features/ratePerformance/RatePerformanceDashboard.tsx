@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRatePerformanceQuery, useCellRecordQueries } from '@/hooks/useCellData';
 import { useCellSelection } from '@/contexts/CellSelectionContext';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, ChevronUp, Layers } from 'lucide-react';
+import { ChevronUp, Layers } from 'lucide-react';
+import { SelectionPrompt } from '@/components/SelectionPrompt';
 import { ChartEditPopover, type ChartAppearanceConfig, type ChartAppearanceKey } from '@/components/ChartEditPopover';
 import { ChartLegend, type LegendItem } from '@/components/ChartLegend';
 import { ResizableChartCard } from '@/components/ResizableChartCard';
@@ -14,13 +15,14 @@ import { useTreeFilter } from '@/contexts/TreeFilterContext';
 import { useProtocolFilter } from '@/contexts/ProtocolFilterContext';
 import {
   buildPathToColorMap,
+  colorForHierPath,
   getColorForCell,
   getMaxDetailDepth,
   resolveHierarchyCellValue,
 } from '@/lib/ratePerfAggregation';
 import { useProjectHierarchy } from '@/contexts/ProjectHierarchyContext';
 import type { RatePerfCell as CyclingCell } from '@/lib/cellTypes';
-import { formatNodeLabel } from '@/lib/treeUtils';
+import { assignColourMapPerceptual, formatNodeLabel } from '@/lib/treeUtils';
 import { VoltageTimePlot, type VoltageTimeCellRecord, type VoltageTimePlotConfig } from './plots/VoltageTimePlot';
 import { RatePerformancePlot } from './plots/RatePerformancePlot';
 import { hasRatePerfTraces } from './plots/ratePerfTraceCheck';
@@ -88,11 +90,10 @@ const RatePerformanceDashboard = (_: Props) => {
     chartTitle: defaultChartTitle,
     xAxisLabel: 'Cycle number',
     yAxisLabel: 'Capacity (mAh g⁻¹)',
-    showConnectedLine: false,
     maximizeContrast: false,
   });
   const { fontFamily, titleFontSize, labelFontSize, legendFontSize } = appearance.config;
-  useEffect(() => { appearance.setChartTitle(defaultChartTitle); }, [defaultChartTitle, appearance]);
+  useEffect(() => { appearance.setChartTitle(defaultChartTitle); }, [defaultChartTitle, appearance.setChartTitle]);
 
   const mainChart = useResizableChart();
   const initialVoltageChart = useResizableChart();
@@ -291,7 +292,7 @@ const RatePerformanceDashboard = (_: Props) => {
         // Font knobs are shared with the main chart on purpose.
         appearance.onConfigChange(key, value);
       }
-      // legendPosition / showConnectedLine: intentionally no-op
+      // legendPosition: intentionally no-op
       // (these are hardcoded for the initial-voltage chart).
     },
     [appearance],
@@ -336,6 +337,8 @@ const RatePerformanceDashboard = (_: Props) => {
     if (grouped.size === 0) return null;
 
     const pathPrefix = treeFilterPath.map((p) => p.val).filter(Boolean).join('|');
+    // Same categorical scheme as the chart bands and the tree nodes.
+    const perceptualMaps = assignColourMapPerceptual(activeAnalysis.hierCols);
     const items: NodePreviewItem[] = Array.from(grouped.entries())
       .map(([rawValue, cells]) => {
         const yVals: number[] = [];
@@ -356,7 +359,7 @@ const RatePerformanceDashboard = (_: Props) => {
             activeAnalysis.labelDecorations,
           ) || rawValue,
           count: cells.length,
-          color: pathToColorMap.get(pathKey) ?? '#6b7280',
+          color: colorForHierPath(pathKey, perceptualMaps, pathToColorMap),
           minY,
           maxY,
         };
@@ -461,7 +464,6 @@ const RatePerformanceDashboard = (_: Props) => {
                           direction={direction}
                           detailDepth={detailDepth}
                           metadataByIdNo={metadataByIdNo}
-                          showConnectedLine={appearance.config.showConnectedLine ?? false}
                           config={appearance.config}
                           width={width}
                           height={height}
@@ -472,7 +474,6 @@ const RatePerformanceDashboard = (_: Props) => {
                       <ChartEditPopover
                         config={appearance.config}
                         onConfigChange={appearance.onConfigChange}
-                        showConnectedLineOption
                         chartLabel="Rate performance"
                       />
                       <ResizeHandle />
@@ -497,17 +498,7 @@ const RatePerformanceDashboard = (_: Props) => {
                       {cyclingData === null ? (
                         <p>No rate performance data found.</p>
                       ) : treeFilterPath.length === 0 && !multiselectionMode ? (
-                        <div className="flex flex-col items-center gap-3 text-center px-8">
-                          <div className="flex items-center gap-2 text-primary/70">
-                            <ArrowLeft className="h-5 w-5 shrink-0" />
-                            <span className="text-sm font-medium text-foreground">
-                              Select a node in the hierarchy tree
-                            </span>
-                          </div>
-                          <p className="text-xs text-muted-foreground max-w-xs">
-                            Click any branch or leaf in the left sidebar to load its rate performance data here.
-                          </p>
-                        </div>
+                        <SelectionPrompt title="Select a node in the hierarchy tree" />
                       ) : direction === 'charge' ? (
                         <p>No {directionLabelLower} capacity data for the current selection.</p>
                       ) : (

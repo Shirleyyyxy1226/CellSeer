@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -6,6 +6,7 @@ import {
   ChevronDown,
   ChevronRight,
   CloudDownload,
+  FileDown,
   LayoutDashboard,
   RefreshCw,
   Upload,
@@ -125,6 +126,9 @@ export default function ProjectDetailPage() {
   const [cells, setCells] = useState<CellRow[]>([]);
   const [search, setSearch] = useState('');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshStatus, setRefreshStatus] = useState<{ ok: boolean; total: number; delta: number; time: string } | null>(null);
+  const prevCellCountRef = useRef(0);
   /* ─────────────── Data fetchers ─────────────── */
 
   const refreshReadiness = useCallback(
@@ -147,14 +151,33 @@ export default function ProjectDetailPage() {
     [projectId],
   );
 
-  const refreshCells = useCallback(async () => {
+  const refreshCells = useCallback(async (): Promise<number> => {
     try {
       const d = await fetchCellRecordIndex();
-      setCells((d.cells ?? []) as CellRow[]);
+      const rows = (d.cells ?? []) as CellRow[];
+      setCells(rows);
+      prevCellCountRef.current = rows.length;
+      return rows.length;
     } catch {
-      /* keep previous list */
+      return -1;
     }
   }, []);
+
+  const manualRefresh = useCallback(async () => {
+    setRefreshing(true);
+    setRefreshStatus(null);
+    const prev = prevCellCountRef.current;
+    const newCount = await refreshCells();
+    void refreshReadiness({ background: true }).catch(() => {});
+    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    if (newCount >= 0) {
+      prevCellCountRef.current = newCount;
+      setRefreshStatus({ ok: true, total: newCount, delta: newCount - prev, time });
+    } else {
+      setRefreshStatus({ ok: false, total: 0, delta: 0, time });
+    }
+    setRefreshing(false);
+  }, [refreshReadiness, refreshCells]);
 
   useEffect(() => {
     void refreshReadiness();
@@ -364,6 +387,18 @@ export default function ProjectDetailPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {refreshStatus && !refreshStatus.ok && (
+              <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium bg-destructive/10 text-destructive border border-destructive/20">Refresh failed</span>
+            )}
+            {refreshStatus && refreshStatus.ok && (
+              <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-800">
+                ✓ {refreshStatus.delta > 0 ? `+${refreshStatus.delta} new · ` : refreshStatus.delta < 0 ? `${refreshStatus.delta} removed · ` : ''}{refreshStatus.total} cells · {refreshStatus.time}
+              </span>
+            )}
+            <Button variant="outline" size="sm" onClick={() => { void manualRefresh(); }} disabled={refreshing} title="Refresh cell list">
+              <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
             <Button
               disabled={!readiness?.canEnterDashboard}
               onClick={() => navigate(`/projects/${encodeURIComponent(projectId)}/dashboard`)}
@@ -383,9 +418,19 @@ export default function ProjectDetailPage() {
             {/* Compact upload strip */}
             <div className="rounded-lg border border-border bg-card p-3">
               <div className="mb-2 flex items-center justify-between">
-                <span className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
-                  Upload data
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+                    Upload data
+                  </span>
+                  <a
+                    href="/metadata_template.xlsx"
+                    download
+                    className="inline-flex items-center gap-1 text-[10px] text-primary hover:underline"
+                  >
+                    <FileDown className="h-3 w-3" />
+                    Metadata template
+                  </a>
+                </div>
                 <span className="text-[10.5px] text-muted-foreground">
                   Metadata cols {readiness?.metadataColumnCount ?? 0} · Cycling files{' '}
                   {readiness?.cyclingFileCount ?? 0}

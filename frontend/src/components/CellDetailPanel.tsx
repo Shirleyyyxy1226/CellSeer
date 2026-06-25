@@ -8,15 +8,16 @@
  * protocol chip, cycling-file attach, and inline metadata edit are all the
  * same control here as on the project page.
  *
- * The note + tag store (`/api/cell-annotation/{cellId}`) is a **separate**
- * persistence layer from `cell.notes` (the metadata-sheet column). Both
- * coexist on purpose: `cell.notes` is what the upload sheet provides and
- * lives on the cell row; the annotation store is what users add ad-hoc in
- * the dashboard and is keyed off `cell_id`. This panel keeps the annotation
- * editor at the bottom so existing notes/tags aren't lost.
+ * Note vs. tags: the bottom editor's **note** is the single source of truth on
+ * the cell row — `cell.notes` (the metadata-sheet column) — written via
+ * `PATCH /api/cells/{cellId}`, the same field shown in `CellMetadataCard`'s
+ * NOTES section and editable from its "Edit metadata" mode. **Tags** are the
+ * only thing that lives in the separate annotation store
+ * (`/api/cell-annotation/{cellId}`), keyed off `cell_id`.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -29,7 +30,7 @@ import { Check, X } from 'lucide-react';
 import { CellMetadataCard } from '@/components/CellMetadataCard';
 import { useCellSelection } from '@/contexts/CellSelectionContext';
 import { useDataRefresh } from '@/contexts/DataRefreshContext';
-import { putCellAnnotation } from '@/lib/api';
+import { putCellAnnotation, updateCellMetadata } from '@/lib/api';
 import { useCellRecordIndexQuery } from '@/hooks/useCellData';
 import type { IndexCell } from '@/lib/cellTypes';
 import { TAG_CATALOG } from '@/lib/cellTags';
@@ -46,6 +47,10 @@ export function CellDetailPanel() {
     refetchAnnotations,
     dismissDetailPanel,
   } = useCellSelection();
+  const queryClient = useQueryClient();
+  // Structural changes (metadata edit, file upload, protocol attach) still bump
+  // the global dataVersion so every view refetches. Saving a note/tag does not,
+  // to avoid remounting the hierarchy sidebar (see handleSave).
   const { triggerDataRefresh } = useDataRefresh();
   const { data: indexData, isLoading: indexLoading, isError: indexError } = useCellRecordIndexQuery();
   const cellIndex = (indexData?.cells ?? []) as IndexCell[];
@@ -65,9 +70,10 @@ export function CellDetailPanel() {
 
   useEffect(() => {
     if (singleCell) {
-      const ann = annotationsByCell[singleCell.idNo];
-      setLocalNote(ann?.note ?? '');
-      setLocalTags(ann?.tags ?? []);
+      // Note is the cell-row `cell.notes` field (single source of truth, same
+      // value shown in CellMetadataCard's NOTES); tags come from the annotation store.
+      setLocalNote(singleCell.notes ?? '');
+      setLocalTags(annotationsByCell[singleCell.idNo]?.tags ?? []);
     } else if (selectedCells.length > 1) {
       setLocalNote('');
       const tagSet = new Set<string>();
@@ -95,17 +101,24 @@ export function CellDetailPanel() {
     try {
       for (const cell of selectedCells) {
         if (!cell.cellId) continue;
-        const body: { note?: string; tags?: string[] } = { tags: localTags };
+        // Tags live in the annotation store (all selected cells).
+        await putCellAnnotation(cell.cellId, { tags: localTags });
+        // Note writes through to the cell-row `cell.notes` column — only for the
+        // single focused cell, since that field is per-cell metadata.
         if (singleCell && singleCell.idNo === cell.idNo) {
-          body.note = localNote;
+          await updateCellMetadata(cell.cellId, { notes: localNote });
         }
-        await putCellAnnotation(cell.cellId, body);
       }
       // Close the panel for prompt feedback, but keep the selection so any
       // selection-driven plots (e.g. dQ/dV, dV/dQ) stay rendered for the
-      // cell the user just annotated. Annotations refetch in the background.
+      // cell the user just annotated. Refetch tags, and invalidate only the
+      // cell index (which carries `cell.notes`) so it refreshes in place. A
+      // global dataVersion bump would change every query key and briefly empty
+      // the cell index, remounting the hierarchy sidebar and losing its
+      // expand/scroll state.
       dismissDetailPanel();
       void refetchAnnotations();
+      void queryClient.invalidateQueries({ queryKey: ['cell-record-index'] });
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Failed to save annotation.');
     } finally {
@@ -118,6 +131,7 @@ export function CellDetailPanel() {
     localTags,
     refetchAnnotations,
     dismissDetailPanel,
+    queryClient,
     indexStatus,
   ]);
 
@@ -196,11 +210,11 @@ export function CellDetailPanel() {
           </div>
         )}
 
-        {/* Annotation section — note + tag store keyed on cell_id. Separate
-            from the metadata `notes` column edited above. */}
+        {/* Note writes through to the cell-row `cell.notes` (same field as the
+            metadata card's NOTES); tags are stored per cell_id in the annotation store. */}
         <div className="space-y-3 pt-3 border-t border-border/60">
           <div className="text-[9.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            Annotation
+            Note &amp; tags
           </div>
           {singleCell && (
             <div className="space-y-2">
