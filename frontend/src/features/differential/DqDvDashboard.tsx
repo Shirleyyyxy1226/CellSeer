@@ -209,8 +209,8 @@ const DqDvDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
   useEffect(() => { setHeavyRenderConfirmed(false); }, [datasets]);
 
   const { data: traces3d, layout: layout3D } = useMemo(
-    () => buildDqDvFigure(datasets, { mode: '3d', cycleIndex }),
-    [datasets, cycleIndex]
+    () => buildDqDvFigure(datasets, { mode: '3d', cycleIndex, selectedCycle }),
+    [datasets, cycleIndex, selectedCycle]
   );
   const { data: traces2d, layout: layout2D } = useMemo(
     () => buildDqDvFigure(datasets, {

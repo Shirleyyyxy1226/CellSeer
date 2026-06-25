@@ -25,6 +25,30 @@ function baseColor(d: Dataset, idx: number): string {
   return d.color ?? cellColor(d.id, idx);
 }
 
+/**
+ * Resolve which of a cell's cycles to highlight.
+ *
+ * `cycleIndex` is a position in the dashboard's *global* union of every cell's
+ * cycles, but `dataset.cycles` holds only the cycles this cell actually has — so
+ * indexing it positionally highlights the wrong curve, or none at all when the
+ * index runs off the end, whenever a cell is missing cycles (dQ/dV is often
+ * computed only every Nth cycle). Match the requested cycle *number*
+ * (`selectedCycle`) exactly; if this cell does not have that cycle, highlight
+ * nothing for it. Fall back to the positional index only when no cycle number
+ * was supplied (legacy callers / tests).
+ */
+function resolveCycle(
+  dataset: Dataset,
+  selectedCycle: number | undefined,
+  cycleIndex: number,
+): Dataset['cycles'][number] | undefined {
+  if (selectedCycle != null) {
+    // Exact cycle-number match; if this cell lacks that cycle, highlight nothing.
+    return dataset.cycles.find((c) => c.cycle === selectedCycle);
+  }
+  return dataset.cycles[cycleIndex];
+}
+
 function smallFont(): { size: number; family: 'Inter' } {
   return { size: 10, family: 'Inter' };
 }
@@ -107,7 +131,7 @@ function build2D(datasets: Dataset[], opts: BuildDvDqOpts): DvDqFigure {
         });
       }
 
-      const cycle = dataset.cycles[cycleIndex];
+      const cycle = resolveCycle(dataset, opts.selectedCycle, cycleIndex);
       if (!cycle) return;
       lines.push({
         x: cycle.x,
@@ -141,7 +165,7 @@ function build2D(datasets: Dataset[], opts: BuildDvDqOpts): DvDqFigure {
     const peaks: Plotly.Data[] = [];
     datasets.forEach((dataset, i) => {
       const color = baseColor(dataset, i);
-      const cycle = dataset.cycles[cycleIndex];
+      const cycle = resolveCycle(dataset, opts.selectedCycle, cycleIndex);
       if (!cycle) return;
       const baseline = baselineCycle != null
         ? dataset.cycles.find((c) => c.cycle === baselineCycle)

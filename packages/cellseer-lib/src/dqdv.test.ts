@@ -15,6 +15,14 @@ function sampleDatasets(): Dataset[] {
   ];
 }
 
+function sparseDataset(): Dataset[] {
+  return [{ id: 'cell-a', label: 'Cell A', color: '#1f77b4', cycles: [
+    { cycle: 5, x: [4.2, 4.0], y: [0.1, 0.2] },
+    { cycle: 10, x: [4.2, 4.0], y: [0.3, 0.4] },
+    { cycle: 28, x: [4.2, 4.0], y: [0.5, 0.9] },
+  ] }];
+}
+
 describe('buildDqDvFigure', () => {
   it('builds one scatter3d trace per cycle and reverses x range', () => {
     const fig = buildDqDvFigure(sampleDatasets(), { mode: '3d' });
@@ -48,6 +56,34 @@ describe('buildDqDvFigure', () => {
     });
     const baseline = fig.data.find((d) => d.type === 'scatter' && d.mode === 'lines' && d.name === 'Cell A Cycle 99');
     expect(baseline).toBeUndefined();
+  });
+
+  it('highlights by selected cycle NUMBER, not positional index, for sparse cells', () => {
+    // cycleIndex 27 runs off the end of this 3-cycle cell; resolving by the
+    // selected cycle NUMBER (28) finds the real curve regardless of position.
+    const fig = buildDqDvFigure(sparseDataset(), {
+      mode: '2d',
+      viewMode: 'range',
+      cycleIndex: 27,
+      selectedCycle: 28,
+    });
+    const highlight = fig.data.find((d) => d.type === 'scatter' && d.mode === 'lines' && d.name === 'Cell A Cycle 28');
+    expect(highlight).toBeDefined();
+    expect(highlight?.y).toEqual([0.5, 0.9]);
+  });
+
+  it('highlights nothing for a cell when the selected cycle is absent (no nearest fallback)', () => {
+    // 12 is not in {5,10,28}; the cell must not get any highlighted cycle line.
+    const fig = buildDqDvFigure(sparseDataset(), {
+      mode: '2d',
+      viewMode: 'range',
+      cycleIndex: 27,
+      selectedCycle: 12,
+    });
+    const highlight = fig.data.find(
+      (d) => d.type === 'scatter' && d.mode === 'lines' && String(d.name).startsWith('Cell A Cycle'),
+    );
+    expect(highlight).toBeUndefined();
   });
 });
 
