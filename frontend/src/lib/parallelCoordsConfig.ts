@@ -142,7 +142,7 @@ export function continuousNorm(v: number, vmin: number, vmax: number): number {
 /**
  * Default PC layout — a curated set of metrics that suit a parallel plot: a stable
  * per-cell *level* that (nearly) every cell has and that compares fairly. Inputs
- * (cathode/separator/spacer) plus peak capacity and ICE.
+ * (cathode/separator/spacer) plus cycle count and end capacity.
  * Retention and CE are deliberately NOT axes (here or as opt-ins): without protocol
  * segmentation their baseline / main-cycling window is undefined, so the values can
  * exceed 100% and mislead. The dQ/dV peak-shift metric is likewise excluded as
@@ -175,19 +175,19 @@ export function defaultParallelCoordAxes(): PCAxisDef[] {
       confKind: 'none',
     },
     {
-      id: 'ice',
-      kind: 'continuous',
-      group: 'formation',
-      scalar: 'ice',
-      label: 'ICE',
-      confKind: 'ce',
-    },
-    {
-      id: 'cap_peak',
+      id: 'cycles',
       kind: 'continuous',
       group: 'cycling',
-      scalar: 'capacity_peak',
-      label: 'Peak cap',
+      scalar: 'cycle_count',
+      label: 'Cycles',
+      confKind: 'none',
+    },
+    {
+      id: 'cap_end',
+      kind: 'continuous',
+      group: 'summary',
+      scalar: 'capacity_end',
+      label: 'End capacity',
       confKind: 'none',
     },
   ];
@@ -198,8 +198,8 @@ export function defaultParallelCoordAxes(): PCAxisDef[] {
  *  and they are unsuitable for a parallel plot anyway. */
 const EXTRA_AXES: PCAxisDef[] = [
   { id: 'electrolyte', kind: 'categorical', group: 'input', catKey: 'electrolyte', label: 'Electrolyte', confKind: 'none' },
-  { id: 'cycles', kind: 'continuous', group: 'cycling', scalar: 'cycle_count', label: 'Cycles', confKind: 'none' },
-  { id: 'cap_end', kind: 'continuous', group: 'summary', scalar: 'capacity_end', label: 'End capacity', confKind: 'none' },
+  { id: 'ice', kind: 'continuous', group: 'formation', scalar: 'ice', label: 'ICE', confKind: 'ce' },
+  { id: 'cap_peak', kind: 'continuous', group: 'cycling', scalar: 'capacity_peak', label: 'Peak cap', confKind: 'none' },
 ];
 
 /**

@@ -198,6 +198,44 @@ def prefix_from_header(h: str, config: AnalysisConfig = DEFAULT_CONFIG) -> str:
     return ""
 
 
+def _norm_header(h: str) -> str:
+    """Case/underscore/punctuation-insensitive header key (matches build_tree's
+    norm_header) so 'Spacer_mm' and 'spacer (mm)' both reduce to 'spacermm'."""
+    return re.sub(r"[^a-z0-9]+", "", h.lower())
+
+
+# Default-hierarchy priority: physical/chemical DESIGN parameters first (the
+# analytically meaningful build), organisational labels (category/batch/repeat)
+# last. Lower number = higher priority. Matched on a normalised header, so the
+# first substring that appears in the column header wins.
+_DESIGN_PRIORITY: list[str] = [
+    "cathode",
+    "anode",
+    "separator",
+    "spacer",
+    "electrolyte",
+    "npratio",
+    "cathodemass",
+    "anodemass",
+    "cathodediameter",
+    "anodediameter",
+    "electrolytevolume",
+]
+
+
+def design_priority(header: str) -> int:
+    """Sort priority for the DEFAULT hierarchy. Design-parameter columns sort
+    first by their position in _DESIGN_PRIORITY; everything else (organisational
+    labels such as Category / Batch / Repeat) shares the lowest priority and so
+    keeps its column-index order among itself."""
+    norm = _norm_header(header)
+    best = len(_DESIGN_PRIORITY)
+    for i, key in enumerate(_DESIGN_PRIORITY):
+        if key in norm:
+            best = min(best, i)
+    return best
+
+
 # ── Annotation finder ─────────────────────────────────────────────────
 def compute_annotations(
     hier_cols: list[ColStats],
@@ -366,9 +404,14 @@ def analyse_columns(
                 break
 
     non_redundant_numerics = [s for s in numeric_cands if s.j not in redundant_js]
-    ordered = (
-        sorted(string_cands, key=lambda s: s.j)
-        + sorted(non_redundant_numerics, key=lambda s: s.j)
+    # Default hierarchy ordering: DESIGN-PARAMETER columns (cathode, separator,
+    # spacer, electrolyte, …) sort first by their design priority, organisational
+    # labels (category / batch / repeat) sort last and keep column-index order.
+    # String-before-numeric is preserved as a secondary tie-break so categorical
+    # design dimensions still lead the numeric ones at the same priority.
+    ordered = sorted(
+        string_cands + non_redundant_numerics,
+        key=lambda s: (design_priority(s.header), 0 if not s.is_numeric else 1, s.j),
     )
     hier_cols = ordered[:max_levels]
 
