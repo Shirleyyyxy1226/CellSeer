@@ -137,7 +137,7 @@ function build2D(datasets: Dataset[], opts: BuildDqDvOpts): DqDvFigure {
         name: dataset.label,
         legendgroup: dataset.id,
         legendgrouptitle: { text: dataset.label },
-        line: { color: hexToRgba(color, 0.25), width: 1.5 },
+        line: { color: hexToRgba(color, 0.25), width: 1.5, ...(dataset.dash ? { dash: dataset.dash } : {}) },
         hovertemplate: `${dataset.label}<br>Voltage: %{x:.2f} V<br>dQ/dV: %{y:.2f} mAh V⁻¹<extra></extra>`,
         showlegend: true,
         connectgaps: false,
@@ -153,7 +153,7 @@ function build2D(datasets: Dataset[], opts: BuildDqDvOpts): DqDvFigure {
         name: `${dataset.label} Cycle ${cycle.cycle}`,
         legendgroup: dataset.id,
         showlegend: false,
-        line: { color, width: 2 },
+        line: { color, width: 2, ...(dataset.dash ? { dash: dataset.dash } : {}) },
         hovertemplate: `${dataset.label}<br>Voltage: %{x:.2f} V<br>dQ/dV: %{y:.2f} mAh V⁻¹<extra></extra>`,
       });
 
@@ -166,7 +166,7 @@ function build2D(datasets: Dataset[], opts: BuildDqDvOpts): DqDvFigure {
         name: `${dataset.label} peak`,
         legendgroup: dataset.id,
         showlegend: false,
-        marker: { size: 10, color, symbol: 'diamond', line: { width: 1, color: '#fff' } },
+        marker: { size: 10, color, symbol: dataset.symbol ?? 'diamond', line: { width: 1, color: '#fff' } },
         hovertemplate: `${dataset.label} peak<br>Voltage: %{x:.2f} V<br>dQ/dV: %{y:.2f} mAh V⁻¹<extra></extra>`,
       });
     });
@@ -189,7 +189,7 @@ function build2D(datasets: Dataset[], opts: BuildDqDvOpts): DqDvFigure {
           type: 'scatter',
           mode: 'lines',
           name: `${dataset.label} Cycle ${baseline.cycle}`,
-          line: { color: hexToRgba(color, 0.4), width: 1.5 },
+          line: { color: hexToRgba(color, 0.4), width: 1.5, ...(dataset.dash ? { dash: dataset.dash } : {}) },
           hovertemplate: `${dataset.label} Cycle ${baseline.cycle}<br>Voltage: %{x:.2f} V<br>dQ/dV: %{y:.2f} mAh V⁻¹<extra></extra>`,
         });
       }
@@ -201,7 +201,7 @@ function build2D(datasets: Dataset[], opts: BuildDqDvOpts): DqDvFigure {
         type: 'scatter',
         mode: 'lines',
         name: dataset.label,
-        line: { color, width: 2 },
+        line: { color, width: 2, ...(dataset.dash ? { dash: dataset.dash } : {}) },
         hovertemplate: `${dataset.label}<br>Voltage: %{x:.2f} V<br>dQ/dV: %{y:.2f} mAh V⁻¹<br>Peak: ${peakVoltage.toFixed(2)} V, ${peakValue.toFixed(2)} mAh V⁻¹<extra></extra>`,
       });
       peaks.push({
@@ -210,7 +210,7 @@ function build2D(datasets: Dataset[], opts: BuildDqDvOpts): DqDvFigure {
         type: 'scatter',
         mode: 'markers',
         name: `${dataset.label} peak`,
-        marker: { size: 10, color, symbol: 'diamond', line: { width: 1, color: '#fff' } },
+        marker: { size: 10, color, symbol: dataset.symbol ?? 'diamond', line: { width: 1, color: '#fff' } },
         hovertemplate: `${dataset.label} peak<br>Voltage: %{x:.2f} V<br>dQ/dV: %{y:.2f} mAh V⁻¹<extra></extra>`,
       });
     });

@@ -6,9 +6,12 @@
  * To add a metric: extend CellSummary (and summariseCell) with the new
  * per-cell value, then append a MetricDef to METRICS — the heatmap,
  * ranking, treemap, metric selector and inspector pick it up automatically.
+ *
+ * NOTE: the treemap view (LibraryTreemap) is in development and not currently
+ * mounted; it still consumes this registry for when it is re-enabled.
  */
-import type { RatePerfCellRaw } from '@/lib/cellTypes';
-import { clamp01, linregSlope } from './stats';
+import type { RatePerfCell } from '@/lib/cellTypes';
+import { linregSlope } from './stats';
 
 export interface CellSummary {
   idNo: number;
@@ -34,8 +37,13 @@ export interface CellSummary {
   ceTrendPctPer100: number | null;
   /** Cycle at which capacity first falls below 80% of peak (standard cycle-life). Needs protocol. */
   cycleLife80: number | null;
-  /** Composite triage health score 0–100 (retention when available + CE stability + cycle life). */
-  healthScore: number | null;
+  /**
+   * dQ/dV dominant-peak voltage shift early→late, mV. Null until the
+   * lazy peak-shift aggregate loads, or when the project has no differential
+   * data / the peak couldn't be reliably tracked. Populated by merge, not by
+   * summariseCell (it needs the differential Parquet, not the rate payload).
+   */
+  peakShiftMv: number | null;
   /** Per-cycle capacity for the inspector sparkline (specific when available, else raw). */
   capacitySeries: { cycle: number; value: number }[];
   capacityBasis: 'mAh/g' | 'mAh';
@@ -70,7 +78,7 @@ function peakOf(series: { cycle: number; value: number }[]): number | null {
   return percentile(vals, 0.95);
 }
 
-export function summariseCell(raw: RatePerfCellRaw): CellSummary {
+export function summariseCell(raw: RatePerfCell): CellSummary {
   const spec = raw.specificCapacityMahG ?? [];
   const dch = raw.dischargeCapacityMah ?? [];
   const chg = raw.chargeCapacityMah ?? [];
@@ -148,20 +156,6 @@ export function summariseCell(raw: RatePerfCellRaw): CellSummary {
     }
   }
 
-  // Composite triage health (0–100): retention (when available) + CE stability
-  // (closeness to 100% within ±5pp) + cycle life (capped at 100 cycles).
-  // Capacity magnitude is deliberately excluded — it is chemistry-dependent and
-  // not itself a health signal. Weights renormalise over present components.
-  const healthScore = (() => {
-    const comps: { w: number; v: number }[] = [];
-    if (retention != null) comps.push({ w: 0.5, v: clamp01(retention / 100) });
-    if (medianCE != null) comps.push({ w: 0.3, v: clamp01(1 - Math.abs(medianCE - 100) / 5) });
-    if (capacitySeries.length > 0) comps.push({ w: 0.2, v: clamp01(capacitySeries.length / 100) });
-    if (!comps.length) return null;
-    const totalW = comps.reduce((s, c) => s + c.w, 0);
-    return (comps.reduce((s, c) => s + c.w * c.v, 0) / totalW) * 100;
-  })();
-
   return {
     idNo: raw.idNo,
     cellId: raw.cellId,
@@ -179,7 +173,7 @@ export function summariseCell(raw: RatePerfCellRaw): CellSummary {
     fadeRatePctPer100,
     ceTrendPctPer100,
     cycleLife80,
-    healthScore,
+    peakShiftMv: null,
     capacitySeries,
     capacityBasis,
     flags: [],
@@ -191,6 +185,9 @@ export interface MetricDef {
   label: string;
   unit: string;
   requiresProtocol: boolean;
+  /** Needs cathode mass to compute (specific capacity). Gated in the UI like
+   *  requiresProtocol — a lock + "needs cathode mass" notice, not bare "no data". */
+  requiresMass?: boolean;
   higherIsBetter: boolean;
   value: (c: CellSummary) => number | null;
   format: (v: number) => string;
@@ -200,13 +197,38 @@ export interface MetricDef {
    * Defaults to the raw value (negated when !higherIsBetter).
    */
   score?: (v: number) => number;
-  /** Legend end labels when score ≠ raw value (raw min/max would mislead). */
-  scoreLegend?: { lo: string; hi: string };
+  /**
+   * On-target metrics: the value where the cell is healthiest (e.g. CE → 100%,
+   * peak shift → 0). When set, the metric is "diverging" — both below and above
+   * the target are worse — so the legend mirrors the ramp with the target
+   * (green) at the centre. Omit for ordinary monotonic metrics.
+   */
+  target?: number;
 }
 
 export function metricScore(metric: MetricDef, v: number): number {
   if (metric.score) return metric.score(v);
   return metric.higherIsBetter ? v : -v;
+}
+
+/**
+ * A metric is "available" for a project when at least one cell has a finite
+ * value for it. Coverage, not trust: protocol-locking is a separate
+ * gate. Lets the UI grey out a metric (e.g. specific capacity with no cathode
+ * mass) instead of rendering an empty view.
+ */
+export function metricAvailability(
+  metrics: MetricDef[],
+  cells: CellSummary[],
+): Record<string, boolean> {
+  const out: Record<string, boolean> = {};
+  for (const m of metrics) {
+    out[m.id] = cells.some((c) => {
+      const v = m.value(c);
+      return v != null && Number.isFinite(v);
+    });
+  }
+  return out;
 }
 
 export const METRICS: MetricDef[] = [
@@ -224,6 +246,7 @@ export const METRICS: MetricDef[] = [
     label: 'Peak specific capacity',
     unit: 'mAh/g',
     requiresProtocol: false,
+    requiresMass: true,
     higherIsBetter: true,
     value: (c) => c.peakCapacitySpec,
     format: (v) => v.toFixed(0),
@@ -238,8 +261,9 @@ export const METRICS: MetricDef[] = [
     format: (v) => v.toFixed(2),
     // CE >100% signals a measurement/parasitic anomaly, not a better cell —
     // goodness is closeness to 100%, so both 95% and 105% colour as poor.
+    // (Confirmed against the literature: CE approaches but rarely exceeds 100%.)
     score: (v) => -Math.abs(v - 100),
-    scoreLegend: { lo: 'far from 100%', hi: '≈ 100%' },
+    target: 100,
   },
   {
     id: 'cycles',
@@ -282,20 +306,24 @@ export const METRICS: MetricDef[] = [
     label: 'CE drift',
     unit: 'pp/100cyc',
     requiresProtocol: true,
-    higherIsBetter: true, // score overrides: stability (≈0) is best
+    // Literature: a rising CE (esp. early) is SEI stabilising — a positive sign;
+    // a falling CE signals accelerating degradation. So higher (more positive)
+    // slope is better — a plain monotonic metric, NOT on-target.
+    higherIsBetter: true,
     value: (c) => c.ceTrendPctPer100,
     format: (v) => (v >= 0 ? `+${v.toFixed(2)}` : v.toFixed(2)),
-    // A flat CE (slope ≈ 0) is healthiest; both decline and climb are drift.
-    score: (v) => -Math.abs(v),
-    scoreLegend: { lo: 'drifting', hi: 'stable (≈0)' },
   },
   {
-    id: 'health',
-    label: 'Health score',
-    unit: '',
+    id: 'dqdv-peak-shift',
+    label: 'dQ/dV peak shift',
+    unit: 'mV',
     requiresProtocol: false,
-    higherIsBetter: true,
-    value: (c) => c.healthScore,
-    format: (v) => v.toFixed(0),
+    higherIsBetter: true, // score overrides: a stable peak (≈0 shift) is best
+    value: (c) => c.peakShiftMv,
+    format: (v) => (v >= 0 ? `+${v.toFixed(0)}` : v.toFixed(0)),
+    // Mechanism signal: a peak that barely moves is healthiest; a large shift in
+    // either direction flags phase-change / impedance growth.
+    score: (v) => -Math.abs(v),
+    target: 0,
   },
 ];

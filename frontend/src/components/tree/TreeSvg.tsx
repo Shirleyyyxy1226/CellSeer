@@ -13,8 +13,8 @@ import {
   nodeRightEdge,
   nodeLeftEdge,
   hex2rgb,
-  stringToColor,
 } from '@/lib/treeUtils';
+import { cellIdentityColor } from '@/lib/cellColorScheme';
 import type { TreeLayoutResult } from '@/hooks/useTreeLayout';
 
 interface TooltipData {
@@ -550,10 +550,9 @@ export function TreeSvg({ analysis, rows, onNodeClick, compact, tree: treeProp, 
         (cell?.cellName && cellColorMap?.get(cell.cellName))
         ?? (node.rawVal ? cellColorMap?.get(node.rawVal) : undefined);
       if (fromMap) return fromMap;
-      const identity = (cell?.cellName ?? cell?.cellId ?? node.rawVal ?? '').trim();
-      const match = identity.match(/(\d+)/);
-      if (match) return stringToColor(`x|y|z|Cell ${match[1]}`);
-      return stringToColor(identity || 'cell');
+      if (cell) return cellIdentityColor(cell);
+      const identity = (node.rawVal ?? '').trim();
+      return cellIdentityColor({ cellName: identity || 'cell' });
     }
 
     // ── Resolve leaf node to cell (for tag/note indicators) ────────────

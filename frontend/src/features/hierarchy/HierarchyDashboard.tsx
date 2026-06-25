@@ -1,55 +1,107 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { HierarchyEditor } from '@/components/tree/HierarchyEditor';
-import { TreeSvg } from '@/components/tree/TreeSvg';
+import { CircuitTreeMindmap } from '@/components/tree/CircuitTreeMindmap';
+import { LoadingIndicator } from '@/components/LoadingIndicator';
+import { SearchInput } from '@/components/SearchInput';
 import { useCellSelection } from '@/contexts/CellSelectionContext';
 import { useProjectHierarchy } from '@/contexts/ProjectHierarchyContext';
-import { useDimensions } from '@/hooks/useDimensions';
-import { useTreeLayout } from '@/hooks/useTreeLayout';
-import { collectPreLeafNodeKeys, type TreeNode } from '@/lib/treeUtils';
+import { useTreeFilter } from '@/contexts/TreeFilterContext';
+import { collectPreLeafNodeKeys, getPathFromRootToNode, treeNodeStableKey, type TreeNode } from '@/lib/treeUtils';
+import { buildCanonicalCellColorMap, buildPathToColorMap } from '@/lib/ratePerfAggregation';
+import type { RatePerfCell } from '@/lib/cellTypes';
 
 /* ── Main panel ─────────────────────────────────────────────────────── */
+
 export function HierarchyDashboard() {
-  const { handleCellSelect, annotationsByCell } = useCellSelection();
+  const { handleCellSelect, clearSelection, annotationsByCell, multiselectionMode, setMultiselectionMode, selectedCellIds, setSelectedCellIds } =
+    useCellSelection();
+  const { treeFilterPath, setTreeFilterPath } = useTreeFilter();
   const { apiData, loading, error, activeJs, setHierarchyOrder, resetHierarchyOrder } =
     useProjectHierarchy();
-  const [containerRef, dims] = useDimensions<HTMLDivElement>();
   const [collapsedPreLeafNodeKeys, setCollapsedPreLeafNodeKeys] = useState<Set<string>>(new Set());
+  const [collapsedBranchKeys, setCollapsedBranchKeys] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState('');
   const tree = (apiData?.tree ?? null) as TreeNode | null;
-  const treeLayout = useTreeLayout({
-    tree,
-    containerWidth: dims.width,
-    containerHeight: dims.height,
-    hierColCount: apiData?.analysis?.hierCols?.length ?? 0,
-    collapsedPreLeafNodeKeys,
-  });
+  const analysis = apiData?.analysis ?? null;
+
+  const handleNodeClick = useCallback(
+    (node: TreeNode) => {
+      if (!tree) return;
+      const path = getPathFromRootToNode(tree, node);
+      if (multiselectionMode && node.isLeaf) return;
+      setTreeFilterPath(path ?? []);
+      if (!node.isLeaf) {
+        clearSelection();
+      }
+    },
+    [tree, multiselectionMode, setTreeFilterPath, clearSelection],
+  );
+
+  // Multi mode: clicking a group node toggles selection of every cell under it.
+  const handleGroupToggle = useCallback(
+    (cellIds: number[]) => {
+      if (!cellIds.length) return;
+      const next = new Set(selectedCellIds);
+      const allSelected = cellIds.every((id) => next.has(id));
+      if (allSelected) cellIds.forEach((id) => next.delete(id));
+      else cellIds.forEach((id) => next.add(id));
+      setSelectedCellIds([...next]);
+    },
+    [selectedCellIds, setSelectedCellIds],
+  );
+  const [loadTimedOut, setLoadTimedOut] = useState(false);
+  useEffect(() => {
+    if (!loading || apiData) {
+      setLoadTimedOut(false);
+      return;
+    }
+    const t = setTimeout(() => setLoadTimedOut(true), 15_000);
+    return () => clearTimeout(t);
+  }, [loading, apiData]);
 
   useEffect(() => {
     if (!tree) {
       setCollapsedPreLeafNodeKeys(new Set());
+      setCollapsedBranchKeys(new Set());
       return;
     }
     // Keep full-page tree readable by collapsing pre-leaf groups by default.
     setCollapsedPreLeafNodeKeys(collectPreLeafNodeKeys(tree));
+    setCollapsedBranchKeys(new Set());
   }, [tree]);
 
   const cells = useMemo(() => {
     if (!apiData?.parsed?.headers?.length || !apiData.parsed.rows?.length) return [];
     const { headers, rows } = apiData.parsed;
-    const analysis = apiData.analysis;
-    const leafCol = analysis?.leafCol ?? headers.length - 1;
+    const an = apiData.analysis;
+    const leafCol = an?.leafCol ?? headers.length - 1;
     const idNoCol = headers.findIndex((h) => /^id\s*no\.?$/i.test(h.trim()));
-    const cathodeCol = analysis?.hierCols?.[0]?.j ?? headers.findIndex((h) => /cathode/i.test(h));
-    const separatorCol = analysis?.hierCols?.[1]?.j ?? headers.findIndex((h) => /separator/i.test(h));
-    const spacerCol = analysis?.hierCols?.[2]?.j ?? headers.findIndex((h) => /spacer/i.test(h));
+    // Resolve attribute columns by header name first: hierCols order follows the
+    // user's hierarchy arrangement, and cell colours must not change with it.
+    const byHeader = (re: RegExp, hierIdx: number) => {
+      const j = headers.findIndex((h) => re.test(h));
+      return j >= 0 ? j : an?.hierCols?.[hierIdx]?.j ?? -1;
+    };
+    const cathodeCol = byHeader(/cathode/i, 0);
+    const separatorCol = byHeader(/separator/i, 1);
+    const spacerCol = byHeader(/spacer/i, 2);
     return rows.map((row, i) => {
       const cellVal = leafCol >= 0 ? (row[leafCol] ?? '').trim() : '';
       let idNo = i + 1;
       if (idNoCol >= 0 && row[idNoCol] != null) {
         const n = parseInt(String(row[idNoCol]).trim(), 10);
-        if (!isNaN(n)) idNo = n;
+        if (!isNaN(n) && n > 0) idNo = n;
       } else if (cellVal && /^\d+$/.test(cellVal)) {
         idNo = parseInt(cellVal, 10);
       }
+      // Include all hierCol values keyed by header so buildPathToColorMap
+      // produces path keys that match the tree's rawVal-based lookup.
+      const hierColVals: Record<string, string> = {};
+      (an?.hierCols ?? []).forEach(col => {
+        if (col.j >= 0 && col.j < row.length) {
+          hierColVals[col.header] = String(row[col.j] ?? '').trim();
+        }
+      });
       return {
         idNo,
         cellId: '',
@@ -57,23 +109,60 @@ export function HierarchyDashboard() {
         cathode: cathodeCol >= 0 ? (row[cathodeCol] ?? '') : '',
         separatorType: separatorCol >= 0 ? (row[separatorCol] ?? '') : '',
         spacerMm: spacerCol >= 0 ? (parseFloat(row[spacerCol]) || null) : null,
+        ...hierColVals,
       };
     });
   }, [apiData]);
 
   if (loading && !apiData) {
+    if (loadTimedOut || error) {
+      return (
+        <div className="flex flex-col h-full items-center justify-center gap-4 bg-background">
+          <p className="text-[13px] text-destructive">
+            {error ?? 'Hierarchy is taking too long to load.'}
+          </p>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="px-4 py-1.5 rounded-md border border-border text-[12px] text-foreground hover:bg-muted transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      );
+    }
     return (
       <div className="flex flex-col h-full items-center justify-center gap-4 bg-background">
-        <div className="text-[14px] text-muted-foreground">
-          Loading hierarchy…
-        </div>
+        <LoadingIndicator variant="frame" size="md" label="Loading hierarchy…" />
       </div>
     );
   }
 
-  const pathToColorMap = apiData?.pathToColorMap
-    ? new Map(Object.entries(apiData.pathToColorMap))
+  const pathToColorMap = cells.length
+    ? buildPathToColorMap(cells as unknown as RatePerfCell[], analysis?.hierCols ?? [])
     : undefined;
+  const cellColorMap = cells.length
+    ? buildCanonicalCellColorMap(cells as unknown as RatePerfCell[])
+    : undefined;
+
+  const collapseAll = () => {
+    if (!tree) return;
+    const keys = new Set<string>();
+    const walk = (n: TreeNode, path: string[]) => {
+      const seg = `${n.colHeader ?? 'root'}=${n.rawVal ?? n.label ?? ''}`;
+      const next = [...path, seg];
+      if (!n.isLeaf && n.children.length > 0) keys.add(treeNodeStableKey(next));
+      n.children.forEach((c) => walk(c, next));
+    };
+    walk(tree, []);
+    setCollapsedBranchKeys(keys);
+    setCollapsedPreLeafNodeKeys(collectPreLeafNodeKeys(tree));
+  };
+
+  const expandAll = () => {
+    setCollapsedBranchKeys(new Set());
+    setCollapsedPreLeafNodeKeys(new Set());
+  };
 
   return (
     <div className="flex flex-col h-full bg-background">
@@ -96,21 +185,85 @@ export function HierarchyDashboard() {
         </div>
       )}
 
-      <div
-        ref={containerRef}
-        className="flex-1 overflow-auto relative bg-muted/30"
-      >
-        {apiData && treeLayout && (
-          <TreeSvg
-            analysis={apiData.analysis}
+      {/* Onboarding callout: show until dismissed or first selection */}
+      {analysis && (
+        <div className="px-4 pt-3 flex items-center gap-2">
+          <SearchInput
+            collapsible
+            value={searchQuery}
+            onChange={setSearchQuery}
+            placeholder="Search nodes or cell names…"
+            widthClass="w-64"
+          />
+          <button
+            type="button"
+            onClick={expandAll}
+            className={`h-8 px-2.5 text-[10.5px] rounded-md border border-input shadow-sm transition-colors ${
+              collapsedBranchKeys.size === 0 && collapsedPreLeafNodeKeys.size === 0
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-muted text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Expand all
+          </button>
+          <button
+            type="button"
+            onClick={collapseAll}
+            className={`h-8 px-2.5 text-[10.5px] rounded-md border border-input shadow-sm transition-colors ${
+              collapsedBranchKeys.size > 0 || collapsedPreLeafNodeKeys.size > 0
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-muted text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Collapse all
+          </button>
+          {/* Single / Multi toggle — mirrors the sidebar control */}
+          <div className="flex items-center rounded-md border border-input shadow-sm overflow-hidden ml-1" role="group" aria-label="Selection mode">
+            <button
+              type="button"
+              onClick={() => setMultiselectionMode(false)}
+              className={`px-2.5 h-8 text-[10.5px] inline-flex items-center transition-colors ${
+                !multiselectionMode
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted text-muted-foreground hover:text-foreground'
+              }`}
+              aria-pressed={!multiselectionMode}
+            >
+              Single
+            </button>
+            <button
+              type="button"
+              onClick={() => setMultiselectionMode(true)}
+              className={`px-2.5 h-8 text-[10.5px] inline-flex items-center border-l border-border transition-colors ${
+                multiselectionMode
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted text-muted-foreground hover:text-foreground'
+              }`}
+              aria-pressed={multiselectionMode}
+            >
+              Multi
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="flex-1 overflow-auto relative bg-muted/30 px-4 py-3">
+        {apiData && tree && analysis && (
+          <CircuitTreeMindmap
+            analysis={analysis}
             rows={apiData.parsed.rows}
-            tree={apiData.tree}
-            layout={treeLayout}
-            colourMaps={apiData.colourMaps}
-            pathToColorMap={pathToColorMap}
+            tree={tree}
             cells={cells}
             annotationsByCell={annotationsByCell}
             onCellSelect={handleCellSelect}
+            onNodeClick={handleNodeClick}
+            onGroupToggle={handleGroupToggle}
+            selectedPath={treeFilterPath}
+            multiselectionMode={multiselectionMode}
+            selectedCellIds={selectedCellIds}
+            pathToColorMap={pathToColorMap}
+            cellColorMap={cellColorMap}
+            usePerceptualColors
             collapsedPreLeafNodeKeys={collapsedPreLeafNodeKeys}
             onTogglePreLeafNode={(nodeKey) => {
               setCollapsedPreLeafNodeKeys((prev) => {
@@ -120,6 +273,16 @@ export function HierarchyDashboard() {
                 return next;
               });
             }}
+            collapsedBranchNodeKeys={collapsedBranchKeys}
+            onToggleBranchNode={(nodeKey) => {
+              setCollapsedBranchKeys((prev) => {
+                const next = new Set(prev);
+                if (next.has(nodeKey)) next.delete(nodeKey);
+                else next.add(nodeKey);
+                return next;
+              });
+            }}
+            searchQuery={searchQuery}
           />
         )}
       </div>

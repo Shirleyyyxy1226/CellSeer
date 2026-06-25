@@ -918,9 +918,14 @@ def _cell_in_scope(
     separator: str | None,
     spacer: str | None,
 ) -> bool:
-    if cathode and (cell.get("cathode") or "") != cathode:
+    # Mirror the frontend's display fallbacks: the overview/summary pipeline
+    # surfaces an empty cathode as "Unknown" and an empty separator as "—", and
+    # the filter dropdowns are built from those values. The raw rate payload
+    # stores "" for both, so match against the same fallbacks or selecting the
+    # "Unknown"/"—" cohort would scope to an empty set.
+    if cathode and (cell.get("cathode") or "Unknown") != cathode:
         return False
-    if separator and (cell.get("separatorType") or "") != separator:
+    if separator and (cell.get("separatorType") or "—") != separator:
         return False
     if spacer and not _spacer_matches(cell.get("spacerMm"), spacer):
         return False
@@ -938,7 +943,7 @@ def rate_performance(
     """Rate-performance summary JSON from DB cycling datasets (project-scoped).
 
     The optional ``cathode`` / ``separator`` / ``spacer`` filters scope the
-    response to the condition cohort a cell-level view actually draws (05 · FR-2),
+    response to the condition cohort a cell-level view actually draws,
     so the Master Plot can pull just that cohort's per-cycle arrays instead of
     the whole project's tens of MB. The expensive Parquet build is cached
     project-wide by ``_load_rate_cells``; this only narrows the (already-built)

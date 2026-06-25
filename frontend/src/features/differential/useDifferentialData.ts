@@ -1,7 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
-import { fetchCellRecordIndex, fetchDifferentialCells, fetchDifferential } from '@/lib/api';
+import { fetchDifferentialCells } from '@/lib/api';
+import { useCellRecordIndexQuery, useDifferentialQueries } from '@/hooks/useCellData';
 import { useDataRefresh } from '@/contexts/DataRefreshContext';
-import { interpolateOntoGrid, cellColor } from '@/lib/differentialUtils';
+import { interpolateOntoGrid } from '@/lib/differentialUtils';
+import { cellIdentityColor } from '@/lib/cellColorScheme';
 
 export interface DifferentialCellInfo {
   id: string;
@@ -44,13 +46,17 @@ interface VQCellIndex {
 }
 
 interface DifferentialApiResponse {
-  idNo: number;
+  cellId: string;
   direction?: 'discharge' | 'charge';
   cycles: Record<string, { dqdv: { v: number[]; dqdv: number[] }; dvdq: { q: number[]; dvdq: number[] } }>;
 }
 
-const MAX_CELLS_LOAD = 24;
-const MAX_CYCLES_PER_CELL = 60;
+// Explicit selection may pull up to this many cells for side-by-side comparison.
+const MAX_CELLS_LOAD = 6;
+// Default landing view loads a small representative set so the comparative plots
+// are immediately useful without the slow/overwhelming load of all cells; users
+// refine via the tree/selection (capped at MAX_CELLS_LOAD).
+const DEFAULT_CELLS_LOAD = 4;
 
 function matchesSpacer(spacerFilter: string, spacerMm: number | null): boolean {
   if (spacerFilter === 'All') return true;
@@ -85,6 +91,7 @@ export function useDifferentialData(
   spacerFilter: string,
   separatorFilter: string,
   direction: 'discharge' | 'charge' = 'discharge',
+  selectedIdNos: number[] = [],
 ): {
   dqdvData: DqDvData | null;
   dvdqData: DvDqData | null;
@@ -92,104 +99,104 @@ export function useDifferentialData(
   loading: boolean;
   error: string | null;
   noDifferentialHint: string | null;
+  noFilterMatch: boolean;
 } {
   const { dataVersion } = useDataRefresh();
-  const [cellIndex, setCellIndex] = useState<VQCellIndex[] | null>(null);
-  const [readyIdNos, setReadyIdNos] = useState<Set<number>>(new Set());
-  const [byCell, setByCell] = useState<Map<number, DifferentialApiResponse>>(new Map());
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [readyCellIds, setReadyCellIds] = useState<Set<string>>(new Set());
+
+  const indexQuery = useCellRecordIndexQuery();
+  const cellIndex = useMemo<VQCellIndex[] | null>(() => {
+    const cells = indexQuery.data?.cells;
+    if (!cells?.length) return null;
+    return (cells as VQCellIndex[]).filter((c) => !!c.cellId);
+  }, [indexQuery.data]);
+  const loading = indexQuery.isLoading;
+  const loadError = indexQuery.isError ? 'Failed to load cell index.' : null;
+
+  // Stable key for selection so useMemo / useEffect don't refire on new-but-equal arrays.
+  const selectionKey = useMemo(
+    () => [...selectedIdNos].sort((a, b) => a - b).join(','),
+    [selectedIdNos],
+  );
 
   const filteredCells = useMemo(() => {
     if (!cellIndex?.length) return [];
-    return cellIndex
-      .filter((c) => {
-        if (cathodeFilter !== 'All' && c.cathode !== cathodeFilter) return false;
-        if (separatorFilter !== 'All' && c.separatorType !== separatorFilter) return false;
-        if (!matchesSpacer(spacerFilter, c.spacerMm)) return false;
-        return true;
-      })
-      .sort((a, b) => {
-        const aReady = readyIdNos.has(a.idNo) ? 1 : 0;
-        const bReady = readyIdNos.has(b.idNo) ? 1 : 0;
-        if (aReady !== bReady) return bReady - aReady;
-        return a.idNo - b.idNo;
-      })
-      .slice(0, MAX_CELLS_LOAD);
-  }, [cellIndex, cathodeFilter, separatorFilter, spacerFilter, readyIdNos]);
+    const matchesFilters = (c: VQCellIndex) => {
+      if (cathodeFilter !== 'All' && c.cathode !== cathodeFilter) return false;
+      if (separatorFilter !== 'All' && c.separatorType !== separatorFilter) return false;
+      if (!matchesSpacer(spacerFilter, c.spacerMm)) return false;
+      return true;
+    };
+    const sortFn = (a: VQCellIndex, b: VQCellIndex) => {
+      const aReady = readyCellIds.has(a.cellId) ? 1 : 0;
+      const bReady = readyCellIds.has(b.cellId) ? 1 : 0;
+      if (aReady !== bReady) return bReady - aReady;
+      // Display sort: id_no is still a useful display number.
+      const ai = Number.isFinite(a.idNo) ? a.idNo : Number.MAX_SAFE_INTEGER;
+      const bi = Number.isFinite(b.idNo) ? b.idNo : Number.MAX_SAFE_INTEGER;
+      if (ai !== bi) return ai - bi;
+      return a.cellId.localeCompare(b.cellId);
+    };
 
-  useEffect(() => {
-    setLoadError(null);
-    setLoading(true);
-    fetchCellRecordIndex()
-      .then((d) => {
-        if (d.cells.length) {
-          setCellIndex(d.cells as VQCellIndex[]);
-          setByCell(new Map());
-          setLoadError(null);
-        } else {
-          setCellIndex(null);
-          setLoadError(null);
-        }
-        setLoading(false);
-      })
-      .catch(() => {
-        setCellIndex(null);
-        setLoadError('Failed to load cell index.');
-        setLoading(false);
-      });
-  }, [dataVersion]);
+    // When the user has selected cells anywhere else in the app, the dV/dQ view
+    // honours that selection and loads those cells (up to MAX_CELLS_LOAD) regardless
+    // of the default landing window. This lets users pull up arbitrary cells
+    // that fall outside the default top-N window, and lets power
+    // users compare up to MAX_CELLS_LOAD cells deliberately.
+    if (selectedIdNos.length > 0) {
+      const selSet = new Set(selectedIdNos);
+      return cellIndex
+        .filter((c) => selSet.has(c.idNo) && matchesFilters(c))
+        .sort(sortFn)
+        .slice(0, MAX_CELLS_LOAD);
+    }
+
+    // Default landing view: render a small representative set (DEFAULT_CELLS_LOAD)
+    // so the comparative dV/dQ plots are useful on first paint while staying fast
+    // (dV/dQ records are the heaviest payloads). Users refine the set deliberately
+    // via the explicit-selection branch above.
+    return cellIndex.filter(matchesFilters).sort(sortFn).slice(0, DEFAULT_CELLS_LOAD);
+    // selectionKey participates so identity-only array changes don't cause refetches.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cellIndex, cathodeFilter, separatorFilter, spacerFilter, readyCellIds, selectionKey]);
 
   useEffect(() => {
     let cancelled = false;
     fetchDifferentialCells(direction)
       .then((d) => {
         if (!cancelled) {
-          setReadyIdNos(new Set((d.idNos ?? []).map((n) => Number(n)).filter((n) => Number.isFinite(n))));
+          setReadyCellIds(new Set((d.cellIds ?? []).filter((s): s is string => typeof s === 'string' && s.length > 0)));
         }
       })
       .catch(() => {
-        if (!cancelled) setReadyIdNos(new Set());
+        if (!cancelled) setReadyCellIds(new Set());
       });
     return () => {
       cancelled = true;
     };
   }, [dataVersion, direction]);
 
-  useEffect(() => {
-    if (!filteredCells.length) {
-      setByCell(new Map());
-      return;
-    }
-    const aborted = { current: false };
-    setByCell(new Map());
-    const fetchAll = async () => {
-      const results = await Promise.all(
-        filteredCells.map(async (cell) => {
-          if (aborted.current) return null;
-          try {
-            const data = await fetchDifferential(cell.idNo, direction) as DifferentialApiResponse;
-            if (data?.cycles && Object.keys(data.cycles).length > 0) {
-              return { idNo: cell.idNo, data } as const;
-            }
-          } catch {
-            // skip failed cells
-          }
-          return null;
-        })
-      );
-      if (aborted.current) return;
-      const map = new Map<number, DifferentialApiResponse>();
-      for (const entry of results) {
-        if (entry) map.set(entry.idNo, entry.data);
+  // One cached query per (cell, direction). Filter changes that re-order or
+  // shrink the cell list reuse loaded payloads instead of refetching everything
+  // (the old effect refired on every `filteredCells` identity change, fetching
+  // each cell at least twice on mount).
+  const diffQueries = useDifferentialQueries(
+    filteredCells.map((c) => c.cellId),
+    direction,
+  );
+
+  const byCell = useMemo(() => {
+    const map = new Map<string, DifferentialApiResponse>();
+    filteredCells.forEach((cell, i) => {
+      const data = diffQueries[i]?.data as DifferentialApiResponse | undefined;
+      if (data?.cycles && Object.keys(data.cycles).length > 0) {
+        map.set(cell.cellId, data);
       }
-      setByCell(map);
-    };
-    fetchAll();
-    return () => {
-      aborted.current = true;
-    };
-  }, [filteredCells, direction]);
+    });
+    return map;
+  }, [filteredCells, diffQueries]);
+
+  const cellFetchLoading = diffQueries.some((q) => q.isLoading);
 
   const { dqdvData, dvdqData } = useMemo(() => {
     if (!cellIndex || byCell.size === 0) return { dqdvData: null, dvdqData: null };
@@ -206,19 +213,20 @@ export function useDifferentialData(
         if (isNaN(cyc)) continue;
         allCycles.add(cyc);
         if (d.dqdv.v) for (let i = 0; i < d.dqdv.v.length; i++) allV.push(d.dqdv.v[i]);
-        if (d.dvdq.q) for (let i = 0; i < d.dvdq.q.length; i++) allQ.push(d.dvdq.q[i]);
+        // Coin-cell capacities are mAh-scale; the API stores Ah. Convert once
+        // here so every axis, peak table and export reads in publication units.
+        if (d.dvdq.q) for (let i = 0; i < d.dvdq.q.length; i++) allQ.push(d.dvdq.q[i] * 1000);
       }
     }
 
     const vGrid = buildSharedGrid(allV, 2.5, 4.3, 0.002);
-    const qGrid = buildSharedGrid(allQ, 0, 0.01, 0.0001);
+    const qGrid = buildSharedGrid(allQ, 0, 10, 0.1);
 
     const dqdvCellData: DqDvData['cellData'] = [];
     const dvdqCellData: DvDqData['cellData'] = [];
 
-    let idx = 0;
     for (const cell of filteredCells) {
-      const resp = byCell.get(cell.idNo);
+      const resp = byCell.get(cell.cellId);
       if (!resp?.cycles) continue;
 
       const cellInfo: DifferentialCellInfo = {
@@ -227,15 +235,13 @@ export function useDifferentialData(
         cathode: cell.cathode,
         spacer: String(cell.spacerMm ?? ''),
         separator: cell.separatorType,
-        color: cellColor(cell.cellId, idx),
+        color: cellIdentityColor(cell),
       };
-      idx += 1;
 
       const cycleKeys = Object.keys(resp.cycles)
         .map((k) => parseInt(k, 10))
         .filter((x) => !isNaN(x))
-        .sort((a, b) => a - b)
-        .slice(0, MAX_CYCLES_PER_CELL);
+        .sort((a, b) => a - b);
 
       const dqdvTraces: DqDvCycleTrace[] = [];
       const dvdqTraces: DvDqCycleTrace[] = [];
@@ -248,11 +254,18 @@ export function useDifferentialData(
 
         dqdvTraces.push({
           cycle: cyc,
-          dqdv: interpolateOntoGrid(d.dqdv.v, d.dqdv.dqdv, vGrid, 0),
+          // Ah/V → mAh/V to match the mAh capacity axis.
+          dqdv: interpolateOntoGrid(d.dqdv.v, d.dqdv.dqdv.map((y) => y * 1000), vGrid, 0),
         });
         dvdqTraces.push({
           cycle: cyc,
-          dvdq: interpolateOntoGrid(d.dvdq.q, d.dvdq.dvdq, qGrid, 0.1),
+          // Q: Ah → mAh; dV/dQ: V/Ah → V/mAh (out-of-range placeholder scaled too).
+          dvdq: interpolateOntoGrid(
+            d.dvdq.q.map((x) => x * 1000),
+            d.dvdq.dvdq.map((y) => y / 1000),
+            qGrid,
+            0.0001,
+          ),
         });
       }
 
@@ -269,17 +282,23 @@ export function useDifferentialData(
     };
   }, [cellIndex, filteredCells, byCell]);
 
+  // Distinguish why data is absent so the UI can show a targeted message.
+  const noFilterMatch =
+    !loading && !cellFetchLoading && !loadError && filteredCells.length === 0 && (cellIndex?.length ?? 0) > 0;
   const noDifferentialHint =
-    !loading && !loadError && cellIndex?.length && !dqdvData
-      ? `No dQ/dV or dV/dQ found for the currently visible cells (${direction}). Upload cycling data for these cells (or regenerate dQ/dV + dV/dQ datasets) and ensure backend API is running.`
+    !loading && !cellFetchLoading && !loadError && cellIndex?.length && !dqdvData && !noFilterMatch
+      ? 'no_data'
+      : noFilterMatch
+      ? 'no_filter_match'
       : null;
 
   return {
     dqdvData: dqdvData ?? null,
     dvdqData: dvdqData ?? null,
     cells: filteredCells,
-    loading,
+    loading: loading || cellFetchLoading,
     error: loadError,
     noDifferentialHint,
+    noFilterMatch,
   };
 }

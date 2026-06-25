@@ -9,9 +9,11 @@ import { TreeFilterProvider } from "@/contexts/TreeFilterContext";
 import { ProtocolFilterProvider } from "@/contexts/ProtocolFilterContext";
 import { DataRefreshProvider } from "@/contexts/DataRefreshContext";
 import { ProjectHierarchyProvider } from "@/contexts/ProjectHierarchyContext";
+import { ProtocolDialogProvider } from "@/features/protocol";
 import Index from "./pages/Index";
 import HomePage from "./pages/HomePage";
 import ProjectDetailPage from "./pages/ProjectDetailPage";
+import DigibatPage from "./digibat/pages/DigibatPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -27,16 +29,19 @@ const App = () => (
           <TreeFilterProvider>
             <ProtocolFilterProvider>
               <ProjectHierarchyProvider>
-                <BrowserRouter>
-                  <Routes>
-                    <Route path="/" element={<HomePage />} />
-                    <Route path="/projects/:projectId" element={<ProjectDetailPage />} />
-                    <Route path="/projects/:projectId/dashboard" element={<Index />} />
-                    <Route path="/dashboard" element={<Index />} />
-                    {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-                    <Route path="*" element={<NotFound />} />
-                  </Routes>
-                </BrowserRouter>
+                <ProtocolDialogProvider>
+                  <BrowserRouter>
+                    <Routes>
+                      <Route path="/" element={<HomePage />} />
+                      <Route path="/digibat" element={<DigibatPage />} />
+                      <Route path="/projects/:projectId" element={<ProjectDetailPage />} />
+                      <Route path="/projects/:projectId/dashboard" element={<Index />} />
+                      <Route path="/dashboard" element={<Index />} />
+                      {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+                      <Route path="*" element={<NotFound />} />
+                    </Routes>
+                  </BrowserRouter>
+                </ProtocolDialogProvider>
               </ProjectHierarchyProvider>
             </ProtocolFilterProvider>
           </TreeFilterProvider>

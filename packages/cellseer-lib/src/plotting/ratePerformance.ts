@@ -125,8 +125,14 @@ export function buildRatePerformanceFigure(
       type: 'scatter',
       mode: useLines ? ('lines+markers' as const) : ('markers' as const),
       name: t.name,
-      line: useLines ? { width: 2, color: t.color } : undefined,
-      marker: { size: t.isAggregated ? 5 : 6, color: t.color },
+      line: useLines
+        ? { width: 2, color: t.color, ...(t.dash ? { dash: t.dash } : {}) }
+        : undefined,
+      marker: {
+        size: t.isAggregated ? 5 : 6,
+        color: t.color,
+        ...(t.symbol ? { symbol: t.symbol } : {}),
+      },
       connectgaps: false,
       hovertemplate: t.hasCrate
         ? `${t.name}<br>Cycle: %{x}<br>${directionLabel} capacity: %{y:.2f} ${capacityYUnit}${hasRange ? ' (range)' : ''}<br>C-rate: %{customdata}C<extra></extra>`

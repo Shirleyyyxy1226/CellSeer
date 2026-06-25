@@ -1,7 +1,5 @@
-import { turboColor } from '../style';
 import type { BuildVoltageTimeOpts, RecordDataset, VoltageTimeFigure } from '../types';
 
-const DEFAULT_PALETTE = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f'];
 const DEFAULT_MAX_CYCLES = 5;
 
 export function buildVoltageTimeFigure(
@@ -9,10 +7,9 @@ export function buildVoltageTimeFigure(
   opts: BuildVoltageTimeOpts = {},
 ): VoltageTimeFigure {
   const maxCycles = opts.maxCycles ?? DEFAULT_MAX_CYCLES;
-  const applyTurbo = opts.applyTurboColor ?? true;
   const traces: Plotly.Data[] = [];
 
-  datasets.forEach((dataset, datasetIdx) => {
+  datasets.forEach((dataset) => {
     const curveKeys = Object.keys(dataset.curves).slice(0, 200);
     const cycles = curveKeys
       .map((k) => parseInt(k, 10))
@@ -20,8 +17,9 @@ export function buildVoltageTimeFigure(
       .sort((a, b) => a - b)
       .slice(0, maxCycles);
     const namePrefix = datasets.length > 1 ? `${dataset.label} — ` : '';
-    const fallbackColor = dataset.color ?? DEFAULT_PALETTE[datasetIdx % DEFAULT_PALETTE.length];
+    const fallbackColor = dataset.color ?? '#6b7280';
 
+    let firstCycleRendered = false;
     for (const cyc of cycles) {
       const curve = dataset.curves[String(cyc)];
       if (!curve) continue;
@@ -40,28 +38,21 @@ export function buildVoltageTimeFigure(
         volts.push(vv as number);
       }
       if (times.length >= 2) {
-        const traceColor = datasets.length > 1 ? fallbackColor : fallbackColor;
+        const isFirst = !firstCycleRendered;
+        firstCycleRendered = true;
         traces.push({
           x: times,
           y: volts,
           type: 'scatter',
           mode: 'lines',
-          name: `${namePrefix}Cycle ${cyc}`,
-          line: { width: 1.5, color: traceColor },
+          name: isFirst ? dataset.label : `${namePrefix}Cycle ${cyc}`,
+          showlegend: isFirst,
+          line: { width: 1.5, color: fallbackColor },
           hovertemplate: `${dataset.label} Cycle ${cyc}<br>Time: %{x:.1f} s<br>Voltage: %{y:.3f} V<extra></extra>`,
         });
       }
     }
   });
-
-  if (applyTurbo && datasets.length <= 1 && traces.length > 0) {
-    const n = traces.length;
-    traces.forEach((tr, idx) => {
-      const c = turboColor(n > 1 ? idx / (n - 1) : 0);
-      const s = tr as { line?: { color: string } };
-      if (s.line) s.line.color = c;
-    });
-  }
 
   return {
     data: traces,

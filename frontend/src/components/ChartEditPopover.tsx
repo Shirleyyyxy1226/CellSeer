@@ -3,6 +3,7 @@
  * Use one instance per chart when a page has multiple charts.
  */
 
+import { useId } from 'react';
 import { Pencil } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Label } from '@/components/ui/label';
@@ -16,8 +17,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
-export const FONTS = ['Inter', 'Arial', 'Helvetica', 'Times New Roman', 'Georgia', 'Courier New'];
-export const FONT_SIZES = [9, 10, 11, 12, 14, 16, 18, 20];
+const FONTS = ['Inter', 'Arial', 'Helvetica', 'Times New Roman', 'Georgia', 'Courier New'];
+const FONT_SIZES = [9, 10, 11, 12, 14, 16, 18, 20];
 
 export interface ChartAppearanceConfig {
   chartTitle: string;
@@ -30,6 +31,9 @@ export interface ChartAppearanceConfig {
   showLegend: boolean;
   legendPosition: 'in' | 'right-bottom';
   showConnectedLine?: boolean;
+  /** Recolour the shown cells from a high-contrast CVD-safe palette so
+   *  visually-similar cells become easy to tell apart. Identity hues unchanged. */
+  maximizeContrast?: boolean;
 }
 
 export type ChartAppearanceKey = keyof ChartAppearanceConfig;
@@ -49,19 +53,30 @@ export function ChartEditPopover({
   showConnectedLineOption = false,
   chartLabel,
 }: ChartEditPopoverProps) {
+  const is3DSurface = chartLabel?.toLowerCase().includes('3d');
+
+  // Unique per-instance ids so multiple popovers on one page never collide
+  // (a shared hardcoded id let a label click toggle the wrong plot's checkbox).
+  const uid = useId();
+  const legendId = `${uid}-show-legend`;
+  const connectedId = `${uid}-show-connected`;
+  const contrastId = `${uid}-maximize-contrast`;
+
   return (
     <Popover>
       <PopoverTrigger asChild>
+        {/* Icon-only so it barely covers the plot; sits left of the Export icon
+            (right-10) to avoid overlap. Tooltip carries the full label. */}
         <button
           type="button"
-          title={chartLabel ? `Edit ${chartLabel}` : 'Edit chart'}
-          aria-label={chartLabel ? `Edit ${chartLabel}` : 'Edit chart'}
-          className="absolute top-2 right-2 z-10 p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/80 bg-background/80 backdrop-blur-sm border border-border/50 transition-colors"
+          title={chartLabel ? `Edit ${chartLabel} labels & style` : 'Edit chart labels & style'}
+          aria-label={chartLabel ? `Edit ${chartLabel} labels & style` : 'Edit chart labels & style'}
+          className="absolute top-2 right-10 z-20 flex items-center justify-center p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/80 bg-background/90 backdrop-blur-sm border border-border/60 shadow-sm transition-colors"
         >
           <Pencil className="h-3.5 w-3.5" />
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-80 max-h-[85vh] overflow-y-auto" align="end" side="left">
+      <PopoverContent className="w-80 max-h-[85vh] overflow-y-auto" align="end" side="bottom">
         <h3 className="font-semibold text-sm mb-3">
           {chartLabel ? `${chartLabel} — appearance` : 'Chart appearance'}
         </h3>
@@ -85,14 +100,22 @@ export function ChartEditPopover({
             />
           </div>
           <div>
-            <Label className="text-xs mb-1 block">Y-axis label</Label>
+            <Label className="text-xs mb-1 block">
+              {is3DSurface ? 'Z-axis label (dV/dQ)' : 'Y-axis label'}
+            </Label>
             <Input
               value={config.yAxisLabel}
               onChange={(e) => onConfigChange('yAxisLabel', e.target.value)}
-              placeholder="e.g. Capacity (mAh g⁻¹)"
+              placeholder={is3DSurface ? 'e.g. dV/dQ (V mAh⁻¹)' : 'e.g. Capacity (mAh g⁻¹)'}
               className="h-9"
             />
           </div>
+          {is3DSurface && (
+            <div>
+              <Label className="text-xs mb-1 block text-muted-foreground">Cycle axis label</Label>
+              <p className="text-xs text-muted-foreground px-1">Fixed — always 'Cycle' for the 3D plot.</p>
+            </div>
+          )}
           <div>
             <Label className="text-xs mb-1 block">Font</Label>
             <Select value={config.fontFamily} onValueChange={(v) => onConfigChange('fontFamily', v)}>
@@ -146,11 +169,11 @@ export function ChartEditPopover({
           </div>
           <div className="flex items-center gap-2">
             <Checkbox
-              id="chart-show-legend"
+              id={legendId}
               checked={config.showLegend}
               onCheckedChange={(c) => onConfigChange('showLegend', c === true)}
             />
-            <Label htmlFor="chart-show-legend" className="text-xs cursor-pointer">
+            <Label htmlFor={legendId} className="text-xs cursor-pointer">
               Show legend
             </Label>
           </div>
@@ -190,13 +213,32 @@ export function ChartEditPopover({
           {showConnectedLineOption && config.showConnectedLine !== undefined && (
             <div className="flex items-center gap-2">
               <Checkbox
-                id="chart-show-connected"
+                id={connectedId}
                 checked={config.showConnectedLine}
                 onCheckedChange={(c) => onConfigChange('showConnectedLine', c === true)}
               />
-              <Label htmlFor="chart-show-connected" className="text-xs cursor-pointer">
+              <Label htmlFor={connectedId} className="text-xs cursor-pointer">
                 Connect points with lines
               </Label>
+            </div>
+          )}
+          {config.maximizeContrast !== undefined && (
+            <div className="flex items-start gap-2 border-t pt-3">
+              <Checkbox
+                id={contrastId}
+                checked={config.maximizeContrast}
+                onCheckedChange={(c) => onConfigChange('maximizeContrast', c === true)}
+              />
+              <div className="grid gap-0.5">
+                <Label htmlFor={contrastId} className="text-xs cursor-pointer">
+                  Maximise contrast
+                </Label>
+                <p className="text-[11px] leading-snug text-muted-foreground">
+                  Recolour the shown cells from a high-contrast, colour-blind-safe palette
+                  so similar cells stand apart. Line styles &amp; markers stay on; the tree
+                  and identity colours elsewhere are unchanged.
+                </p>
+              </div>
             </div>
           )}
         </div>

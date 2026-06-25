@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════════════
-   treeUtils.ts — pure logic ported from the standalone HTML tree viewer
+   treeUtils.ts — pure tree-logic utilities.
    No DOM access; everything is pure TypeScript functions.
 ═══════════════════════════════════════════════════════════════════════ */
 
@@ -31,7 +31,7 @@ const GOLDEN_ANGLE_DEG = 137.508;
  * Cathode, separator, spacer levels: hash-based (unchanged).
  * Cell level only (4-segment path): uses cell number × golden angle for max separation.
  */
-export function stringToColor(str: string): string {
+function stringToColor(str: string): string {
   const parts = str.split('|');
   // Cell level only: cathode|separator|spacer|cell with numeric id
   if (parts.length === 4) {
@@ -73,13 +73,13 @@ export const NONSTD_COLOUR = '#b7950b';
 export const TBC_COLOUR    = '#9a9080';
 
 // ── Layout constants ──────────────────────────────────────────────────
-export const ROW_H  = 30;
-export const COL_SP = 110;
-export const PAD_T  = 90;
-export const PAD_L  = -100;
+const ROW_H  = 30;
+const COL_SP = 110;
+const PAD_T  = 90;
+const PAD_L  = -100;
 
 // ── Types ─────────────────────────────────────────────────────────────
-export interface ParsedCSV {
+export interface ParsedTable {
   headers: string[];
   rows: string[][];
 }
@@ -237,7 +237,7 @@ export function collectPreLeafNodeKeys(root: TreeNode): Set<string> {
 }
 
 /** Optional colSp overrides COL_SP for adjustable branch length (e.g. to fill container). */
-export function doLayout(node: TreeNode, colSp?: number): void {
+function doLayout(node: TreeNode, colSp?: number): void {
   const sp = colSp ?? COL_SP;
   let li = 0;
   function layout(n: TreeNode): void {

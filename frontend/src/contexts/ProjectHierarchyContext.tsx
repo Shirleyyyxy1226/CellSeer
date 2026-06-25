@@ -8,7 +8,7 @@ import {
   useState,
 } from 'react';
 import {
-  analyseCSV,
+  analyseHierarchy,
   clearHierarchyOrder,
   fetchDefaultHierarchyAnalyse,
   fetchHierarchyOrder,
@@ -16,14 +16,14 @@ import {
   type AnalyseResponse,
 } from '@/lib/analyseApi';
 import type { TreeFilterPath } from '@/components/tree/treeTypes';
-import type { ParsedCSV } from '@/lib/treeUtils';
+import type { ParsedTable } from '@/lib/treeUtils';
 import { useDataRefresh } from '@/contexts/DataRefreshContext';
 
 interface ProjectHierarchyContextValue {
   loading: boolean;
   error: string | null;
   projectKey: string;
-  parsed: ParsedCSV | null;
+  parsed: ParsedTable | null;
   apiData: AnalyseResponse | null;
   activeJs: number[];
   setHierarchyOrder: (nextJs: number[]) => Promise<void>;
@@ -126,18 +126,21 @@ export function ProjectHierarchyProvider({ children }: { children: React.ReactNo
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [projectKey, setProjectKey] = useState<string>('db-default');
-  const [parsed, setParsed] = useState<ParsedCSV | null>(null);
+  const [parsed, setParsed] = useState<ParsedTable | null>(null);
   const [apiData, setApiData] = useState<AnalyseResponse | null>(null);
   const [activeJs, setActiveJs] = useState<number[]>([]);
-  const parsedCsvRef = useRef<string>('');
+  const cachedTableText = useRef<string>('');
   const loadSeqRef = useRef(0);
 
   const applyWithOrder = useCallback(
     async (csvText: string, order?: number[]) => {
       if (order && order.length > 0) {
-        return analyseCSV(csvText, { maxLevels: 4, userHierJs: order });
+        // Honour the full user-specified order instead of clamping to 4 levels,
+        // otherwise the backend silently trims/reorders columns and the user's
+        // drag-reorder appears to "not stick".
+        return analyseHierarchy(csvText, { maxLevels: order.length, columnOrder: order });
       }
-      return analyseCSV(csvText, { maxLevels: 4 });
+      return analyseHierarchy(csvText, { maxLevels: 4 });
     },
     [],
   );
@@ -151,7 +154,7 @@ export function ProjectHierarchyProvider({ children }: { children: React.ReactNo
       const base = await fetchDefaultHierarchyAnalyse();
       const scopedKey = base.projectKey || 'db-default';
       const csvText = toCsvText(base.parsed.headers, base.parsed.rows);
-      parsedCsvRef.current = csvText;
+      cachedTableText.current = csvText;
       let next = base;
       const savedOrder = await fetchHierarchyOrder(scopedKey);
       if (savedOrder.length > 0) {
@@ -184,32 +187,56 @@ export function ProjectHierarchyProvider({ children }: { children: React.ReactNo
 
   const setHierarchyOrder = useCallback(
     async (nextJs: number[]) => {
-      if (!parsed || !parsedCsvRef.current) return;
+      if (!parsed || !cachedTableText.current) return;
       setError(null);
-      setLoading(true);
+
+      // Validate client-side so an optimistic update can't diverge from the
+      // tree: dedupe and keep only known candidate columns, preserving order.
+      const candidateJs = apiData?.analysis?.allCandidates?.map((c) => c.j);
+      const knownJs = new Set(
+        candidateJs && candidateJs.length > 0
+          ? candidateJs
+          : (parsed.headers ?? []).map((_, j) => j),
+      );
+      const seen = new Set<number>();
+      const cleanJs = nextJs.filter((j) => {
+        if (seen.has(j)) return false;
+        if (knownJs.size > 0 && !knownJs.has(j)) return false;
+        seen.add(j);
+        return true;
+      });
+
+      // 1) Optimistic: chips move the instant the user drops, and the user's
+      //    requested order is the single source of truth — never overwritten by
+      //    whatever the backend echoes back.
+      setActiveJs(cleanJs);
+
+      // 2) Rebuild the tree/chart + persist in the background. We intentionally
+      //    do NOT flip the global `loading` flag here, so the editor stays
+      //    interactive across consecutive drags instead of being gated on a
+      //    full-page network round-trip.
       try {
-        const next = await applyWithOrder(parsedCsvRef.current, nextJs);
+        const next = await applyWithOrder(cachedTableText.current, cleanJs);
         next.projectKey = projectKey;
         setApiData(next);
         setParsed(next.parsed);
-        setActiveJs(next.analysis?.hierCols?.map((c) => c.j) ?? nextJs);
-        await saveHierarchyOrder(nextJs, projectKey);
+        // Keep the user's order authoritative; only use the response for
+        // apiData/parsed/tree, never to reorder the chips.
+        await saveHierarchyOrder(cleanJs, projectKey);
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Failed to update hierarchy order');
-      } finally {
-        setLoading(false);
       }
     },
-    [applyWithOrder, parsed, projectKey],
+    [apiData, applyWithOrder, parsed, projectKey],
   );
 
   const resetHierarchyOrder = useCallback(async () => {
-    if (!parsedCsvRef.current) return;
+    if (!cachedTableText.current) return;
     setError(null);
     setLoading(true);
     try {
       await clearHierarchyOrder(projectKey);
-      const next = await applyWithOrder(parsedCsvRef.current);
+      const next = await applyWithOrder(cachedTableText.current);
       next.projectKey = projectKey;
       setApiData(next);
       setParsed(next.parsed);

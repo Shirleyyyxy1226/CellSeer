@@ -4,10 +4,41 @@ export interface CyclerCyclePoint {
   y: number[];
 }
 
+/**
+ * Orthogonal discriminator channels layered on top of a cell's identity hue
+ * so that visually-similar cells (replicates / same-cathode siblings) stay
+ * distinguishable when overlaid. `dash` keys the line style, `symbol` the
+ * marker glyph. Both are Plotly-native string enums. Assigned centrally by
+ * `buildCellEncodings` in the frontend, keyed by within-condition replicate.
+ */
+export type LineDash = 'solid' | 'dash' | 'dot' | 'dashdot' | 'longdash' | 'longdashdot';
+export type MarkerSymbol =
+  | 'circle'
+  | 'square'
+  | 'diamond'
+  | 'triangle-up'
+  | 'star'
+  | 'cross'
+  | 'pentagon'
+  | 'x';
+
+export interface CellEncoding {
+  /** Identity hue or adaptive max-contrast colour (when maximizeContrast). */
+  color: string;
+  /** Line dash style — orthogonal to colour. */
+  dash: LineDash;
+  /** Marker glyph — orthogonal to colour. */
+  symbol: MarkerSymbol;
+}
+
 export interface Dataset {
   id: string;
   label: string;
   color?: string;
+  /** Orthogonal line-style discriminator (see LineDash). */
+  dash?: LineDash;
+  /** Orthogonal marker discriminator (see MarkerSymbol). */
+  symbol?: MarkerSymbol;
   cycles: CyclerCyclePoint[];
 }
 
@@ -63,11 +94,15 @@ export interface RecordDataset {
   id: string;
   label: string;
   color?: string;
+  /** Orthogonal line-style discriminator (see LineDash). */
+  dash?: LineDash;
+  /** Orthogonal marker discriminator (see MarkerSymbol). */
+  symbol?: MarkerSymbol;
   curves: Record<string, RecordCurve>;
   cathodeMassG?: number | null;
 }
 
-export type GcdDirection = 'discharge' | 'charge';
+export type GcdDirection = 'discharge' | 'charge' | 'both';
 export type GcdMode = 'scatter' | 'cumulative';
 
 export interface BuildGcdOpts {
@@ -103,6 +138,10 @@ export interface RatePerfTraceSpec {
   x: number[];
   y: number[];
   color: string;
+  /** Orthogonal line-style discriminator (see LineDash). */
+  dash?: LineDash;
+  /** Orthogonal marker discriminator (see MarkerSymbol). */
+  symbol?: MarkerSymbol;
   isAggregated?: boolean;
   hasCrate?: boolean;
   cRates?: number[];

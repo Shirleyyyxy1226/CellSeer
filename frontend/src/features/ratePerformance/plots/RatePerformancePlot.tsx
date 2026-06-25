@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import PlotlyChart from '@/components/PlotlyChart';
 import type { ExportContext } from '@/lib/exportUtils';
 import {
@@ -6,22 +6,21 @@ import {
   type RatePerfTraceSpec,
 } from 'cellseer-lib';
 import { buildTraces } from '@/lib/ratePerfAggregation';
+import { buildCellEncodings } from '@/lib/cellColorScheme';
 import type {
-  RatePerfCellRaw as NewareCell,
+  RatePerfCell as CyclingCell,
   ProtocolSegment,
 } from '@/lib/cellTypes';
 import type { TreeFilterPath } from '@/components/tree/treeTypes';
 import type { AnalysisResult } from '@/lib/treeUtils';
 import type { ChartAppearanceConfig } from '@/components/ChartEditPopover';
 import type { ChargeDirection } from '@/components/DirectionToggle';
-
-// Above this many traces a discrete legend overflows the plot and becomes
-// unreadable; identity then reads from the hierarchy colours + hover instead.
-const RATE_LEGEND_MAX_ITEMS = 12;
+import { tracesToLegendItems } from '@/lib/traceLegend';
+import type { LegendItem } from '@/components/ChartLegend';
 
 export interface RatePerformancePlotProps {
   /** Cells after upstream filters (cathode/spacer/separator/tree/protocol). */
-  filteredCells: NewareCell[];
+  filteredCells: CyclingCell[];
   /** Active project analysis providing hierarchy columns + label formatting. */
   analysis: AnalysisResult;
   treeFilterPath: TreeFilterPath;
@@ -39,6 +38,8 @@ export interface RatePerformancePlotProps {
   height: number;
   /** Fired on click or right-click of a trace whose underlying cell is known. */
   onCellSelect?: (cell: { idNo: number; cellName: string }) => void;
+  /** Receives the derived legend entries so the dashboard can render the legend block below the plot. */
+  onLegendItems?: (items: LegendItem[]) => void;
 }
 
 /**
@@ -60,6 +61,7 @@ export function RatePerformancePlot({
   width,
   height,
   onCellSelect,
+  onLegendItems,
 }: RatePerformancePlotProps) {
   const useSpecificCapacity =
     direction === 'discharge' && filteredCells.some((r) => r.specificCapacityMahG != null);
@@ -74,6 +76,12 @@ export function RatePerformancePlot({
   }, [filteredCells]);
 
   const { data: traces, traceIndexToCell, shapes, annotations } = useMemo(() => {
+    // Per-cell colour + orthogonal dash/symbol for the cells on screen, so
+    // overlaid similar cells stay distinguishable (and recolour to the
+    // max-contrast palette when that toggle is on).
+    const cellEncodings = buildCellEncodings(filteredCells, {
+      maximizeContrast: config.maximizeContrast ?? false,
+    });
     const agg = buildTraces({
       filteredCells,
       treeFilterPath,
@@ -82,17 +90,20 @@ export function RatePerformancePlot({
       direction,
       detailDepth,
       pathToColorMap,
+      cellEncodings,
       labelDecorations: analysis.labelDecorations,
       annotations: analysis.annotations,
       metadataByIdNo,
     });
     const traceSpecs: RatePerfTraceSpec[] = agg.map((t) => {
-      const cell = (t as { cell?: NewareCell }).cell;
+      const cell = (t as { cell?: CyclingCell }).cell;
       return {
         name: t.name,
         x: t.x,
         y: t.y,
         color: t.color,
+        dash: t.dash,
+        symbol: t.symbol,
         isAggregated: t.isAggregated,
         hasCrate: t.hasCrate,
         cRates: t.cRates,
@@ -118,6 +129,7 @@ export function RatePerformancePlot({
     pathToColorMap,
     showConnectedLine,
     protocolSegments,
+    config.maximizeContrast,
   ]);
 
   const {
@@ -126,10 +138,14 @@ export function RatePerformancePlot({
     fontFamily,
     titleFontSize,
     labelFontSize,
-    legendFontSize,
-    showLegend,
-    legendPosition,
   } = config;
+
+  // Surface the derived legend entries: the real trace set is only known here,
+  // after aggregation. The dashboard renders them as a block below the plot.
+  const legendItems = useMemo(() => tracesToLegendItems(traces), [traces]);
+  useEffect(() => {
+    onLegendItems?.(legendItems);
+  }, [legendItems, onLegendItems]);
 
   const layout = useMemo<Partial<Plotly.Layout>>(
     () => ({
@@ -148,36 +164,10 @@ export function RatePerformancePlot({
         tickfont: { size: Math.max(9, labelFontSize - 1) },
         gridcolor: 'rgba(128,128,128,0.2)',
       },
-      // Past a small count a per-trace legend overflows and becomes unreadable;
-      // the hierarchy colours + hover convey identity, so the legend is omitted.
-      showlegend: showLegend && traces.length <= RATE_LEGEND_MAX_ITEMS,
-      legend: showLegend && traces.length <= RATE_LEGEND_MAX_ITEMS
-        ? legendPosition === 'in'
-          ? {
-              orientation: 'v' as const,
-              font: { size: legendFontSize },
-              x: 0.99,
-              y: 1,
-              xanchor: 'right' as const,
-              yanchor: 'top' as const,
-              bgcolor: 'rgba(255,255,255,0.9)',
-            }
-          : {
-              // Horizontal row below the x-axis, clear of the axis title.
-              orientation: 'h' as const,
-              font: { size: legendFontSize },
-              x: 0,
-              y: -0.28,
-              xanchor: 'left' as const,
-              yanchor: 'top' as const,
-            }
-        : undefined,
-      margin: {
-        t: 48,
-        r: 44,
-        b: showLegend && legendPosition !== 'in' && traces.length <= RATE_LEGEND_MAX_ITEMS ? 120 : 80,
-        l: 65,
-      },
+      // Legend is drawn as an HTML block below the plot (see ChartLegend), so the
+      // in-figure legend is off and the inflated bottom margin is reclaimed.
+      showlegend: false,
+      margin: { t: 48, r: 44, b: 80, l: 65 },
       uirevision: 'rate-perf-hier',
       shapes,
       annotations,
@@ -191,12 +181,8 @@ export function RatePerformancePlot({
       fontFamily,
       titleFontSize,
       labelFontSize,
-      legendFontSize,
-      showLegend,
-      legendPosition,
       shapes,
       annotations,
-      traces.length,
     ],
   );
 
@@ -219,6 +205,7 @@ export function RatePerformancePlot({
       layout={layout}
       config={{ responsive: true }}
       style={{ width, height }}
+      hoverFocus={filteredCells.length > 1}
       traceIndexToCell={traceIndexToCell}
       exportContext={exportContext}
       onContextMenu={(cell) => onCellSelect?.(cell)}

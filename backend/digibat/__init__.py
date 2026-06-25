@@ -1,0 +1,1 @@
+"""DIGIBAT integration package."""

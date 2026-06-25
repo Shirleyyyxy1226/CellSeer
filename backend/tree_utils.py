@@ -391,11 +391,11 @@ def analyse_columns(
 # ── Build active analysis from user-selected column order ─────────────
 def build_active_analysis(
     base: AnalysisResult,
-    user_hier_js: list[int],
+    column_order: list[int],
     config: AnalysisConfig = DEFAULT_CONFIG,
 ) -> AnalysisResult:
     stats_by_j = {s.j: s for s in base.stats}
-    hier_cols = [stats_by_j[j] for j in user_hier_js if j in stats_by_j]
+    hier_cols = [stats_by_j[j] for j in column_order if j in stats_by_j]
     return AnalysisResult(
         leaf_col=base.leaf_col,
         row_id_col=base.row_id_col,
@@ -556,23 +556,7 @@ def build_tree(
     return root
 
 
-# ── Colour assignment (matches treeUtils.ts) ──────────────────────────
-SEMANTIC_COLOURS: dict[str, str] = {
-    "NMC811": "#c24a3a",
-    "NMC622": "#d07848",
-    "NMC111": "#b85c28",
-    "LFP": "#2a9d8f",
-    "LCO": "#6c3483",
-    "NCA": "#b7410e",
-    "Celgard": "#4a7cbf",
-    "GlassFiber": "#7952a3",
-    "Celgard 2325": "#4a7cbf",
-    "Celgard 2500": "#5588c8",
-    "Graphite": "#4e7d6b",
-    "Lithium": "#c0a020",
-    "Silicon": "#7a5c8a",
-}
-
+# ── Colour assignment ─────────────────────────────────────────────────
 LEVEL_PALETTES: list[list[str]] = [
     ["#c24a3a", "#d07848", "#2a9d8f", "#6c3483", "#b7410e", "#2471a3"],
     ["#4a7cbf", "#7952a3", "#2e8b72", "#c06030", "#5a7a32", "#8b4060"],
@@ -640,15 +624,13 @@ def leaf_key_to_color(leaf_key: str) -> str:
 
 
 def assign_colour_map(hier_cols: list[ColStats]) -> list[dict[str, str]]:
-    """Level → value → hex. Semantic colours for known materials, else level palette."""
+    """Level → value → hex. Positional palette per level, no chemistry-specific mapping."""
     result = []
     for lvl, col in enumerate(hier_cols):
         palette = LEVEL_PALETTES[min(lvl, len(LEVEL_PALETTES) - 1)]
         m: dict[str, str] = {}
-        pi = 0
-        for v in col.distinct_vals:
-            m[v] = SEMANTIC_COLOURS.get(v) or palette[pi % len(palette)]
-            pi += 1
+        for pi, v in enumerate(col.distinct_vals):
+            m[v] = palette[pi % len(palette)]
         result.append(m)
     return result
 

@@ -10,21 +10,22 @@ import {
 } from '@/components/ui/select';
 import { TreeSvg } from '@/components/tree/TreeSvg';
 import { HierarchyEditor } from '@/components/tree/HierarchyEditor';
+import { LoadingIndicator } from '@/components/LoadingIndicator';
 import { useCellSelection } from '@/contexts/CellSelectionContext';
 import { useTreeFilter } from '@/contexts/TreeFilterContext';
 import { useProjectHierarchy } from '@/contexts/ProjectHierarchyContext';
 import { getPathFromRootToNode, collectPreLeafNodeKeys, type TreeNode } from '@/lib/treeUtils';
-import { buildCanonicalCellColorMap } from '@/lib/ratePerfAggregation';
-import type { IndexCellRaw, RatePerfCellRaw } from '@/lib/cellTypes';
+import { buildCanonicalCellColorMap, buildPathToColorMap } from '@/lib/ratePerfAggregation';
+import type { IndexCell, RatePerfCell } from '@/lib/cellTypes';
 import { useDimensions } from '@/hooks/useDimensions';
 import { useTreeLayout } from '@/hooks/useTreeLayout';
 
 interface PublicTreeFilterSidebarProps {
-  cells: IndexCellRaw[];
+  cells: IndexCell[];
   protocols?: string[];
   protocolFilter?: string;
   onProtocolFilter?: (v: string) => void;
-  rateCellsForProtocol?: RatePerfCellRaw[];
+  rateCellsForProtocol?: RatePerfCell[];
 }
 
 export function PublicTreeFilterSidebar({
@@ -76,23 +77,30 @@ export function PublicTreeFilterSidebar({
 
   const pathToColorMap = useMemo(
     () =>
-      apiData?.pathToColorMap && Object.keys(apiData.pathToColorMap).length > 0
-        ? new Map(Object.entries(apiData.pathToColorMap))
+      cells.length
+        ? buildPathToColorMap(cells as unknown as RatePerfCell[], activeAnalysis?.hierCols ?? [])
         : new Map<string, string>(),
-    [apiData?.pathToColorMap],
+    [cells, activeAnalysis?.hierCols],
   );
 
   const cellColorMap = useMemo(
     () =>
       cells.length
-        ? buildCanonicalCellColorMap(cells as unknown as RatePerfCellRaw[])
+        ? buildCanonicalCellColorMap(cells as unknown as RatePerfCell[])
         : new Map<string, string>(),
     [cells],
   );
 
   const protocolFilteredOutCellIds = useMemo(() => {
-    if (!rateCellsForProtocol.length || protocolFilter === 'All') return new Set<number>();
-    return new Set(rateCellsForProtocol.filter((c) => c.protocol !== protocolFilter).map((c) => c.idNo));
+    // Faded-leaf treatment for cells whose protocol doesn't match the
+    // currently selected protocol filter — grey label + lower opacity.
+    const out = new Set<number>();
+    if (rateCellsForProtocol.length && protocolFilter !== 'All') {
+      for (const c of rateCellsForProtocol) {
+        if (c.protocol !== protocolFilter) out.add(c.idNo);
+      }
+    }
+    return out;
   }, [rateCellsForProtocol, protocolFilter]);
 
   const handleNodeClick = useCallback(
@@ -120,10 +128,6 @@ export function PublicTreeFilterSidebar({
   return (
     <div className="flex flex-col h-full gap-3 overflow-hidden">
       <div className="space-y-2 shrink-0">
-        <Label className="text-xs text-muted-foreground">Hierarchy order</Label>
-        <p className="text-[10px] text-muted-foreground">
-          Drag to reorder based on your comparison focus (e.g. Spacer first, or Separator first)
-        </p>
         {activeAnalysis && (
           <HierarchyEditor
             allCandidates={activeAnalysis.allCandidates}
@@ -152,8 +156,6 @@ export function PublicTreeFilterSidebar({
         <div ref={treeContainerRef} className="flex-1 min-h-0 overflow-auto p-2">
           {hierarchyError ? (
             <p className="text-sm text-destructive p-4">{hierarchyError}</p>
-          ) : hierarchyLoading && !tree ? (
-            <p className="text-sm text-muted-foreground p-4">Loading hierarchy...</p>
           ) : tree && activeAnalysis && treeLayout ? (
             <TreeSvg
               analysis={activeAnalysis}
@@ -166,13 +168,20 @@ export function PublicTreeFilterSidebar({
               usePerceptualColors
               cellColorMap={cellColorMap}
               pathToColorMap={pathToColorMap}
-              cells={cells as unknown as RatePerfCellRaw[]}
+              cells={cells as unknown as RatePerfCell[]}
               annotationsByCell={annotationsByCell}
               onCellSelect={handleCellSelect}
-              selectedCellIds={multiselectionMode ? selectedCellIds : undefined}
+              selectedCellIds={selectedCellIds}
               protocolFilteredOutCellIds={protocolFilteredOutCellIds}
               collapsedPreLeafNodeKeys={collapsedPreLeafNodeKeys}
               onTogglePreLeafNode={handleTogglePreLeafNode}
+            />
+          ) : hierarchyLoading || (tree && !treeLayout) ? (
+            <LoadingIndicator
+              variant="frame"
+              size="md"
+              label="Loading hierarchy…"
+              className="p-4"
             />
           ) : (
             <p className="text-sm text-muted-foreground p-4">No data yet.</p>

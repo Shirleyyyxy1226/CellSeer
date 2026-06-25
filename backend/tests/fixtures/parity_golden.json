@@ -1,0 +1,420 @@
+{
+  "conditions": {
+    "LCO|PP|0.5": {
+      "key": "LCO|PP|0.5",
+      "cathode": "LCO",
+      "separatorType": "PP",
+      "spacerMm": 0.5,
+      "n": 1,
+      "flaggedCount": 1,
+      "metrics": {
+        "capacity-raw": {
+          "mean": 50,
+          "sd": null,
+          "cv": null,
+          "sem": null,
+          "ciHalf": null,
+          "n": 1
+        },
+        "capacity-spec": {
+          "mean": null,
+          "sd": null,
+          "cv": null,
+          "sem": null,
+          "ciHalf": null,
+          "n": 0
+        },
+        "ce": {
+          "mean": 100,
+          "sd": null,
+          "cv": null,
+          "sem": null,
+          "ciHalf": null,
+          "n": 1
+        },
+        "cycles": {
+          "mean": 3,
+          "sd": null,
+          "cv": null,
+          "sem": null,
+          "ciHalf": null,
+          "n": 1
+        },
+        "retention": {
+          "mean": null,
+          "sd": null,
+          "cv": null,
+          "sem": null,
+          "ciHalf": null,
+          "n": 0
+        },
+        "fade-rate": {
+          "mean": null,
+          "sd": null,
+          "cv": null,
+          "sem": null,
+          "ciHalf": null,
+          "n": 0
+        },
+        "cycle-life-80": {
+          "mean": null,
+          "sd": null,
+          "cv": null,
+          "sem": null,
+          "ciHalf": null,
+          "n": 0
+        },
+        "ce-trend": {
+          "mean": null,
+          "sd": null,
+          "cv": null,
+          "sem": null,
+          "ciHalf": null,
+          "n": 0
+        }
+      }
+    },
+    "LFP|PP|0.5": {
+      "key": "LFP|PP|0.5",
+      "cathode": "LFP",
+      "separatorType": "PP",
+      "spacerMm": 0.5,
+      "n": 4,
+      "flaggedCount": 1,
+      "metrics": {
+        "capacity-raw": {
+          "mean": 90,
+          "sd": 17.378147196982766,
+          "cv": 19.30905244109196,
+          "sem": 10.03327796219494,
+          "ciHalf": 31.9258904757043,
+          "n": 4
+        },
+        "capacity-spec": {
+          "mean": 45,
+          "sd": 8.689073598491383,
+          "cv": 19.30905244109196,
+          "sem": 5.01663898109747,
+          "ciHalf": 15.96294523785215,
+          "n": 4
+        },
+        "ce": {
+          "mean": 100,
+          "sd": 0,
+          "cv": 0,
+          "sem": 0,
+          "ciHalf": 0,
+          "n": 4
+        },
+        "cycles": {
+          "mean": 10,
+          "sd": 0,
+          "cv": 0,
+          "sem": 0,
+          "ciHalf": 0,
+          "n": 4
+        },
+        "retention": {
+          "mean": 90.66506602641057,
+          "sd": 2.311250260684369,
+          "cv": 2.549218085840368,
+          "sem": 1.3344009601707132,
+          "ciHalf": 4.246063855263209,
+          "n": 4
+        },
+        "fade-rate": {
+          "mean": 116.68667466986793,
+          "sd": 28.89062825855462,
+          "cv": 24.759149526107,
+          "sem": 16.68001200213392,
+          "ciHalf": 53.07579819079014,
+          "n": 4
+        },
+        "cycle-life-80": {
+          "mean": null,
+          "sd": null,
+          "cv": null,
+          "sem": null,
+          "ciHalf": null,
+          "n": 0
+        },
+        "ce-trend": {
+          "mean": 0,
+          "sd": 0,
+          "cv": null,
+          "sem": 0,
+          "ciHalf": 0,
+          "n": 4
+        }
+      }
+    },
+    "LFP|PP|1": {
+      "key": "LFP|PP|1",
+      "cathode": "LFP",
+      "separatorType": "PP",
+      "spacerMm": 1,
+      "n": 1,
+      "flaggedCount": 0,
+      "metrics": {
+        "capacity-raw": {
+          "mean": 98,
+          "sd": null,
+          "cv": null,
+          "sem": null,
+          "ciHalf": null,
+          "n": 1
+        },
+        "capacity-spec": {
+          "mean": null,
+          "sd": null,
+          "cv": null,
+          "sem": null,
+          "ciHalf": null,
+          "n": 0
+        },
+        "ce": {
+          "mean": 100,
+          "sd": null,
+          "cv": null,
+          "sem": null,
+          "ciHalf": null,
+          "n": 1
+        },
+        "cycles": {
+          "mean": 12,
+          "sd": null,
+          "cv": null,
+          "sem": null,
+          "ciHalf": null,
+          "n": 1
+        },
+        "retention": {
+          "mean": 77.55102040816327,
+          "sd": null,
+          "cv": null,
+          "sem": null,
+          "ciHalf": null,
+          "n": 1
+        },
+        "fade-rate": {
+          "mean": 248.6798915370344,
+          "sd": null,
+          "cv": null,
+          "sem": null,
+          "ciHalf": null,
+          "n": 1
+        },
+        "cycle-life-80": {
+          "mean": 11,
+          "sd": null,
+          "cv": null,
+          "sem": null,
+          "ciHalf": null,
+          "n": 1
+        },
+        "ce-trend": {
+          "mean": 0,
+          "sd": null,
+          "cv": null,
+          "sem": null,
+          "ciHalf": null,
+          "n": 1
+        }
+      }
+    },
+    "NMC|PP|1": {
+      "key": "NMC|PP|1",
+      "cathode": "NMC",
+      "separatorType": "PP",
+      "spacerMm": 1,
+      "n": 2,
+      "flaggedCount": 1,
+      "metrics": {
+        "capacity-raw": {
+          "mean": 81,
+          "sd": 1,
+          "cv": 1.2345679012345678,
+          "sem": 1,
+          "ciHalf": 12.706,
+          "n": 2
+        },
+        "capacity-spec": {
+          "mean": null,
+          "sd": null,
+          "cv": null,
+          "sem": null,
+          "ciHalf": null,
+          "n": 0
+        },
+        "ce": {
+          "mean": 96.72897196261682,
+          "sd": 3.271028037383175,
+          "cv": 3.3816425120772915,
+          "sem": 3.271028037383175,
+          "ciHalf": 41.56168224299062,
+          "n": 2
+        },
+        "cycles": {
+          "mean": 10,
+          "sd": 0,
+          "cv": 0,
+          "sem": 0,
+          "ciHalf": 0,
+          "n": 2
+        },
+        "retention": {
+          "mean": 90.1219512195122,
+          "sd": 0.1219512195121979,
+          "cv": 0.13531799729364313,
+          "sem": 0.12195121951219788,
+          "ciHalf": 1.5495121951219861,
+          "n": 2
+        },
+        "fade-rate": {
+          "mean": 123.47560975609755,
+          "sd": 1.5243902439024382,
+          "cv": 1.2345679012345674,
+          "sem": 1.524390243902438,
+          "ciHalf": 19.368902439024374,
+          "n": 2
+        },
+        "cycle-life-80": {
+          "mean": null,
+          "sd": null,
+          "cv": null,
+          "sem": null,
+          "ciHalf": null,
+          "n": 0
+        },
+        "ce-trend": {
+          "mean": -3.014423727467092e-14,
+          "sd": 3.014423727467092e-14,
+          "cv": null,
+          "sem": 3.0144237274670915e-14,
+          "ciHalf": 3.8301267881196863e-13,
+          "n": 2
+        }
+      }
+    }
+  },
+  "cells": [
+    {
+      "cellId": "A-1",
+      "condKey": "LFP|PP|0.5",
+      "flags": [],
+      "peakCapacitySpec": 50,
+      "peakCapacityRaw": 100,
+      "medianCE": 100,
+      "retention": 92,
+      "fadeRatePctPer100": 100,
+      "ceTrendPctPer100": 0,
+      "cycleLife80": null,
+      "cycleCount": 10,
+      "capacityBasis": "mAh/g"
+    },
+    {
+      "cellId": "A-2",
+      "condKey": "LFP|PP|0.5",
+      "flags": [],
+      "peakCapacitySpec": 49,
+      "peakCapacityRaw": 98,
+      "medianCE": 100,
+      "retention": 91.83673469387756,
+      "fadeRatePctPer100": 102.0408163265306,
+      "ceTrendPctPer100": 0,
+      "cycleLife80": null,
+      "cycleCount": 10,
+      "capacityBasis": "mAh/g"
+    },
+    {
+      "cellId": "A-3",
+      "condKey": "LFP|PP|0.5",
+      "flags": [],
+      "peakCapacitySpec": 51,
+      "peakCapacityRaw": 102,
+      "medianCE": 100,
+      "retention": 92.15686274509804,
+      "fadeRatePctPer100": 98.0392156862745,
+      "ceTrendPctPer100": 0,
+      "cycleLife80": null,
+      "cycleCount": 10,
+      "capacityBasis": "mAh/g"
+    },
+    {
+      "cellId": "A-4",
+      "condKey": "LFP|PP|0.5",
+      "flags": [
+        "cap-outlier"
+      ],
+      "peakCapacitySpec": 30,
+      "peakCapacityRaw": 60,
+      "medianCE": 100,
+      "retention": 86.66666666666667,
+      "fadeRatePctPer100": 166.66666666666666,
+      "ceTrendPctPer100": 0,
+      "cycleLife80": null,
+      "cycleCount": 10,
+      "capacityBasis": "mAh/g"
+    },
+    {
+      "cellId": "B-1",
+      "condKey": "NMC|PP|1",
+      "flags": [],
+      "peakCapacitySpec": null,
+      "peakCapacityRaw": 80,
+      "medianCE": 100,
+      "retention": 90,
+      "fadeRatePctPer100": 125,
+      "ceTrendPctPer100": 0,
+      "cycleLife80": null,
+      "cycleCount": 10,
+      "capacityBasis": "mAh"
+    },
+    {
+      "cellId": "B-2",
+      "condKey": "NMC|PP|1",
+      "flags": [
+        "ce-anomaly"
+      ],
+      "peakCapacitySpec": null,
+      "peakCapacityRaw": 82,
+      "medianCE": 93.45794392523365,
+      "retention": 90.2439024390244,
+      "fadeRatePctPer100": 121.95121951219512,
+      "ceTrendPctPer100": -6.028847454934184e-14,
+      "cycleLife80": null,
+      "cycleCount": 10,
+      "capacityBasis": "mAh"
+    },
+    {
+      "cellId": "C-1",
+      "condKey": "LCO|PP|0.5",
+      "flags": [
+        "few-cycles"
+      ],
+      "peakCapacitySpec": null,
+      "peakCapacityRaw": 50,
+      "medianCE": 100,
+      "retention": null,
+      "fadeRatePctPer100": null,
+      "ceTrendPctPer100": null,
+      "cycleLife80": null,
+      "cycleCount": 3,
+      "capacityBasis": "mAh"
+    },
+    {
+      "cellId": "D-1",
+      "condKey": "LFP|PP|1",
+      "flags": [],
+      "peakCapacitySpec": null,
+      "peakCapacityRaw": 98,
+      "medianCE": 100,
+      "retention": 77.55102040816327,
+      "fadeRatePctPer100": 248.6798915370344,
+      "ceTrendPctPer100": 0,
+      "cycleLife80": 11,
+      "cycleCount": 12,
+      "capacityBasis": "mAh"
+    }
+  ]
+}
