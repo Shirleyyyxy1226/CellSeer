@@ -161,7 +161,6 @@ def summarise_cell(raw: dict) -> dict:
     # CE only over meaningful cycles (>=5% of peak discharge).
     ce_floor = (peak_capacity_raw or 0) * 0.05
     ce_vals: list[float] = []
-    ce_series: list[tuple[float, float]] = []
     for i in range(len(cycles)):
         c = chg[i] if i < len(chg) else None
         d = dch[i] if i < len(dch) else None
@@ -169,37 +168,20 @@ def summarise_cell(raw: dict) -> dict:
             ce = (d / c) * 100
             if 0 < ce < 150:
                 ce_vals.append(ce)
-                ce_series.append((cycles[i], ce))
     ce_vals.sort()
     median_ce = percentile(ce_vals, 0.5) if ce_vals else None
 
     has_protocol = bool(raw.get("protocolSegments") or raw.get("protocol"))
 
-    peak_for_retention = _peak_of(capacity_series)
+    # Protocol-scoped retention / fade rate / cycle life / CE drift are not yet
+    # implemented. Computed over the full cycle series they mix formation,
+    # rate-test and main-cycling phases into a misleading number, so they are
+    # left unset until segment-aware computation lands. The UI shows "coming
+    # soon" for these metrics once a protocol is attached.
     retention: Optional[float] = None
-    if peak_for_retention and len(capacity_series) >= 5:
-        tail = [v for _, v in capacity_series[-3:]]
-        retention = (sum(tail) / len(tail) / peak_for_retention) * 100
-
     fade_rate: Optional[float] = None
-    if peak_for_retention and peak_for_retention > 0 and len(capacity_series) >= 5:
-        slope = linreg_slope([(c, v) for c, v in capacity_series])
-        if slope is not None:
-            fade_rate = -(slope / peak_for_retention) * 10000
-
     ce_trend: Optional[float] = None
-    if len(ce_series) >= 5:
-        slope = linreg_slope([(c, v) for c, v in ce_series])
-        if slope is not None:
-            ce_trend = slope * 100
-
     cycle_life_80: Optional[float] = None
-    if peak_for_retention and peak_for_retention > 0 and len(capacity_series) >= 5:
-        threshold = 0.8 * peak_for_retention
-        for c, v in capacity_series:
-            if v < threshold:
-                cycle_life_80 = c
-                break
 
     return {
         "idNo": raw.get("idNo"),

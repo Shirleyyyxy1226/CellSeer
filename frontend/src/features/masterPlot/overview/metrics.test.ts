@@ -19,21 +19,16 @@ function rawWith(spec: number[]): RatePerfCell {
   };
 }
 
-describe('cycleLife80', () => {
-  it('returns the first cycle where capacity drops below 80% of peak', () => {
-    // peak 100, threshold 80. 100,96,92,88,84,80,76,... → first <80 is 76 at cycle 7.
+describe('protocol-scoped metrics', () => {
+  // Retention / fade rate / cycle life / CE drift are not computed yet: over the
+  // full (phase-mixed) cycle series they are misleading, so they stay null until
+  // segment-aware computation lands. The UI shows "coming soon" for them.
+  it('leaves retention, fade rate, cycle life and CE drift null', () => {
     const c = summariseCell(rawWith([100, 96, 92, 88, 84, 80, 76, 72]));
-    expect(c.cycleLife80).toBe(7);
-  });
-
-  it('is null when capacity never falls below 80%', () => {
-    const c = summariseCell(rawWith([100, 99, 98, 97, 96, 95]));
+    expect(c.retention).toBeNull();
+    expect(c.fadeRatePctPer100).toBeNull();
     expect(c.cycleLife80).toBeNull();
-  });
-
-  it('is null when the series is too short to be meaningful', () => {
-    const c = summariseCell(rawWith([100, 50]));
-    expect(c.cycleLife80).toBeNull();
+    expect(c.ceTrendPctPer100).toBeNull();
   });
 });
 

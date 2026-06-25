@@ -158,6 +158,19 @@ export function MetricLockedNotice({
 }
 
 /**
+ * Shown for a protocol-requiring metric once a protocol is attached: the
+ * segment-aware computation is not built yet, so the view is replaced by a
+ * plain "coming soon" rather than a misleading full-series number.
+ */
+export function MetricComingSoonNotice() {
+  return (
+    <div className="flex h-full min-h-[200px] flex-col items-center justify-center text-center">
+      <p className="text-sm font-medium text-muted-foreground">Coming soon</p>
+    </div>
+  );
+}
+
+/**
  * Mass-lock — the mirror of MetricLockedNotice for specific capacity: it can't
  * be computed until cells have a cathode mass. Framed as a fixable lock (like
  * "needs a protocol"), not a dead-end "no data".

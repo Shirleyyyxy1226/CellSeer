@@ -115,20 +115,20 @@
           "n": 4
         },
         "retention": {
-          "mean": 90.66506602641057,
-          "sd": 2.311250260684369,
-          "cv": 2.549218085840368,
-          "sem": 1.3344009601707132,
-          "ciHalf": 4.246063855263209,
-          "n": 4
+          "mean": null,
+          "sd": null,
+          "cv": null,
+          "sem": null,
+          "ciHalf": null,
+          "n": 0
         },
         "fade-rate": {
-          "mean": 116.68667466986793,
-          "sd": 28.89062825855462,
-          "cv": 24.759149526107,
-          "sem": 16.68001200213392,
-          "ciHalf": 53.07579819079014,
-          "n": 4
+          "mean": null,
+          "sd": null,
+          "cv": null,
+          "sem": null,
+          "ciHalf": null,
+          "n": 0
         },
         "cycle-life-80": {
           "mean": null,
@@ -139,12 +139,12 @@
           "n": 0
         },
         "ce-trend": {
-          "mean": 0,
-          "sd": 0,
+          "mean": null,
+          "sd": null,
           "cv": null,
-          "sem": 0,
-          "ciHalf": 0,
-          "n": 4
+          "sem": null,
+          "ciHalf": null,
+          "n": 0
         }
       }
     },
@@ -189,36 +189,36 @@
           "n": 1
         },
         "retention": {
-          "mean": 77.55102040816327,
+          "mean": null,
           "sd": null,
           "cv": null,
           "sem": null,
           "ciHalf": null,
-          "n": 1
+          "n": 0
         },
         "fade-rate": {
-          "mean": 248.6798915370344,
+          "mean": null,
           "sd": null,
           "cv": null,
           "sem": null,
           "ciHalf": null,
-          "n": 1
+          "n": 0
         },
         "cycle-life-80": {
-          "mean": 11,
+          "mean": null,
           "sd": null,
           "cv": null,
           "sem": null,
           "ciHalf": null,
-          "n": 1
+          "n": 0
         },
         "ce-trend": {
-          "mean": 0,
+          "mean": null,
           "sd": null,
           "cv": null,
           "sem": null,
           "ciHalf": null,
-          "n": 1
+          "n": 0
         }
       }
     },
@@ -263,20 +263,20 @@
           "n": 2
         },
         "retention": {
-          "mean": 90.1219512195122,
-          "sd": 0.1219512195121979,
-          "cv": 0.13531799729364313,
-          "sem": 0.12195121951219788,
-          "ciHalf": 1.5495121951219861,
-          "n": 2
+          "mean": null,
+          "sd": null,
+          "cv": null,
+          "sem": null,
+          "ciHalf": null,
+          "n": 0
         },
         "fade-rate": {
-          "mean": 123.47560975609755,
-          "sd": 1.5243902439024382,
-          "cv": 1.2345679012345674,
-          "sem": 1.524390243902438,
-          "ciHalf": 19.368902439024374,
-          "n": 2
+          "mean": null,
+          "sd": null,
+          "cv": null,
+          "sem": null,
+          "ciHalf": null,
+          "n": 0
         },
         "cycle-life-80": {
           "mean": null,
@@ -287,12 +287,12 @@
           "n": 0
         },
         "ce-trend": {
-          "mean": -3.014423727467092e-14,
-          "sd": 3.014423727467092e-14,
+          "mean": null,
+          "sd": null,
           "cv": null,
-          "sem": 3.0144237274670915e-14,
-          "ciHalf": 3.8301267881196863e-13,
-          "n": 2
+          "sem": null,
+          "ciHalf": null,
+          "n": 0
         }
       }
     }
@@ -305,9 +305,9 @@
       "peakCapacitySpec": 50,
       "peakCapacityRaw": 100,
       "medianCE": 100,
-      "retention": 92,
-      "fadeRatePctPer100": 100,
-      "ceTrendPctPer100": 0,
+      "retention": null,
+      "fadeRatePctPer100": null,
+      "ceTrendPctPer100": null,
       "cycleLife80": null,
       "cycleCount": 10,
       "capacityBasis": "mAh/g"
@@ -319,9 +319,9 @@
       "peakCapacitySpec": 49,
       "peakCapacityRaw": 98,
       "medianCE": 100,
-      "retention": 91.83673469387756,
-      "fadeRatePctPer100": 102.0408163265306,
-      "ceTrendPctPer100": 0,
+      "retention": null,
+      "fadeRatePctPer100": null,
+      "ceTrendPctPer100": null,
       "cycleLife80": null,
       "cycleCount": 10,
       "capacityBasis": "mAh/g"
@@ -333,9 +333,9 @@
       "peakCapacitySpec": 51,
       "peakCapacityRaw": 102,
       "medianCE": 100,
-      "retention": 92.15686274509804,
-      "fadeRatePctPer100": 98.0392156862745,
-      "ceTrendPctPer100": 0,
+      "retention": null,
+      "fadeRatePctPer100": null,
+      "ceTrendPctPer100": null,
       "cycleLife80": null,
       "cycleCount": 10,
       "capacityBasis": "mAh/g"
@@ -349,9 +349,9 @@
       "peakCapacitySpec": 30,
       "peakCapacityRaw": 60,
       "medianCE": 100,
-      "retention": 86.66666666666667,
-      "fadeRatePctPer100": 166.66666666666666,
-      "ceTrendPctPer100": 0,
+      "retention": null,
+      "fadeRatePctPer100": null,
+      "ceTrendPctPer100": null,
       "cycleLife80": null,
       "cycleCount": 10,
       "capacityBasis": "mAh/g"
@@ -363,9 +363,9 @@
       "peakCapacitySpec": null,
       "peakCapacityRaw": 80,
       "medianCE": 100,
-      "retention": 90,
-      "fadeRatePctPer100": 125,
-      "ceTrendPctPer100": 0,
+      "retention": null,
+      "fadeRatePctPer100": null,
+      "ceTrendPctPer100": null,
       "cycleLife80": null,
       "cycleCount": 10,
       "capacityBasis": "mAh"
@@ -379,9 +379,9 @@
       "peakCapacitySpec": null,
       "peakCapacityRaw": 82,
       "medianCE": 93.45794392523365,
-      "retention": 90.2439024390244,
-      "fadeRatePctPer100": 121.95121951219512,
-      "ceTrendPctPer100": -6.028847454934184e-14,
+      "retention": null,
+      "fadeRatePctPer100": null,
+      "ceTrendPctPer100": null,
       "cycleLife80": null,
       "cycleCount": 10,
       "capacityBasis": "mAh"
@@ -409,10 +409,10 @@
       "peakCapacitySpec": null,
       "peakCapacityRaw": 98,
       "medianCE": 100,
-      "retention": 77.55102040816327,
-      "fadeRatePctPer100": 248.6798915370344,
-      "ceTrendPctPer100": 0,
-      "cycleLife80": 11,
+      "retention": null,
+      "fadeRatePctPer100": null,
+      "ceTrendPctPer100": null,
+      "cycleLife80": null,
       "cycleCount": 12,
       "capacityBasis": "mAh"
     }

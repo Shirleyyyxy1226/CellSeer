@@ -25,17 +25,7 @@ export interface PCAxisContinuous {
   id: string;
   kind: 'continuous';
   group: PCAxisGroup;
-  scalar:
-    | 'ice'
-    | 'formation_ce'
-    | 'ce_main'
-    | 'fade_rate'
-    | 'retention_end'
-    | 'capacity_end'
-    | 'capacity_peak'
-    | 'cycle_count'
-    | 'retention_mean_main'
-    | 'ce_mean_main';
+  scalar: 'ice' | 'capacity_end' | 'capacity_peak' | 'cycle_count';
   label: string;
   confKind?: 'retention' | 'ce' | 'none';
 }
@@ -60,7 +50,6 @@ export function axisLabel(def: PCAxisDef): string {
 /** Concise one-line definitions surfaced behind an info icon on the axis head. */
 const AXIS_DESCRIPTIONS: Record<string, string> = {
   ice: 'CE of the first non-zero cycle',
-  ret_end: 'Depends on protocol — pick one above to compare like-for-like',
 };
 
 /** Optional one-line explanation for an axis, shown in a hover info card. */
@@ -70,24 +59,6 @@ export function axisDescription(def: PCAxisDef): string | undefined {
 
 function cycleIndexFor(row: CellMetricRow, instrumentCycle: number): number {
   return row.cycles.indexOf(instrumentCycle);
-}
-
-function valueFormationCe(row: CellMetricRow): number | null {
-  const segs = row.protocolSegments;
-  const cyc = row.cycles;
-  const ce = row.ceSeries;
-  if (!ce.length) return null;
-  if (!segs.length) return ce[0] ?? null;
-  const first = segs[0];
-  let sum = 0;
-  let n = 0;
-  for (let i = 0; i < cyc.length; i++) {
-    if (cyc[i] >= first.cycleStart && cyc[i] <= first.cycleEnd && Number.isFinite(ce[i])) {
-      sum += ce[i];
-      n++;
-    }
-  }
-  return n > 0 ? sum / n : null;
 }
 
 /** 95th-percentile capacity — robust "what this cell can deliver" vs noisy end-of-test values. */
@@ -108,24 +79,12 @@ export function getAxisNumericValue(row: CellMetricRow, def: PCAxisDef): number 
     switch (def.scalar) {
       case 'ice':
         return row.iceScalar;
-      case 'formation_ce':
-        return valueFormationCe(row);
-      case 'ce_main':
-        return row.ceScalar;
-      case 'fade_rate':
-        return row.fadeRate;
-      case 'retention_end':
-        return row.retentionScalar;
       case 'capacity_end':
         return row.capacityScalar;
       case 'capacity_peak':
         return valuePeakCapacity(row);
       case 'cycle_count':
         return valueCycleCount(row);
-      case 'retention_mean_main':
-        return row.retentionMeanMain;
-      case 'ce_mean_main':
-        return row.ceMeanMain;
       default:
         return null;
     }
@@ -183,10 +142,11 @@ export function continuousNorm(v: number, vmin: number, vmax: number): number {
 /**
  * Default PC layout — a curated set of metrics that suit a parallel plot: a stable
  * per-cell *level* that (nearly) every cell has and that compares fairly. Inputs
- * (cathode/separator/spacer) plus peak capacity, ICE and capacity retention.
- * Trend/slope/sparse metrics (fade rate, cycle-life-80, CE drift, dQ/dV peak shift)
- * are deliberately NOT axes here — they are null-heavy or protocol-/length-sensitive
- * and mislead on a parallel plot. CE and other levels are opt-in via ADDABLE_AXES.
+ * (cathode/separator/spacer) plus peak capacity and ICE.
+ * Retention and CE are deliberately NOT axes (here or as opt-ins): without protocol
+ * segmentation their baseline / main-cycling window is undefined, so the values can
+ * exceed 100% and mislead. Trend/slope/sparse metrics (fade rate, cycle-life-80,
+ * CE drift, dQ/dV peak shift) are likewise excluded as unsuitable for a parallel plot.
  */
 export function defaultParallelCoordAxes(): PCAxisDef[] {
   return [
@@ -223,8 +183,6 @@ export function defaultParallelCoordAxes(): PCAxisDef[] {
       confKind: 'ce',
     },
     {
-      // Peak capacity replaces F.CE as a default: without protocol segments,
-      // formation CE degenerates to a constant 100 for every cell (proxy origin).
       id: 'cap_peak',
       kind: 'continuous',
       group: 'cycling',
@@ -232,23 +190,14 @@ export function defaultParallelCoordAxes(): PCAxisDef[] {
       label: 'Peak cap',
       confKind: 'none',
     },
-    {
-      id: 'ret_end',
-      kind: 'continuous',
-      group: 'summary',
-      scalar: 'retention_end',
-      label: 'Retention',
-      confKind: 'retention',
-    },
   ];
 }
 
-/** Opt-in axes beyond the default view. CE lives here (true value, may be blank for
- *  cells without charge data); fade/cycle-life/CE-drift/peak-shift are intentionally
- *  absent — they are unsuitable for a parallel plot. */
+/** Opt-in axes beyond the default view. Retention / CE / fade / cycle-life / CE-drift /
+ *  peak-shift are intentionally absent — without protocol segmentation they mislead,
+ *  and they are unsuitable for a parallel plot anyway. */
 const EXTRA_AXES: PCAxisDef[] = [
   { id: 'electrolyte', kind: 'categorical', group: 'input', catKey: 'electrolyte', label: 'Electrolyte', confKind: 'none' },
-  { id: 'ce_main', kind: 'continuous', group: 'cycling', scalar: 'ce_main', label: 'CE', confKind: 'ce' },
   { id: 'cycles', kind: 'continuous', group: 'cycling', scalar: 'cycle_count', label: 'Cycles', confKind: 'none' },
   { id: 'cap_end', kind: 'continuous', group: 'summary', scalar: 'capacity_end', label: 'End capacity', confKind: 'none' },
 ];

@@ -4,7 +4,7 @@
  * cohort mean / SD / CV and replicate-relative flags all live here.
  */
 import type { CellFlag, CellSummary, MetricDef } from './metrics';
-import { benjaminiHochberg, meanCI, modifiedZScores, OUTLIER_Z, welchT } from './stats';
+import { meanCI, modifiedZScores, OUTLIER_Z } from './stats';
 
 export type CondRow = {
   key: string;
@@ -179,38 +179,5 @@ export function computeFlaggedCells(conditions: CondRow[]): Map<string, CellFlag
   return flagMap;
 }
 
-export interface PairwiseVerdict {
-  aKey: string;
-  bKey: string;
-  /** BH-adjusted p-value; null when either cohort has n<2 for the metric. */
-  p: number | null;
-  /** Significant at the 5% FDR level (p_adj < 0.05). */
-  significant: boolean;
-}
-
-/**
- * Pairwise Welch's t-tests across a set of conditions on the active metric,
- * with Benjamini–Hochberg FDR correction over the whole comparison family
- * Answers "are these conditions actually distinguishable?".
- */
-export function pairwiseSignificance(
-  conditions: CondRow[],
-  metric: MetricDef,
-): PairwiseVerdict[] {
-  const vals = conditions.map((c) =>
-    c.cells.map((cell) => metric.value(cell)).filter((v): v is number => v != null && Number.isFinite(v)),
-  );
-  const pairs: { aKey: string; bKey: string; p: number | null }[] = [];
-  for (let i = 0; i < conditions.length; i++) {
-    for (let j = i + 1; j < conditions.length; j++) {
-      pairs.push({ aKey: conditions[i].key, bKey: conditions[j].key, p: welchT(vals[i], vals[j]).p });
-    }
-  }
-  const adj = benjaminiHochberg(pairs.map((pr) => pr.p));
-  return pairs.map((pr, k) => ({
-    aKey: pr.aKey,
-    bKey: pr.bKey,
-    p: adj[k],
-    significant: adj[k] != null && (adj[k] as number) < 0.05,
-  }));
-}
+// Pairwise significance (Welch's t + Benjamini–Hochberg) was removed along with
+// the "Compare pinned" panel. welchT / benjaminiHochberg remain in stats.ts.

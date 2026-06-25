@@ -11,7 +11,6 @@
  * mounted; it still consumes this registry for when it is re-enabled.
  */
 import type { RatePerfCell } from '@/lib/cellTypes';
-import { linregSlope } from './stats';
 
 export interface CellSummary {
   idNo: number;
@@ -98,7 +97,6 @@ export function summariseCell(raw: RatePerfCell): CellSummary {
   // steps in raw exports otherwise flood the median with garbage ratios.
   const ceFloor = (peakCapacityRaw ?? 0) * 0.05;
   const ceVals: number[] = [];
-  const ceSeries: { cycle: number; value: number }[] = [];
   for (let i = 0; i < cycles.length; i++) {
     const c = chg[i];
     const d = dch[i];
@@ -106,7 +104,6 @@ export function summariseCell(raw: RatePerfCell): CellSummary {
       const ce = (d / c) * 100;
       if (ce > 0 && ce < 150) {
         ceVals.push(ce);
-        ceSeries.push({ cycle: cycles[i], value: ce });
       }
     }
   }
@@ -115,46 +112,15 @@ export function summariseCell(raw: RatePerfCell): CellSummary {
 
   const hasProtocol = Boolean(raw.protocolSegments?.length || raw.protocol);
 
-  // Retention only means "degradation" once the cycle sequence is segmented;
-  // raw indices mix formation / rate-test / main-cycling steps.
-  const peakForRetention = peakOf(capacitySeries);
-  let retention: number | null = null;
-  if (peakForRetention && capacitySeries.length >= 5) {
-    const tail = capacitySeries.slice(-3).map((d) => d.value);
-    retention = (tail.reduce((a, b) => a + b, 0) / tail.length / peakForRetention) * 100;
-  }
-
-  // Fade rate: OLS slope of capacity vs cycle, expressed as % of peak lost per
-  // 100 cycles (positive = fading). Like retention, only clean once the cycle
-  // sequence is segmented — the metric is marked requiresProtocol so the UX
-  // gates it; we still compute it so the value is ready when protocols attach.
-  let fadeRatePctPer100: number | null = null;
-  if (peakForRetention && peakForRetention > 0 && capacitySeries.length >= 5) {
-    const slope = linregSlope(capacitySeries.map((s) => ({ x: s.cycle, y: s.value })));
-    if (slope != null) fadeRatePctPer100 = -(slope / peakForRetention) * 10000;
-  }
-
-  // CE drift: OLS slope of per-cycle CE, in percentage points per 100 cycles.
-  // 0 = stable; negative = declining efficiency (side reactions).
-  let ceTrendPctPer100: number | null = null;
-  if (ceSeries.length >= 5) {
-    const slope = linregSlope(ceSeries.map((s) => ({ x: s.cycle, y: s.value })));
-    if (slope != null) ceTrendPctPer100 = slope * 100;
-  }
-
-  // Cycle life: first cycle where capacity drops below 80% of peak (the
-  // universally-reported end-of-life threshold). Robust on noisy data — no
-  // curve fitting. Null if it never crosses or the series is too short.
-  let cycleLife80: number | null = null;
-  if (peakForRetention && peakForRetention > 0 && capacitySeries.length >= 5) {
-    const threshold = 0.8 * peakForRetention;
-    for (let i = 0; i + 1 < capacitySeries.length; i++) {
-      if (capacitySeries[i].value < threshold && capacitySeries[i + 1].value < threshold) {
-        cycleLife80 = capacitySeries[i].cycle;
-        break;
-      }
-    }
-  }
+  // Protocol-scoped retention / fade rate / cycle life / CE drift are not yet
+  // implemented. Computed over the full cycle series they mix formation,
+  // rate-test and main-cycling phases into a misleading number, so they stay
+  // null until segment-aware computation lands. The UI shows "coming soon" for
+  // these metrics once a protocol is attached.
+  const retention: number | null = null;
+  const fadeRatePctPer100: number | null = null;
+  const ceTrendPctPer100: number | null = null;
+  const cycleLife80: number | null = null;
 
   return {
     idNo: raw.idNo,

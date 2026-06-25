@@ -32,10 +32,14 @@ import { DEFAULT_RAMP_ID, RAMPS, type RampId } from './overview/colours';
 import { RampProvider } from './overview/RampContext';
 import RampPicker from './overview/RampPicker';
 import { summariesFromOverview } from './overview/aggregate';
-import { MAX_PINS, cellConditionKey, groupConditions } from './overview/conditions';
-import { MetricLockedNotice, MetricMassNotice, MetricUnavailableNotice } from './overview/shared';
+import { MAX_PINS, groupConditions } from './overview/conditions';
+import {
+  MetricComingSoonNotice,
+  MetricLockedNotice,
+  MetricMassNotice,
+  MetricUnavailableNotice,
+} from './overview/shared';
 import { FilterBreadcrumb } from './overview/FilterBreadcrumb';
-import { PairwiseCompare } from './overview/PairwiseCompare';
 import { useOverviewUrlState } from './overview/useOverviewUrlState';
 import { AttachProtocolButton, useAttachProtocol } from '@/features/protocol';
 import ConditionHeatmap from './overview/ConditionHeatmap';
@@ -135,6 +139,9 @@ export default function ProjectOverviewDashboard(props: ProjectOverviewDashboard
         ? summariesFromOverview(aggregate)
         : []
       : rawCells.map(summariseCell);
+    // Retention / fade rate / cycle life / CE drift are already null everywhere
+    // (segment-aware computation is not built yet), so there is nothing to gate
+    // per-cell. The lazy peak-shift scalars are merged in by cellId when present.
     if (!peakShiftByCellId.size) return base;
     return base.map((c) =>
       peakShiftByCellId.has(c.cellId) ? { ...c, peakShiftMv: peakShiftByCellId.get(c.cellId)! } : c,
@@ -159,9 +166,8 @@ export default function ProjectOverviewDashboard(props: ProjectOverviewDashboard
   // to every Master Plot view via the same `filtered` cohort.
   const [electrolyteFilter, setElectrolyteFilter] = useState('All');
   const [protocolFilter, setProtocolFilter] = useState('All');
-  // Pinned conditions for side-by-side comparison (capped at MAX_PINS).
+  // Pinned conditions, highlighted across the heatmap / ranking views (capped at MAX_PINS).
   const [pinnedKeys, setPinnedKeys] = useState<Set<string>>(new Set());
-  const [comparePinned, setComparePinned] = useState(false);
 
   const togglePin = useCallback((key: string) => {
     setPinnedKeys((prev) => {
@@ -248,13 +254,7 @@ export default function ProjectOverviewDashboard(props: ProjectOverviewDashboard
     ],
   );
 
-  // "Compare pinned" narrows every view to just the pinned conditions, held
-  // side-by-side as the user flips views.
-  const pinnedActive = comparePinned && pinnedKeys.size > 0;
-  const displayCells = useMemo(
-    () => (pinnedActive ? filtered.filter((c) => pinnedKeys.has(cellConditionKey(c))) : filtered),
-    [filtered, pinnedActive, pinnedKeys],
-  );
+  const displayCells = filtered;
 
   // The cell-level views (trajectories / inspector) need per-cycle data, so swap
   // in the full per-cell summary where the scoped payload has loaded it. On the
@@ -319,6 +319,10 @@ export default function ProjectOverviewDashboard(props: ProjectOverviewDashboard
   // surfaced like a protocol lock (icon + "needs cathode mass"), not bare "no data".
   const massMissing = summaries.length > 0 && specCoverage === 0;
   const protocolLocked = metric.requiresProtocol && protocolMissing;
+  // A protocol-requiring metric with a protocol attached: the segment-aware
+  // computation is not built yet, so the view shows "coming soon" rather than a
+  // misleading full-series figure.
+  const protocolComingSoon = metric.requiresProtocol && !protocolMissing;
   const massLocked = !!metric.requiresMass && massMissing;
   const metricLocked = protocolLocked || massLocked;
   // per-metric coverage over the whole project (not the filtered
@@ -485,6 +489,8 @@ export default function ProjectOverviewDashboard(props: ProjectOverviewDashboard
   // (peak-shift) its lazy scalars are still loading. Shared by the metric views.
   const metricNotice = protocolLocked ? (
     <MetricLockedNotice metric={metric} action={attachProtocolAction} />
+  ) : protocolComingSoon ? (
+    <MetricComingSoonNotice />
   ) : massLocked ? (
     <MetricMassNotice metric={metric} action={setMassAction} />
   ) : metricUnavailable ? (
@@ -587,11 +593,23 @@ export default function ProjectOverviewDashboard(props: ProjectOverviewDashboard
                 {METRICS.map((m) => {
                   const unavailable = summaries.length > 0 && !metricAvailable[m.id];
                   const protocolLock = m.requiresProtocol && protocolMissing;
+                  const protocolSoon = m.requiresProtocol && !protocolMissing;
                   const massLock = !!m.requiresMass && massMissing;
-                  // Locks read as "fixable, needs X"; only genuinely-empty metrics say "no data".
-                  const reason = massLock ? ' — needs mass' : unavailable ? ' — no data' : '';
+                  // requiresProtocol metrics are intentionally null (segment-aware
+                  // computation is "coming soon"), so they must stay SELECTABLE — that
+                  // is the only way to reach the attach-protocol notice (no protocol)
+                  // and the coming-soon notice (protocol attached). Only genuinely-empty
+                  // NON-protocol metrics are disabled / read "no data".
+                  const disabled = unavailable && !m.requiresProtocol;
+                  const reason = massLock
+                    ? ' — needs mass'
+                    : protocolSoon
+                      ? ' — coming soon'
+                      : disabled
+                        ? ' — no data'
+                        : '';
                   return (
-                    <SelectItem key={m.id} value={m.id} disabled={unavailable}>
+                    <SelectItem key={m.id} value={m.id} disabled={disabled}>
                       <span className="inline-flex items-center gap-1.5">
                         <span>
                           {m.label}
@@ -669,30 +687,12 @@ export default function ProjectOverviewDashboard(props: ProjectOverviewDashboard
           </span>
           <button
             type="button"
-            onClick={() => setComparePinned((v) => !v)}
-            className={`ml-auto rounded-md border px-2 py-0.5 ${
-              comparePinned
-                ? 'border-amber-600 bg-amber-600 text-white'
-                : 'border-amber-400 text-amber-700 hover:bg-amber-100 dark:text-amber-300 dark:hover:bg-amber-900'
-            }`}
-          >
-            {comparePinned ? 'Comparing pinned' : 'Compare pinned'}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setPinnedKeys(new Set());
-              setComparePinned(false);
-            }}
-            className="rounded-md border border-border px-2 py-0.5 text-muted-foreground hover:text-foreground"
+            onClick={() => setPinnedKeys(new Set())}
+            className="ml-auto rounded-md border border-border px-2 py-0.5 text-muted-foreground hover:text-foreground"
           >
             Clear pins
           </button>
         </div>
-      )}
-
-      {pinnedActive && !metricLocked && (
-        <PairwiseCompare conditions={conditions} metric={metric} />
       )}
 
       {/* Body */}
