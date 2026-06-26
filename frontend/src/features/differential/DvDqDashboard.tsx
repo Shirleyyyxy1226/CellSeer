@@ -14,7 +14,7 @@ import { buildCellEncodings, getCellEncoding } from '@/lib/cellColorScheme';
 import { Surface3dPlot } from './plots/Surface3dPlot';
 import { PeakAnalysisPlot } from './plots/PeakAnalysisPlot';
 import { EvolutionHeatmapPlot } from './plots/EvolutionHeatmapPlot';
-import { buildDvDqFigure, type Dataset } from 'cellseer-lib';
+import { buildDvDqFigure, type Dataset } from '@/charts';
 import { ResizableChartCard } from '@/components/ResizableChartCard';
 import { ChartEditPopover } from '@/components/ChartEditPopover';
 import { ChartLegend, type LegendItem } from '@/components/ChartLegend';

@@ -28,7 +28,7 @@ describe('buildDvDqFigure', () => {
     const fig = buildDvDqFigure(sampleDatasets(), { mode: '3d' });
     expect(fig.data).toHaveLength(2);
     expect(fig.data[0]?.type).toBe('scatter3d');
-    expect(fig.data[1]?.showlegend).toBe(true);
+    expect((fig.data[1] as Partial<Plotly.ScatterData>)?.showlegend).toBe(true);
     const scene = fig.layout.scene as Partial<Plotly.Layout['scene']>;
     expect(scene?.xaxis?.title).toMatchObject({ text: 'Capacity (mAh)' });
     expect(scene?.zaxis?.title).toMatchObject({ text: 'dV/dQ (V mAh⁻¹)' });
@@ -46,8 +46,8 @@ describe('buildDvDqFigure', () => {
     const baseline = fig.data.find((d) => d.type === 'scatter' && d.mode === 'lines' && d.name === 'Cell A Cycle 1');
     expect(baseline).toBeDefined();
     const line = fig.data.find((d) => d.type === 'scatter' && d.mode === 'lines' && d.name === 'Cell A');
-    expect(String(line?.hovertemplate)).toContain('Peak:');
-    expect(String(line?.hovertemplate)).toContain('Ah');
+    expect(String((line as Partial<Plotly.ScatterData> | undefined)?.hovertemplate)).toContain('Peak:');
+    expect(String((line as Partial<Plotly.ScatterData> | undefined)?.hovertemplate)).toContain('Ah');
     expect(fig.layout.xaxis?.title).toMatchObject({ text: 'Capacity (mAh)' });
     expect(fig.layout.yaxis?.title).toMatchObject({ text: 'dV/dQ (V mAh⁻¹)' });
   });
@@ -86,7 +86,7 @@ describe('buildDvDqFigure', () => {
     });
     const highlight = fig.data.find((d) => d.type === 'scatter' && d.mode === 'lines' && d.name === 'Cell A · Cycle 28');
     expect(highlight).toBeDefined();
-    expect(highlight?.y).toEqual([0.5, 0.9]);
+    expect((highlight as Partial<Plotly.ScatterData> | undefined)?.y).toEqual([0.5, 0.9]);
   });
 
   it('highlights nothing for a cell when the selected cycle is absent (no nearest fallback)', () => {

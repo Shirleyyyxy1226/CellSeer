@@ -28,7 +28,7 @@ describe('buildDqDvFigure', () => {
     const fig = buildDqDvFigure(sampleDatasets(), { mode: '3d' });
     expect(fig.data).toHaveLength(2);
     expect(fig.data[0]?.type).toBe('scatter3d');
-    expect(fig.data[1]?.showlegend).toBe(true);
+    expect((fig.data[1] as Partial<Plotly.ScatterData>)?.showlegend).toBe(true);
     const scene = fig.layout.scene as Partial<Plotly.Layout['scene']>;
     expect(scene?.xaxis?.range).toEqual([4.2, 4.0]);
   });
@@ -44,7 +44,7 @@ describe('buildDqDvFigure', () => {
     const baseline = fig.data.find((d) => d.type === 'scatter' && d.mode === 'lines' && d.name === 'Cell A Cycle 1');
     expect(baseline).toBeDefined();
     const line = fig.data.find((d) => d.type === 'scatter' && d.mode === 'lines' && d.name === 'Cell A');
-    expect(String(line?.hovertemplate)).toContain('Peak:');
+    expect(String((line as Partial<Plotly.ScatterData> | undefined)?.hovertemplate)).toContain('Peak:');
   });
 
   it('omits baseline trace when exact baseline cycle is missing', () => {
@@ -69,7 +69,7 @@ describe('buildDqDvFigure', () => {
     });
     const highlight = fig.data.find((d) => d.type === 'scatter' && d.mode === 'lines' && d.name === 'Cell A Cycle 28');
     expect(highlight).toBeDefined();
-    expect(highlight?.y).toEqual([0.5, 0.9]);
+    expect((highlight as Partial<Plotly.ScatterData> | undefined)?.y).toEqual([0.5, 0.9]);
   });
 
   it('highlights nothing for a cell when the selected cycle is absent (no nearest fallback)', () => {

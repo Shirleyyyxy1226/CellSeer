@@ -23,7 +23,7 @@ import {
   buildGcdCumulativeFigure,
   buildGcdFigure,
   type RecordDataset,
-} from 'cellseer-lib';
+} from '@/charts';
 import { RatePerformancePlot } from '../ratePerformance/plots/RatePerformancePlot';
 import { useGcdCellData, type VQCell } from './useGcdCellData';
 

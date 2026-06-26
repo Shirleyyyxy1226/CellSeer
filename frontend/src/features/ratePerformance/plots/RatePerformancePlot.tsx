@@ -4,7 +4,7 @@ import type { ExportContext } from '@/lib/exportUtils';
 import {
   buildRatePerformanceFigure,
   type RatePerfTraceSpec,
-} from 'cellseer-lib';
+} from '@/charts';
 import { buildTraces } from '@/lib/ratePerfAggregation';
 import { buildCellEncodings } from '@/lib/cellColorScheme';
 import type {

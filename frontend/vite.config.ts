@@ -42,7 +42,6 @@ export default defineConfig(() => ({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
-      "cellseer-lib": path.resolve(__dirname, "../packages/cellseer-lib/src"),
     },
   },
 }));
