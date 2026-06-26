@@ -10,10 +10,10 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote, urlparse
 
-from cellseer.analysis.metadata import CellMetadata
-from cellseer.cell import Cell
-from cellseer.db.sqlite_backend import SQLiteBackend
-from cellseer.ingest import ingest_cycling_file
+from compute.analysis.metadata import CellMetadata
+from compute.cell import Cell
+from compute.db.sqlite_backend import SQLiteBackend
+from compute.ingest import ingest_cycling_file
 from digibat.client import DigibatClient
 from digibat.config import DigibatConfig
 from digibat.models import CollectionSyncReport, DigibatSyncOptions, FileCandidate
@@ -682,7 +682,7 @@ def run_sync_cli(argv: list[str] | None = None) -> int:
         )
 
     if args.purge:
-        from cellseer.db.sqlite_backend import SQLiteBackend
+        from compute.db.sqlite_backend import SQLiteBackend
         db = SQLiteBackend(args.db_path).set_project_scope(options.project_id)
         conn = db._connect()
         try:

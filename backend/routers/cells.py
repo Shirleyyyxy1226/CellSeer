@@ -792,8 +792,8 @@ def _differential_on_the_fly(
     df = _prepare_cycling_df(row["storage_uri"])
     if not {"Cycle", "Current [A]", "Voltage [V]", "Capacity [Ah]"}.issubset(set(df.columns)):
         return {}
-    from cellseer.data.cycling_data import CyclingData
-    from cellseer.analysis.cycling.differentiation import dqdv as _dqdv, dvdq as _dvdq
+    from compute.data.cycling_data import CyclingData
+    from compute.analysis.cycling.differentiation import dqdv as _dqdv, dvdq as _dvdq
 
     kernel = _LEAN_KERNELS.get(kernel_pts)
     cycles: Dict[str, dict] = {}

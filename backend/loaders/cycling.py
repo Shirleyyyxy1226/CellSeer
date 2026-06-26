@@ -23,8 +23,8 @@ class CyclingFileLoader(BaseTestTypeLoader):
         update_progress: Callable[[int, str], None],
         ingest_options: Optional[dict[str, Any]] = None,
     ) -> dict:
-        from cellseer.db.sqlite_backend import SQLiteBackend
-        from cellseer.ingest import ingest_cycling_file
+        from compute.db.sqlite_backend import SQLiteBackend
+        from compute.ingest import ingest_cycling_file
 
         suffix = Path(filename).suffix.lower()
         stem = Path(filename).stem
