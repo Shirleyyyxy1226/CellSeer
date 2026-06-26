@@ -90,24 +90,7 @@ export default function ConditionHeatmap({
         variable = cond;
       }
     }
-    // Conditions whose 95% CI overlaps the leader's — i.e. not statistically
-    // ahead of them. A null CI (n<2) counts as overlapping (can't rule out).
-    let tiedWithBest: CondRow[] = [];
-    if (best) {
-      const bs = stats.get(best.key);
-      const bLo = bs?.mean != null ? bs.mean - (bs.ciHalf ?? 0) : null;
-      const bHi = bs?.mean != null ? bs.mean + (bs.ciHalf ?? 0) : null;
-      tiedWithBest = conditions.filter((cond) => {
-        if (cond.key === best!.key) return false;
-        const s = stats.get(cond.key);
-        if (!s || s.mean == null || s.n < 2) return false;
-        if (s.ciHalf == null || bLo == null || bHi == null) return true;
-        const lo = s.mean - s.ciHalf;
-        const hi = s.mean + s.ciHalf;
-        return lo <= bHi && bLo <= hi;
-      });
-    }
-    return { best, bestMean, variable, maxCv, tiedWithBest };
+    return { best, bestMean, variable, maxCv };
   }, [conditions, stats, metric]);
 
   if (!conditions.length) {
@@ -166,16 +149,16 @@ export default function ConditionHeatmap({
               <div className="mt-0.5 text-xs font-medium text-foreground">
                 {condLabel(highlights.best)}
               </div>
-              {highlights.tiedWithBest.length > 0 ? (
-                <div className="mt-0.5 text-[10px] text-amber-600" title="95% confidence intervals on the mean overlap — the ranking between these is within noise">
-                  not significantly ahead of {highlights.tiedWithBest.length} other
-                  {highlights.tiedWithBest.length > 1 ? 's' : ''} (CIs overlap)
-                </div>
-              ) : (
-                <div className="mt-0.5 text-[10px] text-emerald-600">
-                  clear of the rest (CI separated)
-                </div>
-              )}
+              {(() => {
+                const bs = stats.get(highlights.best!.key);
+                return (
+                  <div className="mt-0.5 text-[10px] text-muted-foreground">
+                    {highlights.bestMean != null && `mean ${metric.format(highlights.bestMean)}`}
+                    {bs?.sd != null && ` · SD ±${metric.format(bs.sd)}`}
+                    {bs?.n != null && ` · n=${bs.n}`}
+                  </div>
+                );
+              })()}
             </div>
           )}
           {highlights.variable && highlights.maxCv != null && (
@@ -186,6 +169,14 @@ export default function ConditionHeatmap({
               <div className="mt-0.5 text-xs font-medium text-foreground">
                 {condLabel(highlights.variable)}
               </div>
+              {(() => {
+                const vs = stats.get(highlights.variable!.key);
+                return vs?.sd != null && vs.mean != null ? (
+                  <div className="mt-0.5 text-[10px] text-muted-foreground">
+                    SD ±{metric.format(vs.sd)} · CV {highlights.maxCv.toFixed(1)}%
+                  </div>
+                ) : null;
+              })()}
             </div>
           )}
         </div>
@@ -281,13 +272,20 @@ export default function ConditionHeatmap({
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <span
-                          className="cursor-default rounded px-1.5 py-0.5 text-[11px] font-semibold leading-none tabular-nums"
+                          className="cursor-default rounded px-1.5 py-0.5 text-right tabular-nums"
                           style={{
                             backgroundColor: rampColourFrom(ramp, norm(stat.mean)),
                             color: rampTextFrom(ramp, norm(stat.mean)),
                           }}
                         >
-                          {metric.format(stat.mean)}
+                          <span className="block text-[11px] font-semibold leading-tight">
+                            {metric.format(stat.mean)}
+                          </span>
+                          {stat.sd != null && (
+                            <span className="block text-[9px] font-normal leading-tight opacity-75">
+                              ±{metric.format(stat.sd)}
+                            </span>
+                          )}
                         </span>
                       </TooltipTrigger>
                       <TooltipContent side="left">
