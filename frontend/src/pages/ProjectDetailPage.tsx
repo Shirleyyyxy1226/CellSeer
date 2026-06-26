@@ -427,7 +427,7 @@ export default function ProjectDetailPage() {
                 <UploadDropTile
                   title="Cycling data"
                   subtitle={`Accepts ${cyclingAccept} · multi-file`}
-                  hint="e.g. 1073_cycling.xlsx · CEL-100_data.csv (filename must contain the cell's ID No)"
+                  hint="e.g. 12_cycling.xlsx / CEL-12_data.csv (must include cell's ID No)"
                   accept={cyclingAccept}
                   multiple
                   status={cyclingUpload.status}
