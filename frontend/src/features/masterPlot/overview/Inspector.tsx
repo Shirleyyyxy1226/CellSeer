@@ -3,7 +3,7 @@
  * and trajectories views: capacity sparkline, protocol state, key stats, and
  * jump-to-detail-tab buttons.
  */
-import { ArrowRight, X } from 'lucide-react';
+import { ArrowRight, Lock, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { CellSummary } from './metrics';
 
@@ -33,14 +33,38 @@ function Sparkline({ series }: { series: { cycle: number; value: number }[] }) {
   );
 }
 
-function MiniStat({ label, value, unit }: { label: string; value: string; unit: string }) {
+function MiniStat({
+  label,
+  value,
+  unit,
+  locked = false,
+  lockReason,
+}: {
+  label: string;
+  value: string;
+  unit: string;
+  // When a protocol-gated metric has no value, render a lock + reason rather than
+  // a bare "—" (which reads as "no data" and silently fabricates an absence).
+  locked?: boolean;
+  lockReason?: string;
+}) {
   return (
-    <div className="bg-card px-2 py-1.5">
+    <div className="bg-card px-2 py-1.5" title={locked ? lockReason : undefined}>
       <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className="text-sm font-semibold">
-        {value}
-        {unit && <span className="ml-0.5 text-[10px] font-normal text-muted-foreground">{unit}</span>}
-      </p>
+      {locked ? (
+        <p
+          className="flex items-center gap-1 text-sm font-semibold text-muted-foreground"
+          aria-label={lockReason ?? `${label} locked`}
+        >
+          <Lock className="h-3 w-3" aria-hidden />
+          <span className="text-[10px] font-normal">Locked</span>
+        </p>
+      ) : (
+        <p className="text-sm font-semibold">
+          {value}
+          {unit && <span className="ml-0.5 text-[10px] font-normal text-muted-foreground">{unit}</span>}
+        </p>
+      )}
     </div>
   );
 }
@@ -115,7 +139,13 @@ export default function Inspector({
           }
           unit={cell.capacityBasis}
         />
-        <MiniStat label="Median CE" value={cell.medianCE != null ? cell.medianCE.toFixed(2) : '—'} unit="%" />
+        <MiniStat
+          label="Median CE"
+          value={cell.medianCE != null ? cell.medianCE.toFixed(2) : '—'}
+          unit="%"
+          locked={cell.medianCE == null}
+          lockReason="Segment-aware Median CE is not computed yet (future work). A protocol can be attached to the cell as metadata, but does not yet drive this metric."
+        />
         <MiniStat label="Cycles" value={String(cell.cycleCount)} unit="" />
       </div>
 
