@@ -121,7 +121,9 @@ class Cell(BaseModel):
         direction: str = "discharge",
         output_prefix: str = "",
         n_bins: int = 1000,
-        smooth_window: int = 21,
+        method: str = "lean",
+        lean_target_bins: int = 180,
+        lean_kernel: list[float] | None = None,
     ) -> "Cell":
         """
         Compute dQ/dV and dV/dQ from one direction of every cycle and store
@@ -135,9 +137,13 @@ class Cell(BaseModel):
         cycling_dataset : str
             Name of the CyclingData dataset to differentiate (default "cycling").
         n_bins : int
-            Number of uniform voltage/capacity bins per cycle.
-        smooth_window : int
-            Savitzky-Golay window size.
+            Number of uniform grid points for method="raw".
+        method : str
+            "lean" (default, PyProBE LEAN + bin protection) or "raw" (numpy.gradient).
+        lean_target_bins : int
+            Target number of voltage bins for the LEAN bin-protection step.
+        lean_kernel : list[float] | None
+            Optional LEAN smoothing kernel (defaults to a 5-point kernel).
         direction : str
             Either "discharge" or "charge".
         output_prefix : str
@@ -189,8 +195,10 @@ class Cell(BaseModel):
                     )
                     continue
 
-                r_dqdv = dqdv(trace, n_bins=n_bins, smooth_window=smooth_window)
-                r_dvdq = dvdq(trace, n_bins=n_bins, smooth_window=smooth_window)
+                r_dqdv = dqdv(trace, method=method, n_bins=n_bins,
+                              lean_target_bins=lean_target_bins, lean_kernel=lean_kernel)
+                r_dvdq = dvdq(trace, method=method, n_bins=n_bins,
+                              lean_target_bins=lean_target_bins, lean_kernel=lean_kernel)
 
                 dqdv_frames.append(r_dqdv.collect().with_columns(pl.lit(cyc).alias("Cycle")))
                 dvdq_frames.append(r_dvdq.collect().with_columns(pl.lit(cyc).alias("Cycle")))

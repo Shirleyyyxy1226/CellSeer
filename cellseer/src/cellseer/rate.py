@@ -44,8 +44,13 @@ def _cycle_capacity(
     chg = 0.0
     dchg = 0.0
     if i is not None and i.size == v.size:
-        chg_mask = i > 0
-        dchg_mask = i < 0
+        # Adaptive current deadband = |max current| / 1e4, matching the backend's
+        # CyclingData._current_threshold. Excludes near-zero rest current from
+        # both charge and discharge rather than a bare sign test at exactly 0.
+        max_i = float(np.abs(i).max()) if i.size else 0.0
+        thr = max_i / 1e4 if max_i else 1e-9
+        chg_mask = i > thr
+        dchg_mask = i < -thr
         if chg_mask.any():
             seg = q[chg_mask]
             chg = float(seg.max() - seg.min()) * 1000.0
