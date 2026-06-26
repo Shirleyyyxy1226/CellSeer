@@ -299,21 +299,19 @@ def ensure_project_exists(conn, project_id: str, name: Optional[str] = None) -> 
 
 _BUILTIN_PROTOCOL_TEMPLATES: list[dict] = [
     {
-        "id_suffix": "form3-1c",
-        "name": "FORM-3 | CYCLE-1C",
-        "description": "3 formation cycles @ C/10 followed by 1C main cycling.",
+        "id_suffix": "rate-test",
+        "name": "RATE TEST | FORM-3 + C/2 + 1C/2C/5C",
+        "description": (
+            "3 formation cycles @ C/10, C/2 main cycling, a 1C/2C/5C rate test, "
+            "then C/10 recovery."
+        ),
         "segments": [
             {"name": "formation", "cycleStart": 1, "cycleEnd": 3, "cRate": 0.1},
-            {"name": "main cycling", "cycleStart": 4, "cycleEnd": None, "cRate": 1.0},
-        ],
-    },
-    {
-        "id_suffix": "form5-05c",
-        "name": "FORM-5 | CYCLE-0.5C",
-        "description": "5 formation cycles @ C/10 followed by 0.5C main cycling.",
-        "segments": [
-            {"name": "formation", "cycleStart": 1, "cycleEnd": 5, "cRate": 0.1},
-            {"name": "main cycling", "cycleStart": 6, "cycleEnd": None, "cRate": 0.5},
+            {"name": "main cycling", "cycleStart": 4, "cycleEnd": 8, "cRate": 0.5},
+            {"name": "rate test (1C)", "cycleStart": 9, "cycleEnd": 13, "cRate": 1.0},
+            {"name": "rate test (2C)", "cycleStart": 14, "cycleEnd": 18, "cRate": 2.0},
+            {"name": "rate test (5C)", "cycleStart": 19, "cycleEnd": 23, "cRate": 5.0},
+            {"name": "recovery", "cycleStart": 24, "cycleEnd": 28, "cRate": 0.1},
         ],
     },
 ]
@@ -322,6 +320,16 @@ _BUILTIN_PROTOCOL_TEMPLATES: list[dict] = [
 def _seed_builtin_protocol_templates(conn, project_id: str) -> None:
     pid = normalize_project_id(project_id)
     try:
+        # Reconcile: drop builtin templates no longer defined (e.g. retired
+        # FORM-3 / FORM-5) so the picker matches _BUILTIN_PROTOCOL_TEMPLATES.
+        desired_ids = {f"builtin:{pid}:{t['id_suffix']}" for t in _BUILTIN_PROTOCOL_TEMPLATES}
+        stale = conn.execute(
+            "SELECT id FROM protocol_template WHERE project_id = %s AND is_builtin = 1",
+            (pid,),
+        ).fetchall()
+        for row in stale:
+            if row["id"] not in desired_ids:
+                conn.execute("DELETE FROM protocol_template WHERE id = %s", (row["id"],))
         for tmpl in _BUILTIN_PROTOCOL_TEMPLATES:
             tmpl_id = f"builtin:{pid}:{tmpl['id_suffix']}"
             existing = conn.execute(
