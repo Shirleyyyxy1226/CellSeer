@@ -4,6 +4,7 @@ import argparse
 import os
 import re
 import tempfile
+import time
 import uuid
 from pathlib import Path
 from typing import Any
@@ -33,6 +34,11 @@ from project_scope import ensure_project_exists, normalize_project_id
 
 
 SUPPORTED_CYCLING_EXTS = {".xlsx", ".xls", ".csv", ".mpt", ".mpr"}
+
+# Transient-failure retry for sync_collections. Total in-task attempts and the
+# linear backoff base (sleep = base * attempt, i.e. 2s, 4s between the 3 tries).
+_MAX_SYNC_ATTEMPTS = 3
+_RETRY_BACKOFF_SECONDS = 2.0
 
 
 def _strip_tags(text: str) -> str:
@@ -546,40 +552,73 @@ def sync_collections(
         conn.commit()
         conn.close()
 
+    # Bounded transient-failure retry. A network blip or DIGIBAT timeout part-way
+    # through a sync raises out of import_collection; re-running the whole loop is
+    # safe because import is incremental (version cache skips unchanged files and
+    # already-imported rows persist), so a retry resumes rather than re-downloading.
+    # The run row stays 'running' across attempts — status only flips to done/error
+    # once the outcome is final, so the UI never flickers to 'error' mid-retry.
+    # Does NOT cover a server restart/crash (the process is gone); the startup
+    # reaper marks those runs errored and the user re-triggers (also incremental).
     reports: list[dict[str, Any]] = []
-    totals = {
-        "metadataImported": 0,
-        "cyclingImported": 0,
-        "cyclingSkippedUnchanged": 0,
-        "cyclingSkippedNoCandidates": 0,
-        "failed": 0,
-    }
-    try:
-        for cid in options.collection_ids:
-            report = import_collection(
-                client=client,
-                collection_id=cid,
-                db_path=db_path,
-                options=options,
+    totals: dict[str, int] = {}
+    last_exc: Exception | None = None
+    for attempt in range(1, _MAX_SYNC_ATTEMPTS + 1):
+        reports = []
+        totals = {
+            "metadataImported": 0,
+            "cyclingImported": 0,
+            "cyclingSkippedUnchanged": 0,
+            "cyclingSkippedNoCandidates": 0,
+            "failed": 0,
+        }
+        try:
+            for cid in options.collection_ids:
+                report = import_collection(
+                    client=client,
+                    collection_id=cid,
+                    db_path=db_path,
+                    options=options,
+                )
+                reports.append(report)
+                totals["metadataImported"] += int(report.get("metadataImported", 0))
+                totals["cyclingImported"] += int(report.get("cyclingImported", 0))
+                totals["cyclingSkippedUnchanged"] += int(report.get("cyclingSkippedUnchanged", 0))
+                totals["cyclingSkippedNoCandidates"] += int(report.get("cyclingSkippedNoCandidates", 0))
+                totals["failed"] += len(report.get("cyclingMissingOrFailed", []))
+
+            conn = db._connect()
+            finish_sync_run(conn, run_id, "done", totals={"reports": reports, "totals": totals})
+            conn.commit()
+            conn.close()
+            return {"runId": run_id, "reports": reports, "totals": totals}
+        except Exception as exc:
+            last_exc = exc
+            if attempt < _MAX_SYNC_ATTEMPTS:
+                if options.verbose:
+                    print(
+                        f"[digibat] sync attempt {attempt}/{_MAX_SYNC_ATTEMPTS} failed: {exc}. "
+                        f"retrying in {_RETRY_BACKOFF_SECONDS * attempt}s",
+                        flush=True,
+                    )
+                time.sleep(_RETRY_BACKOFF_SECONDS * attempt)
+                continue
+            conn = db._connect()
+            finish_sync_run(
+                conn,
+                run_id,
+                "error",
+                totals={"reports": reports, "totals": totals},
+                error_message=f"{exc} (failed after {attempt} attempts)",
             )
-            reports.append(report)
-            totals["metadataImported"] += int(report.get("metadataImported", 0))
-            totals["cyclingImported"] += int(report.get("cyclingImported", 0))
-            totals["cyclingSkippedUnchanged"] += int(report.get("cyclingSkippedUnchanged", 0))
-            totals["cyclingSkippedNoCandidates"] += int(report.get("cyclingSkippedNoCandidates", 0))
-            totals["failed"] += len(report.get("cyclingMissingOrFailed", []))
+            conn.commit()
+            conn.close()
+            raise
 
-        conn = db._connect()
-        finish_sync_run(conn, run_id, "done", totals={"reports": reports, "totals": totals})
-        conn.commit()
-        conn.close()
-    except Exception as exc:
-        conn = db._connect()
-        finish_sync_run(conn, run_id, "error", totals={"reports": reports, "totals": totals}, error_message=str(exc))
-        conn.commit()
-        conn.close()
-        raise
-
+    # Unreachable (loop either returns on success or raises on final failure), but
+    # keeps type-checkers happy about last_exc.
+    if last_exc is not None:
+        raise last_exc
     return {"runId": run_id, "reports": reports, "totals": totals}
 
 
