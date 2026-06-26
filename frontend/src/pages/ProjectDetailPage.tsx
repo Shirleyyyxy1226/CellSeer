@@ -34,6 +34,7 @@ type CellRow = IndexCell;
 function UploadDropTile(props: {
   title: string;
   subtitle: string;
+  hint?: string;
   accept: string;
   multiple?: boolean;
   status: 'idle' | 'uploading' | 'processing' | 'done' | 'error';
@@ -45,6 +46,7 @@ function UploadDropTile(props: {
   const {
     title,
     subtitle,
+    hint,
     accept,
     multiple = false,
     status,
@@ -72,6 +74,9 @@ function UploadDropTile(props: {
       <span className="flex-1 min-w-0">
         <span className="block text-[12.5px] font-semibold text-foreground leading-tight">{title}</span>
         <span className="block text-[10.5px] text-muted-foreground truncate">{subtitle}</span>
+        {hint && !note && (
+          <span className="block text-[10px] text-muted-foreground/70 italic truncate">{hint}</span>
+        )}
         {note && (
           <span className={`mt-0.5 block text-[10px] ${noteTone}`}>{note}</span>
         )}
@@ -422,6 +427,7 @@ export default function ProjectDetailPage() {
                 <UploadDropTile
                   title="Cycling data"
                   subtitle={`Accepts ${cyclingAccept} · multi-file`}
+                  hint="e.g. 1073_cycling.xlsx · CEL-100_data.csv (filename must contain the cell's ID No)"
                   accept={cyclingAccept}
                   multiple
                   status={cyclingUpload.status}
