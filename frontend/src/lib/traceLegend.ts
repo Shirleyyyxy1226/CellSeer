@@ -9,7 +9,7 @@
  */
 
 import type { LegendItem } from '@/components/ChartLegend';
-import type { LineDash, MarkerSymbol } from 'cellseer-lib';
+import type { LineDash, MarkerSymbol } from '@/charts';
 
 interface MinimalTrace {
   name?: string;

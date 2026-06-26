@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import PlotlyChart from '@/components/PlotlyChart';
-import { buildVoltageTimeFigure, type RecordDataset } from 'cellseer-lib';
+import { buildVoltageTimeFigure, type RecordDataset } from '@/charts';
 import type { ExportContext } from '@/lib/exportUtils';
 import { tracesToLegendItems } from '@/lib/traceLegend';
 import type { LegendItem } from '@/components/ChartLegend';

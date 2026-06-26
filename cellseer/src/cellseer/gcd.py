@@ -31,8 +31,9 @@ def _split_by_current(
             charge.append((q_val, float(vv)))
         elif i[j] > 0:
             charge.append((q_val, float(vv)))
-        else:
+        elif i[j] < 0:
             discharge.append((q_val, float(vv)))
+        # i[j] == 0: rest step — skip
     return charge, discharge
 
 

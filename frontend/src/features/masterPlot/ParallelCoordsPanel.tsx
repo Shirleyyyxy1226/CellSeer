@@ -42,7 +42,7 @@ import {
 } from '@/lib/parallelCoordsConfig';
 
 function axisUsesPercentTicks(ax: PCAxisDef): boolean {
-  if (ax.kind === 'per_cycle') return ax.metric === 'retention' || ax.metric === 'ce';
+  if (ax.kind === 'per_cycle') return ax.metric === 'ce';
   if (ax.kind !== 'continuous') return false;
   return ax.scalar === 'ice';
 }

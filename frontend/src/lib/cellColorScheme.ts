@@ -1,4 +1,4 @@
-import type { CellEncoding, LineDash, MarkerSymbol } from 'cellseer-lib';
+import type { CellEncoding, LineDash, MarkerSymbol } from '@/charts';
 
 /**
  * cellColorScheme.ts — single source of truth for cell identity colours.

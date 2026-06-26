@@ -48,6 +48,8 @@ export interface CellSummary {
   /** Per-cycle capacity for the inspector sparkline (specific when available, else raw). */
   capacitySeries: { cycle: number; value: number }[];
   capacityBasis: 'mAh/g' | 'mAh';
+  /** Per-cycle Coulombic efficiency (%) for the trajectories CE view. */
+  ceSeries: { cycle: number; value: number }[];
 }
 
 export function percentile(sorted: number[], p: number): number {
@@ -81,6 +83,25 @@ export function capacitySeriesForCell(raw: RatePerfCell): {
   // fall back to raw mAh so every cell still gets a sparkline.
   if (specSeries.length) return { series: specSeries, basis: 'mAh/g' };
   return { series: seriesFrom(cycles, raw.dischargeCapacityMah ?? []), basis: 'mAh' };
+}
+
+/** Per-cycle Coulombic efficiency (%) = discharge/charge, unclamped. Empty when
+ *  the cell has no aligned charge capacity. Note: noisy/phase-mixed cycles can
+ *  spike past 100% — this is a raw per-cycle curve, not a protocol-gated scalar. */
+export function ceSeriesForCell(raw: RatePerfCell): { cycle: number; value: number }[] {
+  const cycles = raw.cycles ?? [];
+  const ch = raw.chargeCapacityMah ?? [];
+  const dch = raw.dischargeCapacityMah ?? [];
+  if (!dch.length || ch.length !== dch.length) return [];
+  const out: { cycle: number; value: number }[] = [];
+  for (let i = 0; i < cycles.length; i++) {
+    const c = ch[i];
+    const d = dch[i];
+    if (c == null || d == null || c <= 1e-9) continue;
+    const ce = (d / c) * 100;
+    if (Number.isFinite(ce) && ce > 0) out.push({ cycle: cycles[i], value: ce });
+  }
+  return out;
 }
 
 export interface MetricDef {
@@ -193,7 +214,13 @@ export const METRICS: MetricDef[] = [
     id: 'dqdv-peak-shift',
     label: 'dQ/dV peak shift',
     unit: 'mV',
-    requiresProtocol: false,
+    // Shelved (2026-06-26): peakShiftMv is null at source. The previous metric
+    // compared early/late cycles blind to C-rate, but ICA peaks shift with C-rate,
+    // not only ageing (many cells here are rate tests). A correct version needs
+    // same-C-rate windows, which needs protocol segmentation — so it is
+    // protocol-gated like CE/retention (lock → "coming soon"). See
+    // docs/PEAK_DETECTION_RESEARCH.md.
+    requiresProtocol: true,
     higherIsBetter: true, // score overrides: a stable peak (≈0 shift) is best
     value: (c) => c.peakShiftMv,
     format: (v) => (v >= 0 ? `+${v.toFixed(0)}` : v.toFixed(0)),

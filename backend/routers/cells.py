@@ -3,11 +3,10 @@
 import json
 import math
 import re
-import sqlite3
 import threading
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import polars as pl
 from fastapi import APIRouter, HTTPException
@@ -36,10 +35,10 @@ def _cell_number_token(cell_id: str | None) -> int | None:
         return None
 
 
-def _dedupe_index_rows(rows: list[sqlite3.Row]) -> list[sqlite3.Row]:
-    out: dict[object, sqlite3.Row] = {}
+def _dedupe_index_rows(rows: list[dict]) -> list[dict]:
+    out: dict[object, dict] = {}
 
-    def score(r: sqlite3.Row) -> tuple[int, int]:
+    def score(r: dict) -> tuple[int, int]:
         has_id_no = 1 if r["id_no"] is not None else 0
         prefixed = 1 if (r["cell_id"] and str(r["cell_id"]).upper().startswith("P")) else 0
         return (has_id_no, prefixed)
@@ -82,7 +81,8 @@ def _get_cell_record_index(project_id: str) -> dict:
         with get_db() as conn:
             rows = conn.execute(
                 """
-                SELECT c.rowid AS _rowid, c.id_no, c.cell_id, c.batch, c.category, c.repeat,
+                SELECT ROW_NUMBER() OVER (ORDER BY c.cell_id) AS _rowid,
+                       c.id_no, c.cell_id, c.batch, c.category, c.repeat,
                        c.cathode, c.cathode_diameter_mm, c.cathode_mass,
                        c.anode, c.anode_diameter_mm, c.anode_mass, c.np_ratio,
                        c.separator_type, c.separator_diameter_mm,
@@ -110,7 +110,7 @@ def _get_cell_record_index(project_id: str) -> dict:
                 """,
                 (project_id,),
             ).fetchall()
-    except sqlite3.OperationalError:
+    except Exception:
         # DB-only mode: if DB schema isn't initialised, return empty index (no JSON fallback).
         return {"cells": []}
     rows = _dedupe_index_rows(rows)
@@ -345,7 +345,14 @@ def _cycle_capacity_summary(cycling_uri: str) -> tuple[list[int], list[float], l
         df = _prepare_cycling_df(cycling_uri)
         required = {"Cycle", "Current [A]", "Capacity [Ah]"}
         if required.issubset(set(df.columns)):
-            thr = 1e-9
+            # Adaptive current deadband = |max current| / 1e4, matching the
+            # canonical CyclingData._current_threshold (cycling_data.py:76-79)
+            # used by cycle_summary and the dQ/dV direction split. A fixed 1e-9
+            # previously diverged here (see docs/BACKEND_COMPUTATION_REFERENCE.md
+            # §G1) so the rate plot classified near-zero-current points
+            # differently from the rest of the app.
+            max_i = df.select(pl.col("Current [A]").abs().max()).item()
+            thr = (float(max_i) / 1e4) if max_i else 1e-9
             summary = (
                 df.with_columns([
                     pl.when(pl.col("Current [A]") > thr).then(pl.col("Capacity [Ah]")).otherwise(None).alias("_chg"),
@@ -384,7 +391,7 @@ def _cycle_capacity_summary(cycling_uri: str) -> tuple[list[int], list[float], l
     return result
 
 
-def _build_rate_payload_for_cell(row: sqlite3.Row) -> dict | None:
+def _build_rate_payload_for_cell(row: dict) -> dict | None:
     id_no = _safe_int(row["id_no"])
     if id_no is None:
         return None
@@ -452,7 +459,7 @@ def _build_rate_payload_for_cell(row: sqlite3.Row) -> dict | None:
 
 
 def _parse_cell_level_protocol(
-    row: sqlite3.Row,
+    row: dict,
 ) -> tuple[str | None, list[dict], dict[int, float]]:
     """Materialise the ``cell.protocol_segments`` blob into the same shape
     that :func:`_parse_protocol_meta` returns: a display label, the cleaned
@@ -524,7 +531,7 @@ def _load_rate_cells_uncached(project_id: str) -> tuple[list[dict], list[str]]:
                 """,
                 (project_id,),
             ).fetchall()
-    except sqlite3.OperationalError:
+    except Exception:
         return ([], [])
 
     # Parquet reads dominate the cold build and release the GIL inside polars —
@@ -581,7 +588,7 @@ def _rate_cells_fingerprint(project_id: str) -> tuple | None:
                 (project_id,),
             ).fetchone()
         return (tuple(ds), tuple(cell))
-    except sqlite3.OperationalError:
+    except Exception:
         return None
 
 
@@ -760,14 +767,70 @@ def differential_cells(projectId: str | None = None, direction: str = "discharge
     return {"cellIds": cell_ids}
 
 
+# The stored dQ/dV parquet is precomputed at these defaults; any other combination
+# from the "Adjust smoothing" panel is recomputed on the fly from raw cycling data.
+_DEFAULT_DIFF = ("lean", 180, 5)
+_LEAN_KERNELS = {
+    3: [0.25, 0.5, 0.25],
+    5: [0.0668, 0.2417, 0.3830, 0.2417, 0.0668],
+    7: [0.1059, 0.121, 0.1745, 0.1972, 0.1745, 0.121, 0.1059],
+}
+
+
+def _differential_on_the_fly(
+    project_id: str, cell_id: str, direction: str, method: str, target_bins: int, kernel_pts: int
+) -> Dict[str, dict]:
+    """Recompute dQ/dV & dV/dQ for one cell with custom method/params from raw cycling."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT storage_uri FROM dataset WHERE project_id = ? AND cell_id = ? "
+            "AND name = 'cycling' AND deleted_at IS NULL",
+            (project_id, cell_id),
+        ).fetchone()
+    if not row or not row["storage_uri"]:
+        return {}
+    df = _prepare_cycling_df(row["storage_uri"])
+    if not {"Cycle", "Current [A]", "Voltage [V]", "Capacity [Ah]"}.issubset(set(df.columns)):
+        return {}
+    from compute.data.cycling_data import CyclingData
+    from compute.analysis.cycling.differentiation import dqdv as _dqdv, dvdq as _dvdq
+
+    kernel = _LEAN_KERNELS.get(kernel_pts)
+    cycles: Dict[str, dict] = {}
+    for cyc_val in sorted(df["Cycle"].unique().to_list()):
+        cd = CyclingData(lf=df.filter(pl.col("Cycle") == cyc_val).lazy(), info={})
+        trace = cd.discharge() if direction == "discharge" else cd.charge()
+        try:
+            rq = _dqdv(trace, method=method, lean_target_bins=target_bins, lean_kernel=kernel).data
+            rv = _dvdq(trace, method=method, lean_target_bins=target_bins, lean_kernel=kernel).data
+        except Exception:
+            continue
+        cycles[str(int(cyc_val))] = {
+            "dqdv": {"v": rq["Voltage [V]"].to_list(), "dqdv": rq["dQ/dV [Ah/V]"].to_list()},
+            "dvdq": {"q": rv["Capacity [Ah]"].to_list(), "dvdq": rv["dV/dQ [V/Ah]"].to_list()},
+        }
+    return cycles
+
+
 @router.get("/api/cell-record/{cell_id:path}/differential")
-def differential(cell_id: str, projectId: str | None = None, direction: str = "discharge"):
-    """Pre-computed dQ/dV and dV/dQ for one cell, read from dataset storage paths."""
+def differential(
+    cell_id: str,
+    projectId: str | None = None,
+    direction: str = "discharge",
+    method: str = "lean",
+    targetBins: int = 180,
+    kernel: int = 5,
+):
+    """dQ/dV and dV/dQ for one cell. Default smoothing reads the precomputed parquet;
+    custom params (the "Adjust smoothing" panel) recompute on the fly."""
     direction = (direction or "discharge").strip().lower()
     if direction not in {"discharge", "charge"}:
         raise HTTPException(status_code=400, detail="direction must be 'discharge' or 'charge'")
     if not cell_id:
         raise HTTPException(status_code=400, detail="cell_id is required")
+    method = (method or "lean").strip().lower()
+    if method not in {"lean", "raw"}:
+        raise HTTPException(status_code=400, detail="method must be 'lean' or 'raw'")
 
     project_id = normalize_project_id(projectId)
     with get_db() as conn:
@@ -777,6 +840,15 @@ def differential(cell_id: str, projectId: str | None = None, direction: str = "d
             (project_id, cell_id),
             f"Cell {cell_id!r} not found",
         )
+
+        if (method, targetBins, kernel) != _DEFAULT_DIFF:
+            otf_key = ("differential-otf", project_id, cell_id, direction, method, targetBins, kernel)
+            cached = _curve_cache_get(otf_key)
+            if cached is None:
+                cached = _differential_on_the_fly(project_id, cell_id, direction, method, targetBins, kernel)
+                _curve_cache_put(otf_key, cached)
+            return {"cellId": cell_id, "direction": direction, "cycles": cached}
+
         dqdv_name = f"{direction}_dqdv"
         dvdq_name = f"{direction}_dvdq"
         dqdv_row = conn.execute(
@@ -1180,7 +1252,7 @@ def _synth_protocol_name(segments: list[dict]) -> str:
 
 
 def _write_cell_protocol(
-    conn: sqlite3.Connection,
+    conn: Any,
     project_id: str,
     cell_id: str,
     segments_json: str,

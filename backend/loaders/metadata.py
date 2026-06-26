@@ -23,9 +23,8 @@ class MetadataLoader(BaseTestTypeLoader):
         update_progress: Callable[[int, str], None],
         ingest_options: Optional[dict[str, Any]] = None,
     ) -> dict:
-        from config import DB_PATH
-        from cellseer.db.sqlite_backend import SQLiteBackend
-        from cellseer.ingest import ingest_metadata
+        from compute.db.sqlite_backend import SQLiteBackend
+        from compute.ingest import ingest_metadata
 
         suffix = Path(filename).suffix.lower()
         update_progress(5, "Inspecting metadata columns...")
@@ -33,7 +32,7 @@ class MetadataLoader(BaseTestTypeLoader):
             tmp.write(file_bytes)
             tmp_path = tmp.name
         try:
-            db = SQLiteBackend(DB_PATH)
+            db = SQLiteBackend(None)
             update_progress(15, "Reading workbook...")
             options = ingest_options or {}
             project_id = options.get("projectId")
@@ -74,7 +73,7 @@ class MetadataLoader(BaseTestTypeLoader):
             os.unlink(tmp_path)
 
     def inspect(self, file_bytes: bytes, filename: str) -> dict:
-        from cellseer.ingest import inspect_metadata_file
+        from compute.ingest import inspect_metadata_file
 
         suffix = Path(filename).suffix.lower()
         with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:

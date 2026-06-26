@@ -9,7 +9,7 @@ export type PCAxisGroup = 'input' | 'formation' | 'cycling' | 'summary';
 
 export type PCAxisKind = 'categorical' | 'continuous' | 'per_cycle';
 
-export type PCMetricKey = 'retention' | 'ce' | 'capacity';
+export type PCMetricKey = 'ce' | 'capacity';
 
 export interface PCAxisCategorical {
   id: string;
@@ -17,8 +17,8 @@ export interface PCAxisCategorical {
   group: PCAxisGroup;
   catKey: DimKey;
   label: string;
-  /** Confidence: retention=1, CE=2, generic=3 */
-  confKind?: 'retention' | 'ce' | 'none';
+  /** Confidence: CE=2, generic=3 */
+  confKind?: 'ce' | 'none';
 }
 
 export interface PCAxisContinuous {
@@ -27,7 +27,7 @@ export interface PCAxisContinuous {
   group: PCAxisGroup;
   scalar: 'ice' | 'capacity_end' | 'capacity_peak' | 'cycle_count';
   label: string;
-  confKind?: 'retention' | 'ce' | 'none';
+  confKind?: 'ce' | 'none';
 }
 
 export interface PCAxisPerCycle {
@@ -38,7 +38,7 @@ export interface PCAxisPerCycle {
   /** Instrument cycle number (must exist in row.cycles for a cell to have a value). */
   cycle: number;
   label: string;
-  confKind?: 'retention' | 'ce' | 'none';
+  confKind?: 'ce' | 'none';
 }
 
 export type PCAxisDef = PCAxisCategorical | PCAxisContinuous | PCAxisPerCycle;
@@ -92,8 +92,6 @@ export function getAxisNumericValue(row: CellMetricRow, def: PCAxisDef): number 
   const ix = cycleIndexFor(row, def.cycle);
   if (ix < 0) return null;
   switch (def.metric) {
-    case 'retention':
-      return row.retentionSeries[ix] ?? null;
     case 'ce':
       return row.ceSeries[ix] ?? null;
     case 'capacity':
@@ -142,7 +140,7 @@ export function continuousNorm(v: number, vmin: number, vmax: number): number {
 /**
  * Default PC layout — a curated set of metrics that suit a parallel plot: a stable
  * per-cell *level* that (nearly) every cell has and that compares fairly. Inputs
- * (cathode/separator/spacer) plus peak capacity and ICE.
+ * (cathode/separator/spacer) plus cycle count and end capacity.
  * Retention and CE are deliberately NOT axes (here or as opt-ins): without protocol
  * segmentation their baseline / main-cycling window is undefined, so the values can
  * exceed 100% and mislead. The dQ/dV peak-shift metric is likewise excluded as
@@ -175,19 +173,19 @@ export function defaultParallelCoordAxes(): PCAxisDef[] {
       confKind: 'none',
     },
     {
-      id: 'ice',
-      kind: 'continuous',
-      group: 'formation',
-      scalar: 'ice',
-      label: 'ICE',
-      confKind: 'ce',
-    },
-    {
-      id: 'cap_peak',
+      id: 'cycles',
       kind: 'continuous',
       group: 'cycling',
-      scalar: 'capacity_peak',
-      label: 'Peak cap',
+      scalar: 'cycle_count',
+      label: 'Cycles',
+      confKind: 'none',
+    },
+    {
+      id: 'cap_end',
+      kind: 'continuous',
+      group: 'summary',
+      scalar: 'capacity_end',
+      label: 'End capacity',
       confKind: 'none',
     },
   ];
@@ -198,8 +196,8 @@ export function defaultParallelCoordAxes(): PCAxisDef[] {
  *  and they are unsuitable for a parallel plot anyway. */
 const EXTRA_AXES: PCAxisDef[] = [
   { id: 'electrolyte', kind: 'categorical', group: 'input', catKey: 'electrolyte', label: 'Electrolyte', confKind: 'none' },
-  { id: 'cycles', kind: 'continuous', group: 'cycling', scalar: 'cycle_count', label: 'Cycles', confKind: 'none' },
-  { id: 'cap_end', kind: 'continuous', group: 'summary', scalar: 'capacity_end', label: 'End capacity', confKind: 'none' },
+  { id: 'ice', kind: 'continuous', group: 'formation', scalar: 'ice', label: 'ICE', confKind: 'ce' },
+  { id: 'cap_peak', kind: 'continuous', group: 'cycling', scalar: 'capacity_peak', label: 'Peak cap', confKind: 'none' },
 ];
 
 /**

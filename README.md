@@ -20,11 +20,11 @@ Built for material scientists, lab managers, and battery researchers. Grew out o
 - **Hierarchy tree**: filter cells by metadata dimensions (cathode, anode, electrolyte, separator, spacer)
 - **Master Plot**: campaign overview with condition heatmap, ranking, trajectories, parallel coordinates, and a per-cell inspector
 - **GCD plot**: galvanostatic charge/discharge curves (V vs Q)
-- **dQ/dV & dV/dQ**: 3D differential capacity and voltage plots with peak analysis
-- **Rate performance**: capacity vs cycle across C-rates
+- **dQ/dV & dV/dQ**: differential capacity & voltage (3D / 2D) via the noise-robust LEAN method, with an adjustable-smoothing panel and peak analysis
+- **Rate performance**: capacity vs cycle across C-rates, with an optional per-cell Coulombic-efficiency overlay
 - **Protocol attachment**: attach cycle-range / C-rate segments to cells (protocol-scoped retention and fade are planned, not yet computed)
 - **File upload & ingest**: metadata spreadsheets and cycler files (Neware, BioLogic, Arbin via [PyProBE](https://github.com/uk-amrc/PyProBE))
-- **DIGIBAT sync**: mirror Imperial DataLab collections to local SQLite + Parquet for offline dashboards
+- **DIGIBAT sync**: mirror Imperial DataLab collections to local PostgreSQL + Parquet for offline dashboards
 - **Annotations**: per-cell notes and tags
 - **Shareable views**: dashboard tab and filter state live in the URL
 
@@ -32,10 +32,9 @@ Built for material scientists, lab managers, and battery researchers. Grew out o
 
 | Layer | Technology | Role |
 |-------|------------|------|
-| **Frontend** | React 18, TypeScript, Vite, TanStack Query, Plotly, shadcn/ui | SPA dashboards, shared selection state, REST client |
-| **Backend** | FastAPI, SQLite, Parquet data lake, orjson | REST API, ingest, caching, DIGIBAT sync; serves built SPA in production |
+| **Frontend** | React 18, TypeScript, Vite, TanStack Query, Plotly, shadcn/ui | SPA dashboards, shared selection state, REST client; framework-free Plotly figure builders in `src/charts/` |
+| **Backend** | FastAPI, PostgreSQL, Parquet data lake, orjson | REST API, ingest, caching, DIGIBAT sync; serves built SPA in production |
 | **[`cellseer`](cellseer/)** | Python, Plotly, optional PyProBE | Standalone plotting library for notebooks and scripts |
-| **[`cellseer-lib`](packages/cellseer-lib/)** | TypeScript (framework-free) | Plotly figure builders used by React dashboards |
 
 ## Getting Started
 
@@ -50,6 +49,10 @@ Built for material scientists, lab managers, and battery researchers. Grew out o
 From the repository root:
 
 ```bash
+# 0. PostgreSQL (skip if you already have one running)
+POSTGRES_PASSWORD=dev docker compose up -d db
+export CELLSEER_DATABASE_URL="postgresql://cellseer:dev@localhost/cellseer"
+
 # 1. Python environment
 python3 -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
@@ -58,6 +61,8 @@ pip install -r backend/requirements.txt
 # 2. Frontend dependencies
 cd frontend && npm install && cd ..
 ```
+
+The schema is created automatically on first backend startup.
 
 **Terminal 1 (backend)** (port 8000):
 
@@ -85,7 +90,7 @@ A typical workflow:
 
 1. **Create a project** on the home page (or open an existing one).
 2. **Ingest data**: upload a metadata spreadsheet and cycler files, or sync from DIGIBAT.
-3. **Wait for readiness**: the project detail page shows ingest progress; cycling data lands as Parquet in `data_lake/` with metadata in SQLite.
+3. **Wait for readiness**: the project detail page shows ingest progress; cycling data lands as Parquet in `data_lake/` with metadata in PostgreSQL.
 4. **Open the dashboard** at `/projects/:projectId/dashboard`.
 5. **Explore**: start with the Hierarchy Tree or Master Plot for campaign-level views; select cells and drill into GCD, dQ/dV, dV/dQ, or Rate Performance tabs.
 6. **Attach protocols** (optional): record the cycle-range / C-rate segmentation for cells whose cycle indices mix formation, rate tests, and main cycling. Protocol-scoped retention and fade metrics are planned but not yet computed.
@@ -99,7 +104,7 @@ The interactive API reference is available at [http://localhost:8000/docs](http:
 <details>
 <summary><strong>Optional: DIGIBAT sync</strong></summary>
 
-CellSeer can mirror DIGIBAT collections into local SQLite + Parquet so dashboards work offline.
+CellSeer can mirror DIGIBAT collections into local PostgreSQL + Parquet so dashboards work offline.
 
 Add credentials to `backend/.env`:
 
@@ -115,7 +120,6 @@ CLI sync:
 python backend/scripts/sync_digibat.py \
   --project "your-project-name" \
   --collections "collection-id-1,collection-id-2" \
-  --db-path "backend/cellseer.db" \
   --data-lake-dir "data_lake"
 ```
 
@@ -124,17 +128,17 @@ Useful flags: `--dry-run`, `--full-resync`, `--no-cycling`, `--max-items N`, `--
 </details>
 
 <details>
-<summary><strong>Optional: custom database paths</strong></summary>
+<summary><strong>Optional: database & data-lake location</strong></summary>
 
-By default the backend uses `backend/cellseer.db` and `data_lake/`. Override with:
+The backend connects to PostgreSQL via `CELLSEER_DATABASE_URL` and stores Parquet under `data_lake/`. Override with:
 
 ```bash
-export CELLSEER_DB_PATH="/path/to/your.db"
+export CELLSEER_DATABASE_URL="postgresql://user@localhost/cellseer"
 export CELLSEER_DATA_LAKE_DIR="/path/to/data_lake"
 python -m uvicorn backend.api:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-Minimum tables: `project`, `cell`, `dataset` (with `cycling`, `discharge_dqdv`, `discharge_dvdq` datasets for full dashboard coverage).
+The schema (incl. `project`, `cell`, `dataset`) is created automatically on first startup.
 
 </details>
 
@@ -145,15 +149,14 @@ CellSeer/
 ├── frontend/                 # React + Vite SPA (port 8080)
 │   └── src/
 │       ├── features/         # masterPlot, gcdPlot, differential, ratePerformance, hierarchy, protocol
+│       ├── charts/           # framework-free Plotly figure builders (import: `@/charts`)
 │       └── digibat/          # DIGIBAT sync page, API client, and hooks
-├── packages/
-│   └── cellseer-lib/         # TypeScript Plotly figure builders (framework-free npm package)
-├── backend/                  # FastAPI + SQLite + Parquet
+├── backend/                  # FastAPI + PostgreSQL + Parquet
 │   ├── routers/              # REST endpoints (cells, upload, projects, digibat, …)
-│   ├── cellseer/             # embedded Python lib: readers, analysis, ingest
+│   ├── compute/              # embedded compute lib: readers, analysis, ingest (import: `compute`)
 │   ├── digibat/              # DIGIBAT client + sync service
 │   └── scripts/              # sync_digibat.py, import scripts
-├── cellseer/                 # pip-installable Python plotting package
+├── cellseer/                 # standalone pip-installable plotting package (import: `cellseer`)
 ├── data_lake/                # Parquet time series (gitignored)
 ├── docker-compose.yml
 ├── Dockerfile
@@ -186,14 +189,14 @@ python -m pytest backend/tests -q
 
 | Area | Constraint |
 |------|------------|
-| **Database** | SQLite single-writer (one app instance per DB file); Postgres migration planned but not implemented |
+| **Data types** | Only cycling data is processed. EIS / impedance and other measurement types are not supported yet |
+| **Protocol (in development)** | Protocol attachment and cycle-segmentation are still being built. The protocol-scoped metrics (retention, fade rate, cycle life, CE drift) need a segmented cycle sequence, so they stay locked — "needs a protocol", then "coming soon" |
 | **Scale** | Tested around ~5 k cells; behaviour at larger scale unknown |
 | **Auth** | Single shared bearer token; no per-user accounts, roles, or SSO |
 | **Testing** | No CI gates or E2E browser tests in repo; mostly unit tests on pure functions |
-| **Offline** | Requires a running backend (or a cached DIGIBAT mirror) |
-| **Protocol-scoped metrics** | Retention, fade rate, cycle life and CE drift need a segmented cycle sequence (formation, rate-test and main cycling separated). That computation is not built yet, so these metrics are never shown as a number: without a protocol they read "needs a protocol", and once a protocol is attached they read "coming soon" |
+| **Offline** | Requires a running backend |
 
-Honest metrics: retention and fade rate are never reported as a misleading whole-series figure. They stay locked until a protocol is attached, then show "coming soon" until segment-aware computation lands.
+In development: Retention and fade rate stay locked until a protocol is attached, then show "coming soon" until segment-aware computation is added.
 
 ## License
 
@@ -204,7 +207,7 @@ Copyright (c) 2026 Shirley Xiong.
 ## Acknowledgments
 
 - **Imperial College London**: MEng Design Engineering programme and battery research community
-- **[DIGIBAT](https://digibat.dept.ic.ac.uk)** / Imperial DataLab: remote collection sync; the local `data_lake/` layout (SQLite catalogue plus Parquet time series per cell/dataset) was *informed by* DataLab's collection and provenance model. CellSeer is an independent app, not an official DataLab product.
+- **[DIGIBAT](https://digibat.dept.ic.ac.uk)** / Imperial DataLab: remote collection sync; the local `data_lake/` layout (PostgreSQL catalogue plus Parquet time series per cell/dataset) was *informed by* DataLab's collection and provenance model. CellSeer is an independent app, not an official DataLab product.
 - **[PyProBE](https://github.com/uk-amrc/PyProBE)**: cycler file reading (Neware, BioLogic, Arbin)
-- **[Plotly](https://plotly.com/)**: interactive charts across web app, `cellseer`, and `cellseer-lib`
+- **[Plotly](https://plotly.com/)**: interactive charts across the web app (`src/charts/`) and the `cellseer` Python library
 - Formative user interviews (11 participants) that shaped the overview, inspect, and drill workflow

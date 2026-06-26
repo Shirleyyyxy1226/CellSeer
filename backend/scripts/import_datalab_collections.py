@@ -21,7 +21,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Import datalab collections into CellSeer.")
     parser.add_argument("--base-url", default="https://digibat.dept.ic.ac.uk")
     parser.add_argument("--collections", required=True)
-    parser.add_argument("--db-path", default="backend/cellseer.db")
+    parser.add_argument("--db-path", default="", help="Ignored (PostgreSQL connection from CELLSEER_DATABASE_URL)")
     parser.add_argument("--data-lake-dir", default="data_lake")
     parser.add_argument("--no-cycling", action="store_true")
     parser.add_argument("--max-items", type=int, default=None)

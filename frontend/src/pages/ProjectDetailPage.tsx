@@ -34,6 +34,7 @@ type CellRow = IndexCell;
 function UploadDropTile(props: {
   title: string;
   subtitle: string;
+  hint?: string;
   accept: string;
   multiple?: boolean;
   status: 'idle' | 'uploading' | 'processing' | 'done' | 'error';
@@ -45,6 +46,7 @@ function UploadDropTile(props: {
   const {
     title,
     subtitle,
+    hint,
     accept,
     multiple = false,
     status,
@@ -72,6 +74,9 @@ function UploadDropTile(props: {
       <span className="flex-1 min-w-0">
         <span className="block text-[12.5px] font-semibold text-foreground leading-tight">{title}</span>
         <span className="block text-[10.5px] text-muted-foreground truncate">{subtitle}</span>
+        {hint && !note && (
+          <span className="block text-[10px] text-muted-foreground/70 italic truncate">{hint}</span>
+        )}
         {note && (
           <span className={`mt-0.5 block text-[10px] ${noteTone}`}>{note}</span>
         )}
@@ -126,8 +131,6 @@ export default function ProjectDetailPage() {
   const [cells, setCells] = useState<CellRow[]>([]);
   const [search, setSearch] = useState('');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [refreshing, setRefreshing] = useState(false);
-  const [refreshStatus, setRefreshStatus] = useState<{ ok: boolean; total: number; delta: number; time: string } | null>(null);
   const prevCellCountRef = useRef(0);
   /* ─────────────── Data fetchers ─────────────── */
 
@@ -162,22 +165,6 @@ export default function ProjectDetailPage() {
       return -1;
     }
   }, []);
-
-  const manualRefresh = useCallback(async () => {
-    setRefreshing(true);
-    setRefreshStatus(null);
-    const prev = prevCellCountRef.current;
-    const newCount = await refreshCells();
-    void refreshReadiness({ background: true }).catch(() => {});
-    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    if (newCount >= 0) {
-      prevCellCountRef.current = newCount;
-      setRefreshStatus({ ok: true, total: newCount, delta: newCount - prev, time });
-    } else {
-      setRefreshStatus({ ok: false, total: 0, delta: 0, time });
-    }
-    setRefreshing(false);
-  }, [refreshReadiness, refreshCells]);
 
   useEffect(() => {
     void refreshReadiness();
@@ -387,18 +374,6 @@ export default function ProjectDetailPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {refreshStatus && !refreshStatus.ok && (
-              <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium bg-destructive/10 text-destructive border border-destructive/20">Refresh failed</span>
-            )}
-            {refreshStatus && refreshStatus.ok && (
-              <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-800">
-                ✓ {refreshStatus.delta > 0 ? `+${refreshStatus.delta} new · ` : refreshStatus.delta < 0 ? `${refreshStatus.delta} removed · ` : ''}{refreshStatus.total} cells · {refreshStatus.time}
-              </span>
-            )}
-            <Button variant="outline" size="sm" onClick={() => { void manualRefresh(); }} disabled={refreshing} title="Refresh cell list">
-              <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-              Refresh
-            </Button>
             <Button
               disabled={!readiness?.canEnterDashboard}
               onClick={() => navigate(`/projects/${encodeURIComponent(projectId)}/dashboard`)}
@@ -452,6 +427,7 @@ export default function ProjectDetailPage() {
                 <UploadDropTile
                   title="Cycling data"
                   subtitle={`Accepts ${cyclingAccept} · multi-file`}
+                  hint="e.g. 12_cycling.xlsx / CEL-12_data.csv (must include cell's ID No)"
                   accept={cyclingAccept}
                   multiple
                   status={cyclingUpload.status}

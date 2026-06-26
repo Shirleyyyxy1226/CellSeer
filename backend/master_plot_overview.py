@@ -44,7 +44,7 @@ def _series_from(cycles: list[float], values: Optional[list]) -> list[tuple[floa
 def _peak_of(series: list[tuple[float, float]]) -> Optional[float]:
     if not series:
         return None
-    return percentile(sorted(v for _, v in series), 0.95)
+    return max(v for _, v in series)
 
 
 def summarise_cell(raw: dict) -> dict:

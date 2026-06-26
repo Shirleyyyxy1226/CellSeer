@@ -115,10 +115,11 @@ python examples/demo_plots.py --plot rate    [--dashboard] [--serve]
 
 ## Note on naming
 
-This directory (`cellseer/`) is the **pip-installable plotting library**.
-The CellSeer server embeds a separate internal package at `backend/cellseer/`
-for ingest and analysis — same name, different package.
-See the repo README and `repo-docs/structure.html` for details.
+This directory (`cellseer/`) is the **pip-installable plotting library**,
+imported as `cellseer`. The CellSeer server embeds a *separate* internal
+package at `backend/compute/` (imported as `compute`) for ingest and analysis.
+They are different packages with different names — the server does **not** use
+this standalone library. See the repo README for details.
 
 ---
 

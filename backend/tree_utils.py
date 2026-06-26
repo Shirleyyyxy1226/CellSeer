@@ -198,6 +198,44 @@ def prefix_from_header(h: str, config: AnalysisConfig = DEFAULT_CONFIG) -> str:
     return ""
 
 
+def _norm_header(h: str) -> str:
+    """Case/underscore/punctuation-insensitive header key (matches build_tree's
+    norm_header) so 'Spacer_mm' and 'spacer (mm)' both reduce to 'spacermm'."""
+    return re.sub(r"[^a-z0-9]+", "", h.lower())
+
+
+# Default-hierarchy priority: physical/chemical DESIGN parameters first (the
+# analytically meaningful build), organisational labels (category/batch/repeat)
+# last. Lower number = higher priority. Matched on a normalised header, so the
+# first substring that appears in the column header wins.
+_DESIGN_PRIORITY: list[str] = [
+    "cathode",
+    "anode",
+    "separator",
+    "spacer",
+    "electrolyte",
+    "npratio",
+    "cathodemass",
+    "anodemass",
+    "cathodediameter",
+    "anodediameter",
+    "electrolytevolume",
+]
+
+
+def design_priority(header: str) -> int:
+    """Sort priority for the DEFAULT hierarchy. Design-parameter columns sort
+    first by their position in _DESIGN_PRIORITY; everything else (organisational
+    labels such as Category / Batch / Repeat) shares the lowest priority and so
+    keeps its column-index order among itself."""
+    norm = _norm_header(header)
+    best = len(_DESIGN_PRIORITY)
+    for i, key in enumerate(_DESIGN_PRIORITY):
+        if key in norm:
+            best = min(best, i)
+    return best
+
+
 # ── Annotation finder ─────────────────────────────────────────────────
 def compute_annotations(
     hier_cols: list[ColStats],
@@ -341,6 +379,20 @@ def analyse_columns(
         return True
 
     candidates = [s for s in stats if is_candidate(s)]
+    if not candidates:
+        # Small / sparse projects (only a few cells, or columns with missing
+        # values) can fail every threshold above, leaving the hierarchy-order
+        # picker empty. Fall back to any usable column (not a leaf / id / flag
+        # column, not notes / replicate, with at least 2 distinct values) so the
+        # picker still offers dimensions to reorder and add.
+        candidates = [
+            s
+            for s in stats
+            if s.j not in excluded_js
+            and not s.is_notes
+            and not s.is_replicate
+            and s.cardinality > 1
+        ]
     string_cands = [s for s in candidates if not s.is_numeric]
     numeric_cands = [s for s in candidates if s.is_numeric]
 
@@ -352,11 +404,45 @@ def analyse_columns(
                 break
 
     non_redundant_numerics = [s for s in numeric_cands if s.j not in redundant_js]
-    ordered = (
-        sorted(string_cands, key=lambda s: s.j)
-        + sorted(non_redundant_numerics, key=lambda s: s.j)
+    # Default hierarchy ordering: DESIGN-PARAMETER columns (cathode, separator,
+    # spacer, electrolyte, …) sort first by their design priority, organisational
+    # labels (category / batch / repeat) sort last and keep column-index order.
+    # String-before-numeric is preserved as a secondary tie-break so categorical
+    # design dimensions still lead the numeric ones at the same priority.
+    ordered = sorted(
+        string_cands + non_redundant_numerics,
+        key=lambda s: (design_priority(s.header), 0 if not s.is_numeric else 1, s.j),
     )
+
+    # Candidates for the hierarchy-order PICKER (drag-to-reorder / click-to-add).
+    # Broader than `ordered`: it must also include the leaf / id / flag columns,
+    # because those appear in the ACTIVE hierarchy and the editor needs them to
+    # render and reorder the active chips; plus any column the strict
+    # is_candidate rejected (common on tiny projects). `ordered` still seeds the
+    # DEFAULT levels; this only widens what the user can pick from.
+    ordered_js = {s.j for s in ordered}
+    picker_extra = [
+        s
+        for s in stats
+        if s.j not in ordered_js
+        and not s.is_notes
+        and not s.is_replicate
+        and s.cardinality >= 1
+    ]
+    picker_candidates = ordered + sorted(picker_extra, key=lambda s: s.j)
+
     hier_cols = ordered[:max_levels]
+    # Fallback: on fully-uniform / tiny projects `ordered` can be empty, leaving
+    # the ORDER control blank. Seed one level from picker_extra (prefer any
+    # non-excluded column with cardinality > 1; settle for a constant column if
+    # that is all that exists) so the user always sees at least a flat cell list.
+    if not hier_cols:
+        seed = next(
+            (s for s in picker_extra if s.j not in excluded_js and s.cardinality > 1),
+            next((s for s in picker_extra if s.j not in excluded_js), None),
+        )
+        if seed:
+            hier_cols = [seed]
 
     annotations = compute_annotations(
         hier_cols, stats, redundant_js, excluded_js, n, config
@@ -384,7 +470,7 @@ def analyse_columns(
         n=n,
         headers=headers,
         all_constants=constants,
-        all_candidates=ordered,
+        all_candidates=picker_candidates,
     )
 
 

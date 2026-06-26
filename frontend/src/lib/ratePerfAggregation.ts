@@ -15,7 +15,7 @@ import {
   pathColorFromHues,
 } from './cellColorScheme';
 import type { CellColorAttrs } from './cellColorScheme';
-import type { CellEncoding, LineDash, MarkerSymbol } from 'cellseer-lib';
+import type { CellEncoding, LineDash, MarkerSymbol } from '@/charts';
 
 import type { RatePerfCell as CyclingCellLike } from '@/lib/cellTypes';
 

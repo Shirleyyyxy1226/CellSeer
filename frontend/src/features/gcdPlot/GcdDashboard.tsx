@@ -23,7 +23,7 @@ import {
   buildGcdCumulativeFigure,
   buildGcdFigure,
   type RecordDataset,
-} from 'cellseer-lib';
+} from '@/charts';
 import { RatePerformancePlot } from '../ratePerformance/plots/RatePerformancePlot';
 import { useGcdCellData, type VQCell } from './useGcdCellData';
 
@@ -113,15 +113,9 @@ const GcdDashboard = ({
   // charge+discharge loop. The cumulative overview always shows 'both'.
   const [gcdDirection, setGcdDirection] = useState<'discharge' | 'charge' | 'both'>('discharge');
   const [combinedHighlightCycle, setCombinedHighlightCycle] = useState<number | null>(null);
-  // The GCD chart's legend is owned by its appearance config (the eye toggle and
-  // the edit-popover checkbox share one value). The CE chart has no edit popover,
-  // so it keeps a local legend-visibility flag driven by its own eye toggle.
-  const [ceLegendShown, setCeLegendShown] = useState(true);
-
   const main = useResizableChart();
   const combined = useResizableChart();
   const ratePerf = useResizableChart();
-  const ceCycle = useResizableChart();
 
   const allowedCycles = useMemo(() => parseCycleFilter(cycleFilter), [cycleFilter]);
 
@@ -498,130 +492,7 @@ const GcdDashboard = ({
   const [ratePerfLegendShown, setRatePerfLegendShown] = useState(true);
   const handleRatePerfLegendItems = useCallback((items: LegendItem[]) => setRatePerfLegendItems(items), []);
 
-  // ── Coulombic efficiency vs cycle ──
-  // CE_n = discharge_n / charge_n × 100, computed per charted cell with the same
-  // guards as the medianCE metric: a 5%-of-peak-discharge floor (skips
-  // formation/rest/near-zero cycles that would blow up the ratio) and a 0–150%
-  // sanity clamp. Excluded cycles are counted and surfaced, not hidden.
-  const ceSeriesByCell = useMemo(() => {
-    if (!ratePerfCells) return [];
-    return cellsForCharts
-      .map((c) => {
-        const rp = ratePerfCells.find((r) => r.cellId === c.cellId || r.idNo === c.idNo);
-        const cyc = rp?.cycles ?? [];
-        const dch = rp?.dischargeCapacityMah ?? [];
-        const chg = rp?.chargeCapacityMah ?? [];
-        if (!cyc.length || !chg.length) return null; // no CE without charge capacity
-        const finite = dch.filter((v) => Number.isFinite(v));
-        const floor = (finite.length ? Math.max(...finite) : 0) * 0.05;
-        const x: number[] = [];
-        const y: number[] = [];
-        for (let i = 0; i < cyc.length; i++) {
-          const d = dch[i];
-          const ch = chg[i];
-          if (d != null && ch != null && floor > 0 && ch > floor && d > floor) {
-            const ce = (d / ch) * 100;
-            if (ce > 0 && ce < 150) {
-              x.push(cyc[i]);
-              y.push(ce);
-            }
-          }
-        }
-        if (!x.length) return null;
-        const enc = getCellEncoding(cellEncodings, c);
-        return {
-          id: String(c.idNo),
-          label: c.cellName ?? `Cell ${c.idNo}`,
-          color: enc?.color ?? getColorForCell(c, treeFilterPath, hierCols),
-          dash: enc?.dash,
-          symbol: enc?.symbol,
-          x,
-          y,
-          excluded: cyc.length - x.length,
-        };
-      })
-      .filter((v): v is NonNullable<typeof v> => v != null);
-  }, [ratePerfCells, cellsForCharts, cellEncodings, treeFilterPath, hierCols]);
 
-  const ceTraces = useMemo(
-    (): Plotly.Data[] =>
-      ceSeriesByCell.map((s) => ({
-        x: s.x,
-        y: s.y,
-        type: 'scatter' as const,
-        mode: 'lines+markers' as const,
-        name: ceSeriesByCell.length > 1 ? s.label : 'Coulombic efficiency',
-        line: { width: 1.8, color: s.color, ...(s.dash ? { dash: s.dash } : {}) },
-        marker: { size: 5, color: s.color, ...(s.symbol ? { symbol: s.symbol } : {}) },
-        hovertemplate: `${s.label}<br>Cycle %{x}<br>CE %{y:.2f}%<extra></extra>`,
-      })),
-    [ceSeriesByCell],
-  );
-
-  const ceLegendItems = useMemo<LegendItem[]>(
-    () =>
-      ceSeriesByCell.map((s) => ({
-        label: ceSeriesByCell.length > 1 ? s.label : 'Coulombic efficiency',
-        color: s.color,
-        dash: s.dash,
-        symbol: s.symbol,
-        hasLine: true,
-        hasMarker: true,
-      })),
-    [ceSeriesByCell],
-  );
-
-  // CE is a protocol-conditioned quantity (C-rate, voltage window, CV holds all
-  // shift it), so comparing cells run under DIFFERENT protocols can mislead —
-  // a CE gap may be the protocol, not the cell. Warn when ≥2 charted cells have
-  // differing protocol signatures.
-  const protocolMismatch = useMemo(() => {
-    if (cellsForCharts.length < 2 || !ratePerfCells) return false;
-    const sigs = new Set<string>();
-    for (const c of cellsForCharts) {
-      const rp = ratePerfCells.find((r) => r.cellId === c.cellId || r.idNo === c.idNo);
-      const segs = rp?.protocolSegments;
-      sigs.add(
-        segs && segs.length
-          ? JSON.stringify(segs.map((s) => [s.cycleStart, s.cycleEnd, s.cRate]))
-          : 'none',
-      );
-    }
-    return sigs.size > 1;
-  }, [cellsForCharts, ratePerfCells]);
-
-  const ceLayout: Partial<Plotly.Layout> = useMemo(
-    () => ({
-      width: 800,
-      height: 320,
-      autosize: false,
-      font: { family: `${fontFamily}, sans-serif` },
-      title: {
-        text:
-          ceSeriesByCell.length > 1
-            ? `Coulombic efficiency vs cycle (${ceSeriesByCell.length} cells)`
-            : `${selectedCell?.cellName ?? 'Cell'}: Coulombic efficiency vs cycle`,
-        font: { size: titleFontSize },
-      },
-      xaxis: {
-        // The legend is now an HTML block below the plot, so the x-axis title and
-        // the legend can no longer collide — always show "Cycle number".
-        title: { text: 'Cycle number', font: { size: labelFontSize } },
-        tickfont: { size: Math.max(9, labelFontSize - 1) },
-        gridcolor: 'rgba(128,128,128,0.2)',
-      },
-      yaxis: {
-        title: { text: 'Coulombic efficiency (%)', font: { size: labelFontSize } },
-        tickfont: { size: Math.max(9, labelFontSize - 1) },
-        gridcolor: 'rgba(128,128,128,0.2)',
-      },
-      // Legend renders as an HTML block below the plot (see ChartLegend).
-      showlegend: false,
-      margin: { t: 48, r: 40, b: 80, l: 65 },
-      uirevision: 'ce-vs-cycle',
-    }),
-    [fontFamily, titleFontSize, labelFontSize, selectedCell, ceSeriesByCell.length],
-  );
 
   /** Detect silent cycle truncation caused by MAX_CYCLES cap. */
   const truncationWarning = useMemo(() => {
@@ -1010,56 +881,6 @@ const GcdDashboard = ({
             </>
           )}
 
-          {/* ── Section: Coulombic efficiency vs cycle ── */}
-          {ceTraces.length > 0 && (
-            <>
-              <div className="flex items-center gap-2 min-h-[1.5rem]">
-                <h2 className="text-sm font-medium text-foreground">Coulombic efficiency vs cycle</h2>
-              </div>
-              {protocolMismatch && (
-                <div
-                  role="alert"
-                  className="flex items-start gap-2 rounded-md border border-amber-400 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-xs text-amber-800 dark:text-amber-300"
-                >
-                  <span className="mt-0.5 shrink-0">⚠</span>
-                  <span>
-                    Comparing cells run under <strong>different cycling protocols</strong> — a CE
-                    difference may reflect the protocol (C-rate, voltage window, CV hold), not the
-                    cells. Compare CE only within a matched protocol.
-                  </span>
-                </div>
-              )}
-              <ResizableChartCard
-                size={ceCycle.size}
-                onResizeStart={ceCycle.onResizeStart}
-                aspectRatio={800 / 320}
-                minHeight={220}
-              >
-                {({ width, height, ResizeHandle }) => (
-                  <>
-                  <div className="relative bg-white dark:bg-card rounded" style={{ width, height }}>
-                    <PlotlyChart
-                      exportContext={exportContext}
-                      key={`ce-${width}-${height}`}
-                      data={ceTraces}
-                      layout={{ ...ceLayout, width, height }}
-                      config={{ responsive: true }}
-                      style={{ width, height }}
-                    />
-                    <ResizeHandle />
-                  </div>
-                  <ChartLegend
-                    items={ceLegendItems}
-                    shown={ceLegendShown}
-                    onToggle={() => setCeLegendShown((v) => !v)}
-                    chartLabel="Coulombic efficiency"
-                    fontSize={legendFontSize}
-                  />
-                  </>
-                )}
-              </ResizableChartCard>
-            </>
-          )}
         </div>
       </div>
     </div>

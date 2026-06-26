@@ -9,7 +9,7 @@
  * controls can never disagree.
  */
 
-import type { LineDash, MarkerSymbol } from 'cellseer-lib';
+import type { LineDash, MarkerSymbol } from '@/charts';
 import { cn } from '@/lib/utils';
 
 export interface LegendItem {

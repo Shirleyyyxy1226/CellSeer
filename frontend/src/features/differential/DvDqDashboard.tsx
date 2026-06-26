@@ -1,7 +1,9 @@
 import { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import { DirectionToggle, type ChargeDirection } from '@/components/DirectionToggle';
 import { LoadingIndicator } from '@/components/LoadingIndicator';
-import { useDifferentialData } from './useDifferentialData';
+import { useDifferentialData, DEFAULT_SMOOTHING } from './useDifferentialData';
+import { SmoothingControls } from './SmoothingControls';
+import { type DiffSmoothing } from '@/lib/api';
 import { useCellSelection } from '@/contexts/CellSelectionContext';
 import { useTreeFilter } from '@/contexts/TreeFilterContext';
 import { useProjectHierarchy } from '@/contexts/ProjectHierarchyContext';
@@ -12,7 +14,7 @@ import { buildCellEncodings, getCellEncoding } from '@/lib/cellColorScheme';
 import { Surface3dPlot } from './plots/Surface3dPlot';
 import { PeakAnalysisPlot } from './plots/PeakAnalysisPlot';
 import { EvolutionHeatmapPlot } from './plots/EvolutionHeatmapPlot';
-import { buildDvDqFigure, type Dataset } from 'cellseer-lib';
+import { buildDvDqFigure, type Dataset } from '@/charts';
 import { ResizableChartCard } from '@/components/ResizableChartCard';
 import { ChartEditPopover } from '@/components/ChartEditPopover';
 import { ChartLegend, type LegendItem } from '@/components/ChartLegend';
@@ -31,6 +33,7 @@ const DvDqDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
   const { treeFilterPath } = useTreeFilter();
   const { apiData, matchPathToIdNos } = useProjectHierarchy();
   const [direction, setDirection] = useState<ChargeDirection>('discharge');
+  const [smoothing, setSmoothing] = useState<DiffSmoothing>(DEFAULT_SMOOTHING);
   const TRACE_WARN_THRESHOLD = 200;
   const [heavyRenderConfirmed, setHeavyRenderConfirmed] = useState(false);
   // dV/dQ plots per-cell curves, so it responds ONLY to individual-cell
@@ -52,6 +55,7 @@ const DvDqDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
     separatorFilter,
     direction,
     effectiveCellIdNos,
+    smoothing,
   );
   const data = dvdqData;
   const activeAnalysis = apiData?.analysis ?? null;
@@ -299,10 +303,18 @@ const DvDqDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
 
   if (!loading && !error && (noDifferentialHint || noFilterMatch)) {
     return (
-      <div className="rounded-lg border border-border bg-card p-3 shadow-sm flex h-full min-h-[420px] items-center justify-center text-center text-sm text-muted-foreground">
-        {noFilterMatch
-          ? 'No cells match the current filters.'
-          : 'No dV/dQ data for the selected cells.'}
+      <div className="rounded-lg border border-border bg-card p-3 shadow-sm flex flex-col gap-3 h-full min-h-[420px]">
+        {!noFilterMatch && (
+          <div className="flex items-center justify-end gap-3 shrink-0 flex-wrap">
+            <SmoothingControls value={smoothing} onChange={setSmoothing} />
+            <DirectionToggle value={direction} onChange={setDirection} />
+          </div>
+        )}
+        <div className="flex flex-1 items-center justify-center text-center text-sm text-muted-foreground">
+          {noFilterMatch
+            ? 'No cells match the current filters.'
+            : `No dV/dQ data for the selected cells in the ${direction} direction.`}
+        </div>
       </div>
     );
   }
@@ -311,6 +323,7 @@ const DvDqDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
     <div className="rounded-lg border border-border bg-card p-3 shadow-sm flex flex-col gap-3 h-full min-h-0">
       {error && !loading && <p className="text-sm text-amber-600">Database unavailable: {error}</p>}
       <div className="flex items-center justify-end gap-3 shrink-0 flex-wrap">
+        <SmoothingControls value={smoothing} onChange={setSmoothing} />
         <DirectionToggle value={direction} onChange={setDirection} />
       </div>
       <div className={`gap-3 flex-1 min-h-[520px] ${activePanel !== null ? 'grid grid-cols-1 lg:grid-cols-2' : 'flex flex-col'}`}>

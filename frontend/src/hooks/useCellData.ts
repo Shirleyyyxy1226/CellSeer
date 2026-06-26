@@ -18,6 +18,7 @@ import {
   fetchMasterPlotPeakShift,
   fetchRatePerformance,
   type RateScope,
+  type DiffSmoothing,
 } from '@/lib/api';
 import { getProjectIdFromPathname } from '@/lib/projectScope';
 import { useDataRefresh } from '@/contexts/DataRefreshContext';
@@ -150,13 +151,18 @@ export function useCellRecordQueries(cellIds: string[]) {
 }
 
 /** Per-cell dQ/dV + dV/dQ payloads, cached per (cell, direction). */
-export function useDifferentialQueries(cellIds: string[], direction: 'discharge' | 'charge') {
+export function useDifferentialQueries(
+  cellIds: string[],
+  direction: 'discharge' | 'charge',
+  smoothing?: DiffSmoothing,
+) {
   const { dataVersion } = useDataRefresh();
   const projectKey = useProjectScopeKey();
+  const sKey = smoothing ? `${smoothing.method}:${smoothing.targetBins}:${smoothing.kernel}` : 'default';
   return useQueries({
     queries: cellIds.map((cellId) => ({
-      queryKey: ['differential', projectKey, dataVersion, cellId, direction],
-      queryFn: () => fetchDifferential(cellId, direction),
+      queryKey: ['differential', projectKey, dataVersion, cellId, direction, sKey],
+      queryFn: () => fetchDifferential(cellId, direction, smoothing),
       staleTime: STALE_MS,
       enabled: !!cellId,
       retry: (count: number, err: unknown) =>

@@ -2,7 +2,7 @@
  * Trajectories — small-multiples grid of capacity-vs-cycle curves, one panel
  * per condition. Each replicate is a faint clickable line;
  * the bold line is the cohort-mean trajectory. A header toggle switches the Y
- * axis between absolute capacity (basis-aware) and own-peak retention %.
+ * axis between absolute discharge capacity and per-cycle CE (%).
  *
  * Panels are sorted best-first by the active metric's cohort mean, coloured by
  * cathode, and the grid scrolls when there are many conditions. Each line is
@@ -142,9 +142,8 @@ export default function Trajectories({
   onInspect?: (id: string) => void;
   onApplyCondition?: (cond: CondRow) => void;
 }) {
-  // Default to retention: own-peak normalisation makes cohorts of different
-  // chemistries / capacity scales directly comparable across panels.
-  const [yMode, setYMode] = useState<TrajYMode>('retention');
+  // Default to absolute discharge capacity; toggle to per-cycle CE.
+  const [yMode, setYMode] = useState<TrajYMode>('absolute');
 
   const data = useMemo(() => buildTrajData(cells, metric, yMode), [cells, metric, yMode]);
 
@@ -162,8 +161,8 @@ export default function Trajectories({
         <div className="flex items-center gap-1 rounded-md border bg-muted/40 p-0.5 text-[11px]">
           {(
             [
-              ['retention', 'Retention (%)'],
               ['absolute', `Capacity (${data.basis})`],
+              ['ce', 'CE (%)'],
             ] as [TrajYMode, string][]
           ).map(([mode, label]) => (
             <button

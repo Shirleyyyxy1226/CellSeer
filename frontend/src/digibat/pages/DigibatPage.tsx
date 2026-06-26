@@ -315,6 +315,32 @@ export default function DigibatPage() {
               {syncError && (
                 <p className="text-xs text-destructive">{syncError}</p>
               )}
+              {status?.status === 'error' && (
+                <div className="space-y-2 rounded-md border border-destructive/40 bg-destructive/5 p-2">
+                  <p className="text-xs text-destructive">
+                    Last sync failed
+                    {status.lastRun?.errorMessage ? `: ${status.lastRun.errorMessage}` : '.'}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Re-running is incremental: unchanged files are skipped, so a retry resumes
+                    rather than re-downloading.
+                  </p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={isSyncBusy || !selectedCollectionId}
+                    onClick={() => void onStartSync()}
+                  >
+                    Retry import
+                  </Button>
+                  {!selectedCollectionId && (
+                    <p className="text-xs text-muted-foreground">
+                      Select a collection above to retry.
+                    </p>
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>

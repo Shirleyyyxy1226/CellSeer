@@ -2,8 +2,7 @@
 
 import json
 import re
-import sqlite3
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -52,11 +51,11 @@ def _cell_number_token(cell_id: Optional[str]) -> Optional[int]:
         return None
 
 
-def _dedupe_rows_for_hierarchy(rows: list[sqlite3.Row]) -> list[sqlite3.Row]:
+def _dedupe_rows_for_hierarchy(rows: list[dict]) -> list[dict]:
     """Remove duplicate cells, preferring rows with id_no set."""
-    out: dict[object, sqlite3.Row] = {}
+    out: dict[object, dict] = {}
 
-    def score(r: sqlite3.Row) -> tuple[int, int]:
+    def score(r: dict) -> tuple[int, int]:
         has_id_no = 1 if r["id_no"] is not None else 0
         prefixed = 1 if (r["cell_id"] and str(r["cell_id"]).upper().startswith("P")) else 0
         return (has_id_no, prefixed)
@@ -152,7 +151,7 @@ def analyse_default_from_db(maxLevels: int = 4, projectId: Optional[str] = None)
                 ,
                 (project_id,),
             ).fetchall()
-    except sqlite3.OperationalError:
+    except Exception:
         raise HTTPException(status_code=404, detail="No metadata in DB")
 
     if not rows:
@@ -181,7 +180,7 @@ def analyse_default_from_db(maxLevels: int = 4, projectId: Optional[str] = None)
     return payload
 
 
-def _ensure_preference_table(conn: sqlite3.Connection):
+def _ensure_preference_table(conn: Any):
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS ui_preference (

@@ -121,7 +121,7 @@ def put_cell_annotation(cell_id: str, body: CellAnnotationUpdate, projectId: str
             """
             INSERT INTO cell_annotation (project_id, cell_id, note, tags, updated_at)
             VALUES (?, ?, ?, ?, datetime('now'))
-            ON CONFLICT(cell_id) DO UPDATE SET
+            ON CONFLICT(project_id, cell_id) DO UPDATE SET
                 note = excluded.note,
                 tags = excluded.tags,
                 updated_at = datetime('now')

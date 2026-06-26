@@ -1,7 +1,7 @@
 /**
  * Trajectories data shaping. Builds one small-multiples panel
  * per condition: each replicate's capacity-vs-cycle line plus a cohort-mean
- * trajectory, in either absolute (basis-aware) or own-peak retention space.
+ * trajectory, in either absolute discharge capacity or per-cycle CE space.
  *
  * Pure, dependency-free, no React — the <Trajectories> component consumes the
  * already-shaped panels. Panels are downsampled to keep the DOM bounded for
@@ -11,7 +11,7 @@ import type { CellSummary, MetricDef } from './metrics';
 import { type CondRow, computeCondStats, condLabel, groupConditions } from './conditions';
 import { metricScore } from './metrics';
 
-export type TrajYMode = 'absolute' | 'retention';
+export type TrajYMode = 'absolute' | 'ce';
 
 /** Max plotted points per line — caps SVG path complexity for large series. */
 export const MAX_TRAJ_POINTS = 80;
@@ -70,26 +70,15 @@ function downsample(points: TrajPoint[], max: number): TrajPoint[] {
   return out;
 }
 
-/** Own-peak (95th-percentile-style max) used to normalise a cell to retention %. */
-function ownPeak(series: { cycle: number; value: number }[]): number {
-  let m = 0;
-  for (const d of series) if (d.value > m) m = d.value;
-  return m;
-}
-
 function buildLines(cond: CondRow, yMode: TrajYMode): TrajLine[] {
   const lines: TrajLine[] = [];
   for (const cell of cond.cells) {
-    const series = cell.capacitySeries;
+    // 'ce' plots the per-cycle Coulombic efficiency (already in %); 'absolute'
+    // plots discharge capacity. (Retention was removed — own-peak normalisation
+    // isn't rigorous; capacity retention stays a protocol-gated scalar.)
+    const series = yMode === 'ce' ? cell.ceSeries : cell.capacitySeries;
     if (series.length < 2) continue;
-    let pts: TrajPoint[];
-    if (yMode === 'retention') {
-      const peak = ownPeak(series);
-      if (peak <= 0) continue;
-      pts = series.map((d) => ({ cycle: d.cycle, value: (d.value / peak) * 100 }));
-    } else {
-      pts = series.map((d) => ({ cycle: d.cycle, value: d.value }));
-    }
+    const pts: TrajPoint[] = series.map((d) => ({ cycle: d.cycle, value: d.value }));
     lines.push({
       cellId: cell.cellId,
       cellName: cell.cellName,
@@ -136,7 +125,7 @@ export function buildTrajData(
   const stats = computeCondStats(conditions, metric);
 
   const basis: CellSummary['capacityBasis'] = cells[0]?.capacityBasis ?? 'mAh';
-  const yUnit = yMode === 'retention' ? '%' : basis;
+  const yUnit = yMode === 'ce' ? '%' : basis;
 
   const panels: TrajPanel[] = conditions.map((cond) => {
     const lines = buildLines(cond, yMode);

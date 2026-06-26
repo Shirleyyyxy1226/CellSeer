@@ -27,7 +27,7 @@ import {
 } from '@/hooks/useCellData';
 import { useCellSelection } from '@/contexts/CellSelectionContext';
 import { currentProjectIdFromLocation } from '@/lib/projectScope';
-import { type CellSummary, METRICS, metricAvailability, metricScore, percentile, capacitySeriesForCell } from './overview/metrics';
+import { type CellSummary, METRICS, metricAvailability, metricScore, percentile, capacitySeriesForCell, ceSeriesForCell } from './overview/metrics';
 import { DEFAULT_RAMP_ID, RAMPS, type RampId } from './overview/colours';
 import { RampProvider } from './overview/RampContext';
 import RampPicker from './overview/RampPicker';
@@ -126,8 +126,11 @@ export default function ProjectOverviewDashboard(props: ProjectOverviewDashboard
   // keyed by cellId. Built from the lazily-fetched scoped payload — empty until a
   // cell-level view triggers that fetch, so the graft below is a no-op meanwhile.
   const capacitySeriesByCellId = useMemo(() => {
-    const m = new Map<string, ReturnType<typeof capacitySeriesForCell>>();
-    for (const r of rawCells) m.set(r.cellId, capacitySeriesForCell(r));
+    const m = new Map<
+      string,
+      ReturnType<typeof capacitySeriesForCell> & { ceSeries: { cycle: number; value: number }[] }
+    >();
+    for (const r of rawCells) m.set(r.cellId, { ...capacitySeriesForCell(r), ceSeries: ceSeriesForCell(r) });
     return m;
   }, [rawCells]);
 
@@ -236,7 +239,7 @@ export default function ProjectOverviewDashboard(props: ProjectOverviewDashboard
       capacitySeriesByCellId.size
         ? displayCells.map((c) => {
             const s = capacitySeriesByCellId.get(c.cellId);
-            return s ? { ...c, capacitySeries: s.series, capacityBasis: s.basis } : c;
+            return s ? { ...c, capacitySeries: s.series, capacityBasis: s.basis, ceSeries: s.ceSeries } : c;
           })
         : displayCells,
     [displayCells, capacitySeriesByCellId],
@@ -548,7 +551,7 @@ export default function ProjectOverviewDashboard(props: ProjectOverviewDashboard
         {METRIC_DRIVEN_VIEWS.includes(view) && (
           <div className="ml-auto flex items-center gap-2 border-l pl-3">
             <Select value={metricId} onValueChange={setMetricId}>
-              <SelectTrigger className="h-8 w-[230px] text-sm bg-muted border-input shadow-sm" aria-label="Heatmap metric">
+              <SelectTrigger className="h-8 w-[256px] whitespace-nowrap text-sm bg-muted border-input shadow-sm [&>span]:truncate" aria-label="Heatmap metric">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

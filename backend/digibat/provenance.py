@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import json
-import sqlite3
+from typing import Any
 from typing import Any
 
 
 def start_sync_run(
-    conn: sqlite3.Connection,
+    conn: Any,
     run_id: str,
     project_id: str,
     mode: str,
@@ -28,7 +28,7 @@ def start_sync_run(
 
 
 def finish_sync_run(
-    conn: sqlite3.Connection,
+    conn: Any,
     run_id: str,
     status: str,
     *,
@@ -50,7 +50,7 @@ def finish_sync_run(
 
 
 def lookup_cell_id_by_refcode(
-    conn: sqlite3.Connection,
+    conn: Any,
     *,
     project_id: str,
     remote_refcode: str,
@@ -73,7 +73,7 @@ def lookup_cell_id_by_refcode(
 
 
 def id_no_owner(
-    conn: sqlite3.Connection,
+    conn: Any,
     *,
     project_id: str,
     id_no: int,
@@ -100,7 +100,7 @@ def id_no_owner(
 
 
 def rename_cell_id(
-    conn: sqlite3.Connection,
+    conn: Any,
     *,
     project_id: str,
     old_cell_id: str,
@@ -133,7 +133,7 @@ def rename_cell_id(
 
 
 def upsert_cell_source(
-    conn: sqlite3.Connection,
+    conn: Any,
     *,
     project_id: str,
     cell_id: str,
@@ -166,7 +166,7 @@ def upsert_cell_source(
 
 
 def get_previous_source_version(
-    conn: sqlite3.Connection,
+    conn: Any,
     *,
     project_id: str,
     source_file_id: str,
@@ -191,7 +191,7 @@ def get_previous_source_version(
 
 
 def upsert_file_map(
-    conn: sqlite3.Connection,
+    conn: Any,
     *,
     project_id: str,
     remote_refcode: str,
@@ -233,7 +233,7 @@ def upsert_file_map(
 
 
 def soft_delete_missing_files(
-    conn: sqlite3.Connection,
+    conn: Any,
     *,
     project_id: str,
     remote_refcode: str,
@@ -284,7 +284,7 @@ def soft_delete_missing_files(
 
 
 def purge_soft_deleted(
-    conn: sqlite3.Connection,
+    conn: Any,
     *,
     project_id: str,
     older_than_days: int,
@@ -305,7 +305,7 @@ def purge_soft_deleted(
     import os
 
     counts = {"datasets": 0, "files_removed": 0, "file_map_rows": 0, "cells": 0}
-    cutoff_clause = f"datetime('now', '-{int(older_than_days)} days')"
+    cutoff_clause = f"(NOW() - INTERVAL '{int(older_than_days)} days')::text"
 
     dataset_rows = conn.execute(
         f"""
@@ -359,7 +359,7 @@ def purge_soft_deleted(
 
 
 def soft_delete_stale_cells(
-    conn: sqlite3.Connection,
+    conn: Any,
     *,
     project_id: str,
     run_started_at: str,
@@ -422,7 +422,7 @@ def soft_delete_stale_cells(
 
 
 def upsert_dataset_source(
-    conn: sqlite3.Connection,
+    conn: Any,
     *,
     project_id: str,
     cell_id: str,
