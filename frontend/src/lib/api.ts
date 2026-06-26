@@ -178,13 +178,23 @@ export const fetchCellRecord = (
   return apiFetch(`/api/cell-record/${encodeURIComponent(cellId)}${qs}`);
 };
 
+export interface DiffSmoothing {
+  method: 'lean' | 'raw';
+  targetBins: number; // LEAN bin-protection target
+  kernel: number;     // LEAN smoothing kernel width: 3 | 5 | 7 point
+}
+
 export const fetchDifferential = (
   cellId: string,
   direction: 'discharge' | 'charge' = 'discharge',
-): Promise<unknown> =>
-  apiFetch(
-    `/api/cell-record/${encodeURIComponent(cellId)}/differential?direction=${encodeURIComponent(direction)}`,
-  );
+  smoothing?: DiffSmoothing,
+): Promise<unknown> => {
+  let url = `/api/cell-record/${encodeURIComponent(cellId)}/differential?direction=${encodeURIComponent(direction)}`;
+  if (smoothing) {
+    url += `&method=${encodeURIComponent(smoothing.method)}&targetBins=${smoothing.targetBins}&kernel=${smoothing.kernel}`;
+  }
+  return apiFetch(url);
+};
 
 export const fetchDifferentialCells = (
   direction: 'discharge' | 'charge' = 'discharge',
