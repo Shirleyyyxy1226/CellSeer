@@ -413,7 +413,6 @@ def analyse_columns(
         string_cands + non_redundant_numerics,
         key=lambda s: (design_priority(s.header), 0 if not s.is_numeric else 1, s.j),
     )
-    hier_cols = ordered[:max_levels]
 
     # Candidates for the hierarchy-order PICKER (drag-to-reorder / click-to-add).
     # Broader than `ordered`: it must also include the leaf / id / flag columns,
@@ -431,6 +430,19 @@ def analyse_columns(
         and s.cardinality >= 1
     ]
     picker_candidates = ordered + sorted(picker_extra, key=lambda s: s.j)
+
+    hier_cols = ordered[:max_levels]
+    # Fallback: on fully-uniform / tiny projects `ordered` can be empty, leaving
+    # the ORDER control blank. Seed one level from picker_extra (prefer any
+    # non-excluded column with cardinality > 1; settle for a constant column if
+    # that is all that exists) so the user always sees at least a flat cell list.
+    if not hier_cols:
+        seed = next(
+            (s for s in picker_extra if s.j not in excluded_js and s.cardinality > 1),
+            next((s for s in picker_extra if s.j not in excluded_js), None),
+        )
+        if seed:
+            hier_cols = [seed]
 
     annotations = compute_annotations(
         hier_cols, stats, redundant_js, excluded_js, n, config
