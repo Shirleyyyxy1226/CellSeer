@@ -80,6 +80,10 @@ const RatePerformanceDashboard = (_: Props) => {
   const { treeFilterPath } = useTreeFilter();
   const [detailDepth, setDetailDepth] = useState(0);
   const [direction, setDirection] = useState<ChargeDirection>('discharge');
+  // CE overlay on the rate plot (right axis). Disabled while the view is an
+  // aggregated band (mean ± range), reported up by the plot.
+  const [showCE, setShowCE] = useState(false);
+  const [rateAggregated, setRateAggregated] = useState(false);
 
   const defaultChartTitle = useMemo(
     () => treeFilterPath.length === 0 ? 'Rate Performance' : `Rate Performance: ${treeFilterPath.map((p) => p.val).join(' · ')}`,
@@ -436,12 +440,31 @@ const RatePerformanceDashboard = (_: Props) => {
                         Drill into next level
                       </Button>
                     </div>
-                    <DirectionToggle
-                      value={direction}
-                      onChange={setDirection}
-                      disabled={noSelection}
-                      title={noSelection ? 'Select a hierarchy node first' : undefined}
-                    />
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowCE((v) => !v)}
+                        disabled={noSelection || rateAggregated}
+                        title={
+                          rateAggregated
+                            ? 'CE overlay is unavailable for aggregated bands — drill into individual cells'
+                            : 'Overlay per-cell Coulombic efficiency on a right axis'
+                        }
+                        className={`inline-flex h-7 items-center rounded-md border border-border px-3 text-[11px] transition-colors ${
+                          showCE && !rateAggregated
+                            ? 'bg-primary text-primary-foreground'
+                            : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                        } ${noSelection || rateAggregated ? 'opacity-40 pointer-events-none' : ''}`}
+                      >
+                        Show CE
+                      </button>
+                      <DirectionToggle
+                        value={direction}
+                        onChange={setDirection}
+                        disabled={noSelection}
+                        title={noSelection ? 'Select a hierarchy node first' : undefined}
+                      />
+                    </div>
                   </div>
                   {hasPlot && activeAnalysis ? (
                     <>
@@ -469,6 +492,8 @@ const RatePerformanceDashboard = (_: Props) => {
                           height={height}
                           onCellSelect={(cell) => setSelectedCellIds([cell.idNo])}
                           onLegendItems={setRateLegendItems}
+                          showCE={showCE}
+                          onAggregatedChange={setRateAggregated}
                         />
                       </div>
                       <ChartEditPopover

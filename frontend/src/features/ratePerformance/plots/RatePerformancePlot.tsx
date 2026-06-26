@@ -38,6 +38,10 @@ export interface RatePerformancePlotProps {
   onCellSelect?: (cell: { idNo: number; cellName: string }) => void;
   /** Receives the derived legend entries so the dashboard can render the legend block below the plot. */
   onLegendItems?: (items: LegendItem[]) => void;
+  /** When true, overlay per-cell Coulombic efficiency on a right-hand axis (ignored for aggregated bands). */
+  showCE?: boolean;
+  /** Reports whether the current view is aggregated (band mode), so the parent can disable the CE toggle. */
+  onAggregatedChange?: (aggregated: boolean) => void;
 }
 
 /**
@@ -57,6 +61,8 @@ export function RatePerformancePlot({
   config,
   width,
   height,
+  showCE = false,
+  onAggregatedChange,
   onCellSelect,
   onLegendItems,
 }: RatePerformancePlotProps) {
@@ -72,7 +78,7 @@ export function RatePerformancePlot({
     return cell?.protocolSegments ?? [];
   }, [filteredCells]);
 
-  const { data: traces, traceIndexToCell, shapes, annotations } = useMemo(() => {
+  const { data: baseData, traceIndexToCell, shapes, annotations, ceTraces, isAggregated } = useMemo(() => {
     // Per-cell colour + orthogonal dash/symbol for the cells on screen, so
     // overlaid similar cells stay distinguishable (and recolour to the
     // max-contrast palette when that toggle is on).
@@ -109,11 +115,55 @@ export function RatePerformancePlot({
         cell: cell ? { idNo: cell.idNo, cellName: cell.cellName ?? `Cell ${cell.idNo}` } : undefined,
       };
     });
-    return buildRatePerformanceFigure(traceSpecs, {
+    const figure = buildRatePerformanceFigure(traceSpecs, {
       direction,
       useSpecificCapacity,
       protocolSegments,
     });
+
+    // Per-cell Coulombic efficiency (discharge ÷ charge, %) for the optional
+    // right-axis overlay. Only for non-aggregated per-cell traces; a dotted line
+    // per cell in the cell's own colour so many cells stay distinguishable.
+    const cellById = new Map(filteredCells.map((c) => [c.idNo, c]));
+    const ceTraces: Plotly.Data[] = [];
+    for (const t of agg) {
+      if (t.isAggregated) continue;
+      const ref = (t as { cell?: { idNo: number } }).cell;
+      const cell = ref ? cellById.get(ref.idNo) : undefined;
+      if (!cell) continue;
+      const ch = cell.chargeCapacityMah;
+      const dch = cell.dischargeCapacityMah;
+      const cyc = cell.cycles ?? [];
+      if (!ch?.length || !dch?.length || ch.length !== dch.length) continue;
+      const x: number[] = [];
+      const y: number[] = [];
+      for (let i = 0; i < dch.length; i++) {
+        const c = ch[i];
+        const d = dch[i];
+        if (c == null || d == null || c <= 1e-9) continue;
+        const ce = (d / c) * 100;
+        if (Number.isFinite(ce)) {
+          x.push(cyc[i] ?? i);
+          y.push(ce);
+        }
+      }
+      if (!x.length) continue;
+      ceTraces.push({
+        x,
+        y,
+        type: 'scatter',
+        mode: 'lines+markers',
+        name: `${t.name} CE`,
+        line: { color: t.color, dash: 'dot', width: 1.5 },
+        marker: { color: t.color, size: 3 },
+        opacity: 0.65,
+        yaxis: 'y2',
+        showlegend: false,
+        hovertemplate: 'cycle %{x}<br>CE %{y:.1f}%<extra></extra>',
+      } as Plotly.Data);
+    }
+
+    return { ...figure, ceTraces, isAggregated: agg.some((t) => t.isAggregated) };
   }, [
     filteredCells,
     treeFilterPath,
@@ -127,6 +177,17 @@ export function RatePerformancePlot({
     config.maximizeContrast,
   ]);
 
+  const ceActive = showCE && !isAggregated;
+  const traces = useMemo(
+    () => (ceActive ? [...baseData, ...ceTraces] : baseData),
+    [ceActive, baseData, ceTraces],
+  );
+
+  // Let the dashboard disable the CE toggle while the view is an aggregated band.
+  useEffect(() => {
+    onAggregatedChange?.(isAggregated);
+  }, [isAggregated, onAggregatedChange]);
+
   const {
     chartTitle,
     xAxisLabel,
@@ -136,8 +197,8 @@ export function RatePerformancePlot({
   } = config;
 
   // Surface the derived legend entries: the real trace set is only known here,
-  // after aggregation. The dashboard renders them as a block below the plot.
-  const legendItems = useMemo(() => tracesToLegendItems(traces), [traces]);
+  // after aggregation. CE overlay lines are excluded (showlegend off / no cell).
+  const legendItems = useMemo(() => tracesToLegendItems(baseData), [baseData]);
   useEffect(() => {
     onLegendItems?.(legendItems);
   }, [legendItems, onLegendItems]);
@@ -159,10 +220,21 @@ export function RatePerformancePlot({
         tickfont: { size: Math.max(9, labelFontSize - 1) },
         gridcolor: 'rgba(128,128,128,0.2)',
       },
+      ...(ceActive
+        ? {
+            yaxis2: {
+              title: { text: 'Coulombic efficiency (%)', font: { size: labelFontSize } },
+              tickfont: { size: Math.max(9, labelFontSize - 1) },
+              overlaying: 'y' as const,
+              side: 'right' as const,
+              showgrid: false,
+            },
+          }
+        : {}),
       // Legend is drawn as an HTML block below the plot (see ChartLegend), so the
       // in-figure legend is off and the inflated bottom margin is reclaimed.
       showlegend: false,
-      margin: { t: 48, r: 44, b: 80, l: 65 },
+      margin: { t: 48, r: ceActive ? 62 : 44, b: 80, l: 65 },
       uirevision: 'rate-perf-hier',
       shapes,
       annotations,
@@ -178,6 +250,7 @@ export function RatePerformancePlot({
       labelFontSize,
       shapes,
       annotations,
+      ceActive,
     ],
   );
 
