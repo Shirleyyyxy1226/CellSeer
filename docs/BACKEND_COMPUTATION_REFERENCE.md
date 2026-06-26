@@ -1,7 +1,7 @@
 # Backend Computation Reference
 
-**Source of truth:** the FastAPI backend (`backend/cellseer/` + `backend/routers/` + `backend/master_plot_*.py`).
-**Purpose:** a single authoritative list of every analysis formula, threshold, and magic number the backend uses, with `file:line` evidence, so the standalone Python lib (`cellseer/src/cellseer/`) and the TS frontend (`packages/cellseer-lib/`) can be checked against it.
+**Source of truth:** the FastAPI backend (`backend/compute/` + `backend/routers/` + `backend/master_plot_*.py`).
+**Purpose:** a single authoritative list of every analysis formula, threshold, and magic number the backend uses, with `file:line` evidence, so the standalone Python lib (`cellseer/src/cellseer/`) and the TS frontend (`frontend/src/charts/`) can be checked against it.
 **Last audited:** 2026-06-26 (read from real code, not docs).
 
 > ⚠️ This repo has **three** parallel implementations of the cycling analysis: the standalone Python lib (notebooks/gallery), this backend (API), and the TS frontend (rendering). This document records **the backend** as the reference. Where the standalone lib disagrees, it is the lib that is wrong unless noted.
@@ -14,7 +14,7 @@ The fundamental classifier. Everything downstream (capacity, CE, dQ/dV direction
 
 | Item | Formula | File:line |
 |------|---------|-----------|
-| Base threshold `thr` | `\|max(Current)\| / 1e4`; if max is 0/falsy → `1e-9` | `backend/cellseer/data/cycling_data.py:76-79` |
+| Base threshold `thr` | `\|max(Current)\| / 1e4`; if max is 0/falsy → `1e-9` | `backend/compute/data/cycling_data.py:76-79` |
 | Charge | `Current [A] > thr` | `cycling_data.py:126` |
 | Discharge | `Current [A] < -thr` | `cycling_data.py:134` |
 | Rest | `\|Current [A]\| <= thr` | `cycling_data.py:142` |
@@ -45,16 +45,16 @@ Computed once during ingest (`ingest.py:246`), per direction of every cycle.
 
 | Item | Formula / parameter | File:line |
 |------|---------------------|-----------|
-| Grid | `linspace(v[0], v[-1], n_bins=1000)` uniform voltage grid (dV/dQ: uniform capacity grid) | `analysis/cycling/differentiation.py:85,133` |
-| Differentiation | `np.gradient` (plain finite difference) | `differentiation.py:89,136` |
-| Smoothing | Savitzky–Golay, **window=21, polyorder=3**, applied **after** differentiation | `differentiation.py:92-93,138-139,157-161` |
-| Sign | **not negated** (the standalone lib negates → divergence, see §G) | `differentiation.py:89` |
+| Method | `lean` (default) or `raw`, selectable per request via the `differential` endpoint (`method` / `targetBins` / `kernel`); stored parquet is the default `lean` | `differentiation.py:123,171`; `routers/cells.py` |
+| LEAN (default) | PyProBE `differentiate_lean` (Feng et al. 2020): bin one variable into count bins + 5-point smoothing kernel `[0.0668, 0.2417, 0.3830, 0.2417, 0.0668]`; **bin protection** via adaptive `k = max(1, round(v_range / (target_bins·gap)))` targeting ~`lean_target_bins=180`; resampled onto a uniform grid first (`resample_n=400`) | `differentiation.py:45,48,86,94,102` |
+| RAW | `np.gradient` on an `n_bins=1000` uniform grid, **no smoothing** | `differentiation.py:148-152` |
+| Sign | **not negated** (the standalone lib negates → divergence, see §G) | `differentiation.py` |
 | Clipping | **none** (the standalone lib clips ±100 / ±1e4 → divergence) | — |
-| Direction split | `discharge()` / `charge()` = adaptive `thr` (§A) | `backend/cellseer/cell.py:175` |
+| Direction split | `discharge()` / `charge()` = adaptive `thr` (§A) | `backend/compute/cell.py:175` |
 | Inclusion gates | `min_points=5`, `dV>1e-6`, `dQ>1e-9` | `cell.py:165-167,183` |
-| Stored unit | `dQ/dV [Ah/V]`, `dV/dQ [V/Ah]` (frontend rescales to mAh) | `differentiation.py:98,144` |
+| Stored unit | `dQ/dV [Ah/V]`, `dV/dQ [V/Ah]` (frontend rescales to mAh) | `differentiation.py` |
 
-> ⚠️ **Methodology flag + DECISION (2026-06-26):** smoothing is applied *after* `np.gradient` ("differentiate-then-smooth"), which the ICA literature recommends against. **Decision: drop Savitzky–Golay entirely**; offer `raw` (PyProBE `gradient`) + `lean` (PyProBE `differentiate_lean`, default, with bin protection), with an "Adjust smoothing" slider panel. Requires a one-time recompute of stored dQ/dV. See `DIFFERENTIATION_METHODOLOGY_RESEARCH.md` Fix ⓪.
+> ✅ **Methodology decision DONE (2026-06-26):** Savitzky–Golay ("differentiate-then-smooth", which the ICA literature recommends against) was **dropped entirely**. dQ/dV now uses `lean` (default — PyProBE `differentiate_lean` + bin protection) or `raw` (PyProBE `gradient`), exposed through an "Adjust smoothing" panel (resolution bins + kernel) and an on-the-fly recompute endpoint. Stored dQ/dV is migrated with `backend/scripts/recompute_dqdv_lean.py`. See `DIFFERENTIATION_METHODOLOGY_RESEARCH.md` Fix ⓪.
 
 ---
 
@@ -62,7 +62,7 @@ Computed once during ingest (`ingest.py:246`), per direction of every cycle.
 
 **Status:** removed / protocol-gated like `medianCE` & `retention`. `build_peak_shift` now returns `peakShiftMv: null` for every cell (`master_plot_peakshift.py:182-189`); the frontend metric `dqdv-peak-shift` has `requiresProtocol: true` (`overview/metrics.ts`) → lock → "coming soon". The `peak_shift_mv` helpers are kept but unused.
 
-**Why removed:** the old computation (`argmax(|dQ/dV|)` after a 2nd window-5 moving average, first-3 vs last-3 cycles) was **double-smoothed** (on top of §C's SG-21) *and* **C-rate-blind** — ICA peaks shift with C-rate, not only ageing, and many cells are rate tests. A correct version needs same-C-rate windows (protocol segmentation). See `PEAK_DETECTION_RESEARCH.md`.
+**Why removed:** the old computation (`argmax(|dQ/dV|)` after a 2nd window-5 moving average, first-3 vs last-3 cycles) was **double-smoothed** (on top of the then-current §C Savitzky–Golay) *and* **C-rate-blind** — ICA peaks shift with C-rate, not only ageing, and many cells are rate tests. A correct version needs same-C-rate windows (protocol segmentation). See `PEAK_DETECTION_RESEARCH.md`.
 
 ---
 
@@ -96,17 +96,15 @@ Computed once during ingest (`ingest.py:246`), per direction of every cycle.
 - **Decision (2026-06-26):** standardize on the **adaptive `|Imax|/1e4`**. Fix = make `_cycle_capacity_summary` call the same threshold logic.
 - **Root cause:** §B and §E are **duplicate capacity-computation code**. The long-term fix is to merge them into one function (see `DIFFERENTIATION_METHODOLOGY_RESEARCH.md`, Proposal ②).
 
-### G2. NOTE — peak-shift is double-smoothed
-§D moving-average (window 5) on top of §C Savitzky–Golay (window 21). See Proposal ① in the research report.
+### G2. RESOLVED (2026-06-26) — peak-shift double-smoothing
+Was: §D moving-average (window 5) on top of §C Savitzky–Golay (window 21). No longer applies — SG was dropped (§C is now `lean`/`raw`) and the peak-shift metric is shelved / protocol-gated (§D).
 
-### G3. NOTE — differentiate-then-smooth order
-§C smooths after `np.gradient`. Literature recommends smooth-then-differentiate or a Savitzky–Golay *derivative* filter. See research report Part 1.
+### G3. RESOLVED (2026-06-26) — differentiation order
+Was: §C smoothed *after* `np.gradient` ("differentiate-then-smooth"), which the literature recommends against. Now §C's default `lean` (PyProBE `differentiate_lean`) bins-and-smooths in one noise-robust step; `raw` is the unsmoothed `np.gradient` option.
 
-### G4. Standalone-lib divergences (the lib is wrong vs this backend)
-- Lib bins rest as **discharge** (`cellseer/src/cellseer/gcd.py:34`, `else` branch) — backend uses strict `i < -thr`.
-- Lib has **no smoothing** on dQ/dV (`compute.py:106/117`) — backend has Savitzky–Golay.
-- Lib **negates** dQ/dV and **clips** — backend does neither.
-- Lib uses pyprobe's plain `gradient`, not the noise-robust `differentiate_lean`.
+### G4. Standalone-lib divergences
+- Lib bins rest as **discharge** (`cellseer/src/cellseer/gcd.py:34`, `else` branch) — backend uses strict `i < -thr`. **(still open)**
+- dQ/dV smoothing & sign/clip: **aligned (2026-06-26)** — the lib now offers the same `lean` (default, PyProBE `differentiate_lean` + bin protection) and `raw` (plain `np.gradient`, no negation/clipping) as this backend (`cellseer/src/cellseer/compute.py`). The old "no smoothing / negates / clips / plain gradient" divergences no longer apply.
 
 ---
 
@@ -114,11 +112,10 @@ Computed once during ingest (`ingest.py:246`), per direction of every cycle.
 
 | Concern | File |
 |---------|------|
-| Current thresholds, charge/discharge/rest | `backend/cellseer/data/cycling_data.py` |
-| Per-cycle capacity, CE, SOH, throughput | `backend/cellseer/analysis/cycling/summary.py` |
-| dQ/dV, dV/dQ | `backend/cellseer/analysis/cycling/differentiation.py` (orchestrated by `backend/cellseer/cell.py:compute_dqdv`) |
-| Savitzky–Golay helper | `backend/cellseer/analysis/base/numerical.py` (note: `differentiation.py` has its own private `_savgol`, does not call this) |
+| Current thresholds, charge/discharge/rest | `backend/compute/data/cycling_data.py` |
+| Per-cycle capacity, CE, SOH, throughput | `backend/compute/analysis/cycling/summary.py` |
+| dQ/dV, dV/dQ (LEAN/raw) | `backend/compute/analysis/cycling/differentiation.py` (orchestrated by `backend/compute/cell.py:compute_dqdv`) |
 | Peak shift | `backend/master_plot_peakshift.py` |
 | Rate / per-cycle capacity (duplicate) | `backend/routers/cells.py:_cycle_capacity_summary` |
 | Overview metrics | `backend/master_plot_overview.py` |
-| Precompute at upload | `backend/cellseer/ingest.py:246` |
+| Precompute at upload | `backend/compute/ingest.py:246` |
