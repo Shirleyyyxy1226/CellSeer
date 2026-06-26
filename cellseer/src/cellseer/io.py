@@ -95,6 +95,9 @@ def load(data: Any, *, label: str | None = None, cycler: CyclerName = "auto") ->
         if suffix == ".csv":
             df = pd.read_csv(path)
             return CellData(curves=_df_to_curves(df), label=file_label, cell_id=path.stem)
+        if suffix == ".parquet":
+            df = pd.read_parquet(path)
+            return CellData(curves=_df_to_curves(df), label=file_label, cell_id=path.stem)
         if suffix in {".xlsx", ".xlsm"}:
             curves = load_cycler_curves(path, cycler=cycler)
             if not curves:
