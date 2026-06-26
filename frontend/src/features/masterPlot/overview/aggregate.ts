@@ -30,6 +30,7 @@ export function summariesFromOverview(ov: MasterPlotOverview): CellSummary[] {
       retention: c.retention,
       peakShiftMv: null,
       capacitySeries: [],
+      ceSeries: [],
       capacityBasis: c.capacityBasis,
     };
   });

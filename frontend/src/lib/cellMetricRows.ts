@@ -8,13 +8,11 @@ import type { ProtocolSegment, RatePerfCell, IndexCell } from '@/lib/cellTypes';
 export type { ProtocolSegment, RatePerfCell, IndexCell };
 
 export type DimKey =
-  | 'retention'
   | 'capacity'
   | 'fade_rate'
   | 'cathode_mass'
   | 'ce'
   | 'ice'
-  | 'retention_cycle'
   | 'capacity_cycle'
   | 'ce_cycle'
   | 'dqdv_shift'
@@ -36,7 +34,6 @@ export interface CellMetricRow {
   dischargeMah: number[];
   capacityScalar: number;
   cathodeMassG: number | null;
-  retentionSeries: number[];
   ceSeries: number[];
   /** True initial CE % (first-cycle discharge ÷ charge); null when the cell has no charge data. */
   iceScalar: number | null;
@@ -51,60 +48,6 @@ export interface CellMetricRow {
   capacityBasis: 'mAh/g' | 'mAh';
 }
 
-function medianOf(vals: number[]): number {
-  const s = [...vals].sort((a, b) => a - b);
-  const mid = s.length >> 1;
-  return s.length % 2 ? s[mid]! : (s[mid - 1]! + s[mid]!) / 2;
-}
-
-/**
- * Retention baseline = a representative INITIAL specific capacity, taken as the
- * median of the first protocol segment's positive capacities (median, not mean,
- * so a single near-zero glitch cycle can't drag the baseline down). Falls back to
- * the earliest positive capacities when segment timing is unavailable.
- *
- * Returns null — "no trustworthy baseline" — when there is no positive capacity,
- * or when the candidate baseline is a tiny fraction of the cell's own median
- * capacity. A glitch-low reference would otherwise divide retention up into the
- * thousands of percent (the source of the old "260336%" artifact); per the
- * no-fabrication rule, callers treat null as a gap rather than inventing a number.
- */
-function baselineMeanFirstSegment(cell: RatePerfCell, spec: number[]): number | null {
-  if (!spec.length) return null;
-  const positives = spec.filter((v) => v != null && Number.isFinite(v) && v > 0);
-  if (!positives.length) return null;
-  const overallMedian = medianOf(positives);
-
-  let base: number | null = null;
-  const seg = cell.protocolSegments?.[0];
-  if (seg && cell.cycles?.length) {
-    const segVals: number[] = [];
-    for (let i = 0; i < cell.cycles.length; i++) {
-      const cy = cell.cycles[i];
-      const v = spec[i];
-      if (cy >= seg.cycleStart && cy <= seg.cycleEnd && v != null && Number.isFinite(v) && v > 0) {
-        segVals.push(v);
-      }
-    }
-    if (segVals.length) base = medianOf(segVals);
-  }
-  // No usable first segment: approximate initial capacity from the earliest points.
-  if (base == null) base = medianOf(positives.slice(0, Math.min(5, positives.length)));
-
-  // Glitch guard: a real initial capacity sits near the top of the cell's range,
-  // never an order of magnitude below the median. Anything that small is a bad
-  // reference, not a baseline → no data.
-  if (!(base > 0) || base < 0.1 * overallMedian) return null;
-  return base;
-}
-
-function retentionSeries(cell: RatePerfCell, spec: number[]): number[] {
-  if (!spec.length) return [];
-  const base = baselineMeanFirstSegment(cell, spec);
-  if (base == null) return [];
-  return spec.map((v) => (100 * v) / base);
-}
-
 /** True CE per cycle if chargeCapacityMah aligns; else null. */
 function ceSeriesFromCharge(cell: RatePerfCell): number[] | null {
   const ch = cell.chargeCapacityMah;
@@ -113,7 +56,7 @@ function ceSeriesFromCharge(cell: RatePerfCell): number[] | null {
   return dch.map((d, i) => {
     const c = ch[i] ?? 0;
     if (c <= 1e-9) return NaN;
-    return Math.min(102, (d / c) * 100);
+    return (d / c) * 100;
   });
 }
 
@@ -143,7 +86,6 @@ export function buildMetricRows(
     .filter(({ series }) => series.length > 0)
     .map(({ c, series: spec }) => {
       const idx = indexByIdNo.get(c.idNo);
-      const retSeries = retentionSeries(c, spec);
       const lastSpec = spec[spec.length - 1] ?? 0;
       const dch = c.dischargeCapacityMah ?? [];
       // CE/ICE are TRUE metrics only — discharge ÷ charge from the exported charge
@@ -163,7 +105,6 @@ export function buildMetricRows(
         dischargeMah: dch,
         capacityScalar: lastSpec,
         cathodeMassG: idx?.cathodeMassG ?? null,
-        retentionSeries: retSeries,
         ceSeries,
         iceScalar,
         cathode: c.cathode || idx?.cathode || '',

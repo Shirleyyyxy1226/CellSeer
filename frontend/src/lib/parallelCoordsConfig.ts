@@ -9,7 +9,7 @@ export type PCAxisGroup = 'input' | 'formation' | 'cycling' | 'summary';
 
 export type PCAxisKind = 'categorical' | 'continuous' | 'per_cycle';
 
-export type PCMetricKey = 'retention' | 'ce' | 'capacity';
+export type PCMetricKey = 'ce' | 'capacity';
 
 export interface PCAxisCategorical {
   id: string;
@@ -17,8 +17,8 @@ export interface PCAxisCategorical {
   group: PCAxisGroup;
   catKey: DimKey;
   label: string;
-  /** Confidence: retention=1, CE=2, generic=3 */
-  confKind?: 'retention' | 'ce' | 'none';
+  /** Confidence: CE=2, generic=3 */
+  confKind?: 'ce' | 'none';
 }
 
 export interface PCAxisContinuous {
@@ -27,7 +27,7 @@ export interface PCAxisContinuous {
   group: PCAxisGroup;
   scalar: 'ice' | 'capacity_end' | 'capacity_peak' | 'cycle_count';
   label: string;
-  confKind?: 'retention' | 'ce' | 'none';
+  confKind?: 'ce' | 'none';
 }
 
 export interface PCAxisPerCycle {
@@ -38,7 +38,7 @@ export interface PCAxisPerCycle {
   /** Instrument cycle number (must exist in row.cycles for a cell to have a value). */
   cycle: number;
   label: string;
-  confKind?: 'retention' | 'ce' | 'none';
+  confKind?: 'ce' | 'none';
 }
 
 export type PCAxisDef = PCAxisCategorical | PCAxisContinuous | PCAxisPerCycle;
@@ -92,8 +92,6 @@ export function getAxisNumericValue(row: CellMetricRow, def: PCAxisDef): number 
   const ix = cycleIndexFor(row, def.cycle);
   if (ix < 0) return null;
   switch (def.metric) {
-    case 'retention':
-      return row.retentionSeries[ix] ?? null;
     case 'ce':
       return row.ceSeries[ix] ?? null;
     case 'capacity':
