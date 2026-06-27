@@ -1,5 +1,5 @@
 """
-SQLiteBackend — DBBackend implementation (now backed by PostgreSQL).
+PostgresBackend — PostgreSQL-backed DBBackend implementation.
 
 Storage model
 -------------
@@ -51,19 +51,18 @@ class _PGConn:
         self._conn.close()
 
 
-class SQLiteBackend(DBBackend):
+class PostgresBackend(DBBackend):
     """
-    DBBackend implementation backed by PostgreSQL.
-    Name kept for backwards compatibility with existing imports.
+    DBBackend implementation backed by PostgreSQL (connection from DATABASE_URL).
     """
 
     def __init__(self, db_path: Path | str) -> None:
-        # db_path ignored — connection comes from DATABASE_URL in config
+        # db_path is ignored — connection comes from DATABASE_URL in config
         self.db_path = Path(db_path)
         self.project_id = DEFAULT_PROJECT_ID
         self._ensure_schema()
 
-    def set_project_scope(self, project_id: str) -> "SQLiteBackend":
+    def set_project_scope(self, project_id: str) -> "PostgresBackend":
         self.project_id = normalize_project_id(project_id)
         conn = self._connect()
         ensure_project_exists(conn, self.project_id)

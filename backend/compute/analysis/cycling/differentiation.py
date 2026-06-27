@@ -8,8 +8,7 @@ dQ/dV  (Incremental Capacity Analysis) — dQ/dV vs V; peaks = electrode phase
 dV/dQ  (Differential Voltage Analysis)  — dV/dQ vs Q; complementary view.
 
 Both require numerically differentiating noisy experimental data, which amplifies
-noise. We offer two methods (Savitzky–Golay was dropped 2026-06-26 — see
-docs/DIFFERENTIATION_METHODOLOGY_RESEARCH.md):
+noise. We offer two methods (Savitzky–Golay was dropped 2026-06-26):
 
   method="lean" (default)
       PyProBE's LEAN method (Feng et al. 2020, eTransportation 3:100051): bin one

@@ -20,8 +20,7 @@ def _has_default_dqdv() -> bool:
 def test_build_peak_shift_is_shelved_null_at_source():
     # Shelved (2026-06-26): protocol-gated like CE. Cells are still listed (so the
     # frontend can show the lock), but peakShiftMv is null at source for every cell
-    # because the old C-rate-blind computation was retired. See
-    # docs/PEAK_DETECTION_RESEARCH.md.
+    # because the old C-rate-blind computation was retired.
     r = build_peak_shift("default")
     assert r["cellCount"] > 0
     assert r["valueCount"] == 0

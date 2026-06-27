@@ -348,9 +348,8 @@ def _cycle_capacity_summary(cycling_uri: str) -> tuple[list[int], list[float], l
             # Adaptive current deadband = |max current| / 1e4, matching the
             # canonical CyclingData._current_threshold (cycling_data.py:76-79)
             # used by cycle_summary and the dQ/dV direction split. A fixed 1e-9
-            # previously diverged here (see docs/BACKEND_COMPUTATION_REFERENCE.md
-            # §G1) so the rate plot classified near-zero-current points
-            # differently from the rest of the app.
+            # previously diverged here, so the rate plot classified
+            # near-zero-current points differently from the rest of the app.
             max_i = df.select(pl.col("Current [A]").abs().max()).item()
             thr = (float(max_i) / 1e4) if max_i else 1e-9
             summary = (

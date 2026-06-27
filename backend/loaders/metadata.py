@@ -23,7 +23,7 @@ class MetadataLoader(BaseTestTypeLoader):
         update_progress: Callable[[int, str], None],
         ingest_options: Optional[dict[str, Any]] = None,
     ) -> dict:
-        from compute.db.sqlite_backend import SQLiteBackend
+        from compute.db.pg_backend import PostgresBackend
         from compute.ingest import ingest_metadata
 
         suffix = Path(filename).suffix.lower()
@@ -32,7 +32,7 @@ class MetadataLoader(BaseTestTypeLoader):
             tmp.write(file_bytes)
             tmp_path = tmp.name
         try:
-            db = SQLiteBackend(None)
+            db = PostgresBackend(None)
             update_progress(15, "Reading workbook...")
             options = ingest_options or {}
             project_id = options.get("projectId")
