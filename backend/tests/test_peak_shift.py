@@ -6,7 +6,7 @@ otherwise hijacks pytest's rootdir):
 """
 import pytest
 
-from master_plot_peakshift import build_peak_shift
+from masterplot.peakshift import build_peak_shift
 
 
 def _has_default_dqdv() -> bool:

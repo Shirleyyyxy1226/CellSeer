@@ -10,7 +10,7 @@ otherwise hijacks pytest's rootdir):
     python3 -m pytest tests/test_master_plot_overview.py -c /dev/null
 """
 
-from master_plot_overview import build_overview, summarise_cell
+from masterplot.overview import build_overview, summarise_cell
 
 
 def _raw(cell_id, id_no, cathode, sep, spacer, dch, *, spec=None, protocol=None, name=None):
