@@ -389,6 +389,12 @@ export const deleteProject = (id: string): Promise<{ ok: boolean }> =>
     method: 'DELETE',
   });
 
+/** Soft-delete one cell (project scope is appended automatically by apiFetch). */
+export const deleteCell = (cellId: string): Promise<{ ok: boolean; cellId: string }> =>
+  apiFetch(`/api/cells/${encodeURIComponent(cellId)}`, {
+    method: 'DELETE',
+  });
+
 // ---------------------------------------------------------------------------
 // Protocol templates + per-cell protocol attach
 // ---------------------------------------------------------------------------

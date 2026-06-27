@@ -370,3 +370,47 @@ def set_cell_protocol_bulk(body: BulkCellProtocolUpdate, projectId: str | None =
         "protocolName": protocol_name,
         "segments": cleaned,
     }
+
+
+# ---------------------------------------------------------------------------
+# DELETE /api/cells/{cell_id} — soft-delete one cell
+# ---------------------------------------------------------------------------
+
+
+@router.delete("/api/cells/{cell_id:path}")
+def delete_cell(cell_id: str, projectId: str | None = None):
+    """Soft-delete one cell and its datasets.
+
+    Sets ``deleted_at`` on the ``cell`` row and its ``dataset`` rows so every
+    read path (index, rate-performance, differential, master-plot) drops it —
+    matching the ``deleted_at IS NULL`` filter those queries already use. The
+    Parquet files in the data lake are left in place; this is reversible at the
+    DB level.
+    """
+    if not cell_id:
+        raise HTTPException(status_code=400, detail="cell_id is required")
+    project_id = normalize_project_id(projectId)
+    with get_db() as conn:
+        existing = conn.execute(
+            "SELECT 1 FROM cell WHERE project_id = ? AND cell_id = ? AND deleted_at IS NULL",
+            (project_id, cell_id),
+        ).fetchone()
+        if existing is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Cell '{cell_id}' not found in project '{project_id}'",
+            )
+        conn.execute(
+            "UPDATE cell SET deleted_at = datetime('now') "
+            "WHERE project_id = ? AND cell_id = ? AND deleted_at IS NULL",
+            (project_id, cell_id),
+        )
+        conn.execute(
+            "UPDATE dataset SET deleted_at = datetime('now') "
+            "WHERE project_id = ? AND cell_id = ? AND deleted_at IS NULL",
+            (project_id, cell_id),
+        )
+        conn.commit()
+    # The cell left the project's rate-performance set; drop its cached payload.
+    invalidate_rate_cache(project_id)
+    return {"ok": True, "cellId": cell_id}
