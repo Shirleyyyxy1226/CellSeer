@@ -1,11 +1,17 @@
-"""Cell-record endpoints: project-scoped index and per-cell cycling curves."""
+"""Cell-record endpoints: project-scoped index, per-cell cycling curves, and sparse cycle metrics."""
 
 from fastapi import APIRouter, HTTPException
 
 from db import get_db
 from project_scope import normalize_project_id
 
-from ._common import _cycling_curves_from_storage, _get_cell_record_index, _safe_int
+from ._common import (
+    _cycle_summary_for_cell,
+    _cycling_curves_from_storage,
+    _get_cell_record_index,
+    _load_rate_cells,
+    _safe_int,
+)
 
 router = APIRouter()
 
@@ -17,6 +23,24 @@ def cell_record_index_scoped(projectId: str | None = None):
     return _get_cell_record_index(normalize_project_id(projectId))
 
 
+@router.get("/api/cell-record/{cell_id:path}/cycle-summary")
+def cell_cycle_metrics(cell_id: str, cycles: str = "10,20,50,80", projectId: str | None = None):
+    """Sparse per-cycle metrics (retention / CE / capacity) for the requested
+    cycles — feeds parallel coordinates and dashboard sparklines. Unrelated to
+    ``compute.cycle_summary`` despite the ``/cycle-summary`` route path.
+    """
+    if not cell_id:
+        raise HTTPException(status_code=400, detail="cell_id is required")
+    project_id = normalize_project_id(projectId)
+    want = [int(x.strip()) for x in cycles.split(",") if x.strip().isdigit()]
+    rate_cells, _ = _load_rate_cells(project_id)
+    for cell in rate_cells:
+        if str(cell.get("cellId") or "") == cell_id:
+            return _cycle_summary_for_cell(cell, want)
+    raise HTTPException(status_code=404, detail=f"Cell {cell_id!r} not found in rate-performance data")
+
+
+# Catch-all — keep AFTER the more specific /cycle-summary route above.
 @router.get("/api/cell-record/{cell_id:path}")
 def cell_record(
     cell_id: str,
