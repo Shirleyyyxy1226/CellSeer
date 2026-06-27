@@ -214,7 +214,7 @@ export const METRICS: MetricDef[] = [
     id: 'dqdv-peak-shift',
     label: 'dQ/dV peak shift',
     unit: 'mV',
-    // Shelved (2026-06-26): peakShiftMv is null at source. The previous metric
+    // Shelved: peakShiftMv is null at source. The previous metric
     // compared early/late cycles blind to C-rate, but ICA peaks shift with C-rate,
     // not only ageing (many cells here are rate tests). A correct version needs
     // same-C-rate windows, which needs protocol segmentation — so it is

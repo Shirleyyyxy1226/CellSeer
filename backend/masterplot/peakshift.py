@@ -1,4 +1,4 @@
-"""dQ/dV peak-shift ("drift") metric for the Master Plot — SHELVED (2026-06-26).
+"""dQ/dV peak-shift ("drift") metric for the Master Plot — SHELVED.
 
 Protocol-gated like ``medianCE`` / ``retention``: ``build_peak_shift`` lists every
 cell that has a discharge dQ/dV dataset but returns ``peakShiftMv: None`` for all
