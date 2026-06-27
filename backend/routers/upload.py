@@ -7,7 +7,7 @@ from pathlib import Path
 from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
 
 from db import get_db, _PGConn
-from loaders.test_types import get_loader, test_type_manifest
+from loaders.registry import get_loader, test_type_manifest
 from project_scope import ensure_project_exists, normalize_project_id
 
 router = APIRouter()
