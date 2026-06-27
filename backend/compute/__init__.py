@@ -9,9 +9,9 @@ Three-layer architecture
 
 Quick start
 -----------
-from compute import Project, SQLiteBackend
+from compute import Project, PostgresBackend
 
-db = SQLiteBackend("backend/cellseer.db")
+db = PostgresBackend("backend/cellseer.db")
 project = Project.from_metadata_file("data/metadata/cells.xlsx")
 project.import_neware_from_db(db)
 
@@ -48,7 +48,7 @@ from compute.readers.metadata import MetadataReader
 from compute.ingest import ingest_metadata, ingest_cycling_file
 
 # Database backends
-from compute.db.sqlite_backend import SQLiteBackend
+from compute.db.pg_backend import PostgresBackend
 
 # Utilities
 from compute.utils import set_log_level
@@ -67,7 +67,7 @@ __all__ = [
     # Ingest
     "ingest_metadata", "ingest_cycling_file",
     # DB
-    "SQLiteBackend",
+    "PostgresBackend",
     # Utils
     "set_log_level",
 ]

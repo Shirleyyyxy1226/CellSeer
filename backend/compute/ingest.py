@@ -15,10 +15,10 @@ ingest_cycling_file(filepath, db, dataset_name="cycling", **reader_kwargs)
 
 Typical workflow
 ----------------
->>> from compute import SQLiteBackend
+>>> from compute import PostgresBackend
 >>> from compute.ingest import ingest_metadata, ingest_cycling_file
 >>>
->>> db = SQLiteBackend("cellseer.db")
+>>> db = PostgresBackend("cellseer.db")
 >>>
 >>> # 1. Load cell metadata
 >>> ingest_metadata("data/metadata/cells.xlsx", db)
@@ -72,7 +72,7 @@ def ingest_metadata(
     filepath : Path | str
         Path to an Excel (.xlsx, .xls) or CSV file.
     db : DBBackend
-        Open database backend (SQLiteBackend).
+        Open database backend (PostgresBackend).
 
     Returns
     -------

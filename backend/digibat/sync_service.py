@@ -12,7 +12,7 @@ from urllib.parse import quote, urlparse
 
 from compute.analysis.metadata import CellMetadata
 from compute.cell import Cell
-from compute.db.sqlite_backend import SQLiteBackend
+from compute.db.pg_backend import PostgresBackend
 from compute.ingest import ingest_cycling_file
 from digibat.client import DigibatClient
 from digibat.config import DigibatConfig
@@ -269,7 +269,7 @@ def import_collection(
     db_path: str,
     options: DigibatSyncOptions,
 ) -> dict[str, Any]:
-    db = SQLiteBackend(db_path)
+    db = PostgresBackend(db_path)
     project_id = normalize_project_id(options.project_id or collection_id)
     conn = db._connect()
     ensure_project_exists(conn, project_id, collection_id)
@@ -537,7 +537,7 @@ def sync_collections(
 
     os.environ.setdefault("CELLSEER_DATA_LAKE_DIR", str(Path("data_lake").resolve()))
     client = DigibatClient(config.base_url, config.api_key, timeout_seconds=config.timeout_seconds)
-    db = SQLiteBackend(db_path).set_project_scope(options.project_id)
+    db = PostgresBackend(db_path).set_project_scope(options.project_id)
     if run_id is None:
         # CLI / direct call path: create the run row here.
         run_id = str(uuid.uuid4())
@@ -682,8 +682,8 @@ def run_sync_cli(argv: list[str] | None = None) -> int:
         )
 
     if args.purge:
-        from compute.db.sqlite_backend import SQLiteBackend
-        db = SQLiteBackend(args.db_path).set_project_scope(options.project_id)
+        from compute.db.pg_backend import PostgresBackend
+        db = PostgresBackend(args.db_path).set_project_scope(options.project_id)
         conn = db._connect()
         try:
             counts = purge_soft_deleted(

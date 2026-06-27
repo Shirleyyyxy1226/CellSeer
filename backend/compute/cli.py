@@ -82,8 +82,8 @@ def main(argv=None) -> None:
         _cmd_detect(args)
         return
 
-    from compute.db.sqlite_backend import SQLiteBackend
-    db = SQLiteBackend(args.db)
+    from compute.db.pg_backend import PostgresBackend
+    db = PostgresBackend(args.db)
 
     if args.command == "ingest-metadata":
         _cmd_ingest_metadata(args, db)
