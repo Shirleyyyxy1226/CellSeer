@@ -4,7 +4,7 @@ import type {
   CellDatasetSummary,
   ProtocolSegment,
   OpenEndedProtocolSegment,
-} from '@/lib/cellTypes';
+} from '@/lib/cell/cellTypes';
 import type { CellAnnotation } from '@/contexts/CellSelectionContext';
 import { currentProjectIdFromLocation, withProjectQuery } from '@/lib/projectScope';
 

@@ -8,7 +8,7 @@ import { useCellSelection } from '@/contexts/CellSelectionContext';
 import { useProjectHierarchy } from '@/contexts/ProjectHierarchyContext';
 import { useTreeFilter } from '@/contexts/TreeFilterContext';
 import { isCellSelectionPath } from '@/lib/treeUtils';
-import type { RatePerfCell } from '@/lib/cellTypes';
+import type { RatePerfCell } from '@/lib/cell/cellTypes';
 
 /** Full record per cycle - PyProBE columns (Voltage [V], Capacity [Ah], Current [A], etc.) */
 export interface RecordCurve {

@@ -19,9 +19,9 @@ import {
   getColorForCell,
   getMaxDetailDepth,
   resolveHierarchyCellValue,
-} from '@/lib/ratePerfAggregation';
+} from '@/lib/plot/ratePerfAggregation';
 import { useProjectHierarchy } from '@/contexts/ProjectHierarchyContext';
-import type { RatePerfCell as CyclingCell } from '@/lib/cellTypes';
+import type { RatePerfCell as CyclingCell } from '@/lib/cell/cellTypes';
 import { assignColourMapPerceptual, formatNodeLabel } from '@/lib/treeUtils';
 import { VoltageTimePlot, type VoltageTimeCellRecord, type VoltageTimePlotConfig } from './plots/VoltageTimePlot';
 import { RatePerformancePlot } from './plots/RatePerformancePlot';

@@ -22,9 +22,9 @@ import {
   fetchUploadLoaders,
   type MetadataUploadOptions,
 } from '@/lib/api';
-import type { IndexCell } from '@/lib/cellTypes';
-import { statusLine } from '@/lib/cellDisplay';
-import { fetchMetadataUploadOptions } from '@/lib/api/uploadApi';
+import type { IndexCell } from '@/lib/cell/cellTypes';
+import { statusLine } from '@/lib/cell/cellDisplay';
+import { fetchMetadataUploadOptions } from '@/lib/api/upload';
 import { useFileUpload } from '@/hooks/useFileUpload';
 
 type LoaderEntry = { fileType: string; extensions: string[] };

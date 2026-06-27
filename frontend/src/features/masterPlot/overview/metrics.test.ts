@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { RatePerfCell } from '@/lib/cellTypes';
+import type { RatePerfCell } from '@/lib/cell/cellTypes';
 import { type CellSummary, METRICS, metricAvailability, capacitySeriesForCell } from './metrics';
 
 function rawWith(spec: number[] | null, dch: number[]): RatePerfCell {

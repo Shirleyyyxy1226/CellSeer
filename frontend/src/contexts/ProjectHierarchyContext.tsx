@@ -14,7 +14,7 @@ import {
   fetchHierarchyOrder,
   saveHierarchyOrder,
   type AnalyseResponse,
-} from '@/lib/analyseApi';
+} from '@/lib/api/analyse';
 import { useLocation } from 'react-router-dom';
 import type { TreeFilterPath } from '@/components/tree/treeTypes';
 import type { ParsedTable } from '@/lib/treeUtils';

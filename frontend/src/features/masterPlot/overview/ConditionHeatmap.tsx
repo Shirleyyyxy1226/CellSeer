@@ -16,7 +16,7 @@ import {
   condLabel,
 } from './conditions';
 import { MISSING_TILE_BG, MISSING_TILE_FG, rampColourFrom, rampTextFrom } from './colours';
-import { cathodeColor } from '@/lib/cellColorScheme';
+import { cathodeColor } from '@/lib/color/cellColorScheme';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useActiveRamp } from './RampContext';
 import { CondStatCard, RampLegend } from './shared';

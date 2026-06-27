@@ -3,7 +3,7 @@
  * Data sources: rate-performance.json shape + cell-record-index fields.
  */
 
-import type { ProtocolSegment, RatePerfCell, IndexCell } from '@/lib/cellTypes';
+import type { ProtocolSegment, RatePerfCell, IndexCell } from '@/lib/cell/cellTypes';
 
 export type { ProtocolSegment, RatePerfCell, IndexCell };
 

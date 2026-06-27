@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import PlotlyChart from '@/components/PlotlyChart';
 import type { Dataset } from '@/charts';
 import type { ChartAppearanceConfig } from '@/components/ChartEditPopover';
-import type { ExportContext } from '@/lib/exportUtils';
+import type { ExportContext } from '@/lib/plot/exportUtils';
 
 interface Props {
   datasets: Dataset[];

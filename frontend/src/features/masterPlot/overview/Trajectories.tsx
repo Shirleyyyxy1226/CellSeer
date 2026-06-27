@@ -11,7 +11,7 @@
 import { useMemo, useState } from 'react';
 import type { CellSummary, MetricDef } from './metrics';
 import type { CondRow } from './conditions';
-import { cathodeColor } from '@/lib/cellColorScheme';
+import { cathodeColor } from '@/lib/color/cellColorScheme';
 import {
   type TrajPanel,
   type TrajPoint,

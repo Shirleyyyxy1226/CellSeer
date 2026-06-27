@@ -2,8 +2,8 @@
  * Master Plot 2 — parallel coordinates: axis defs and cycle sampling.
  */
 
-import type { CellMetricRow, DimKey } from '@/lib/cellMetricRows';
-import { getCategoricalValue } from '@/lib/cellMetricRows';
+import type { CellMetricRow, DimKey } from '@/lib/cell/cellMetricRows';
+import { getCategoricalValue } from '@/lib/cell/cellMetricRows';
 
 export type PCAxisGroup = 'input' | 'formation' | 'cycling' | 'summary';
 

@@ -7,7 +7,7 @@
  * Safe to import multiple times: it installs only once per window.
  */
 
-import { clearApiToken, getApiToken } from "@/lib/authToken";
+import { clearApiToken, getApiToken } from "@/lib/api/authToken";
 
 const INSTALLED_FLAG = "__cellseerFetchInstalled" as const;
 

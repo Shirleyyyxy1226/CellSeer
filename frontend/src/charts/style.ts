@@ -1,2 +1,2 @@
-export { cellColor, cycleFadeColor, interpolateOntoGrid } from '@/lib/differentialUtils';
-export { cycleColor, cellCycleColor } from '@/lib/cycleColormap';
+export { cellColor, cycleFadeColor, interpolateOntoGrid } from '@/lib/plot/differentialUtils';
+export { cycleColor, cellCycleColor } from '@/lib/color/cycleColormap';

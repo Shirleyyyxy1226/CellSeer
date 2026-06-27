@@ -26,9 +26,9 @@ import {
   buildMetricRows,
   colourForCategory,
   getCategoricalValue,
-} from '@/lib/cellMetricRows';
+} from '@/lib/cell/cellMetricRows';
 import type { RateScope } from '@/lib/api';
-import { MASTER_PLOT_CHART_HEIGHT_PX } from '@/lib/masterPlotLayout';
+import { MASTER_PLOT_CHART_HEIGHT_PX } from '@/lib/plot/masterPlotLayout';
 import {
   ADDABLE_AXES,
   type PCAxisDef,
@@ -39,7 +39,7 @@ import {
   findAddableAxis,
   getAxisNumericValue,
   getCategoricalBand,
-} from '@/lib/parallelCoordsConfig';
+} from '@/lib/plot/parallelCoordsConfig';
 
 function axisUsesPercentTicks(ax: PCAxisDef): boolean {
   if (ax.kind === 'per_cycle') return ax.metric === 'ce';

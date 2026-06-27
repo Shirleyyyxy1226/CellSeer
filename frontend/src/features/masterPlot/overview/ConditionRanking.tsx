@@ -15,7 +15,7 @@ import {
   condLabel,
   dotJitter,
 } from './conditions';
-import { cathodeColor } from '@/lib/cellColorScheme';
+import { cathodeColor } from '@/lib/color/cellColorScheme';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { CondStatCard } from './shared';
 

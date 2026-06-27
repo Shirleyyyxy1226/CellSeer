@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import type React from 'react';
-import { cycleColor, cellCycleColor } from '@/lib/cycleColormap';
+import { cycleColor, cellCycleColor } from '@/lib/color/cycleColormap';
 
 interface CycleColorScaleProps {
   /** Sorted, deduped list of cycle numbers to map across the turbo scale. */

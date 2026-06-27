@@ -13,7 +13,7 @@
  *      backend.
  */
 
-import type { OpenEndedProtocolSegment } from '@/lib/cellTypes';
+import type { OpenEndedProtocolSegment } from '@/lib/cell/cellTypes';
 
 export type { OpenEndedProtocolSegment };
 

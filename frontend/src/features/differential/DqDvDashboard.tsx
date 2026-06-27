@@ -7,10 +7,10 @@ import { type DiffSmoothing } from '@/lib/api';
 import { useCellSelection } from '@/contexts/CellSelectionContext';
 import { useTreeFilter } from '@/contexts/TreeFilterContext';
 import { useProjectHierarchy } from '@/contexts/ProjectHierarchyContext';
-import { getColorForCell } from '@/lib/ratePerfAggregation';
+import { getColorForCell } from '@/lib/plot/ratePerfAggregation';
 import { isCellSelectionPath } from '@/lib/treeUtils';
 import { SelectionPrompt } from '@/components/SelectionPrompt';
-import { buildCellEncodings, getCellEncoding } from '@/lib/cellColorScheme';
+import { buildCellEncodings, getCellEncoding } from '@/lib/color/cellColorScheme';
 import { Surface3dPlot } from './plots/Surface3dPlot';
 import { PeakAnalysisPlot } from './plots/PeakAnalysisPlot';
 import { EvolutionHeatmapPlot } from './plots/EvolutionHeatmapPlot';
@@ -20,7 +20,7 @@ import { ChartEditPopover } from '@/components/ChartEditPopover';
 import { ChartLegend, type LegendItem } from '@/components/ChartLegend';
 import { useResizableChart } from '@/hooks/useResizableChart';
 import { useChartAppearance } from '@/hooks/useChartAppearance';
-import type { ExportContext } from '@/lib/exportUtils';
+import type { ExportContext } from '@/lib/plot/exportUtils';
 
 interface Props {
   cathodeFilter: string;

@@ -14,7 +14,7 @@
  * NOTE: the treemap view (LibraryTreemap) is in development and not currently
  * mounted; it still consumes this registry for when it is re-enabled.
  */
-import type { RatePerfCell } from '@/lib/cellTypes';
+import type { RatePerfCell } from '@/lib/cell/cellTypes';
 
 export interface CellSummary {
   idNo: number;

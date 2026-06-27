@@ -18,7 +18,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, ChevronDown, ChevronUp, Clock, Paperclip, Pencil } from 'lucide-react';
 
-import type { CellDatasetSummary, IndexCell } from '@/lib/cellTypes';
+import type { CellDatasetSummary, IndexCell } from '@/lib/cell/cellTypes';
 import { updateCellMetadata } from '@/lib/api';
 import {
   buildPatch,
@@ -27,7 +27,7 @@ import {
   type EditDraft,
   type EditFieldKind,
   type PatchField,
-} from '@/lib/cellPatch';
+} from '@/lib/cell/cellPatch';
 import {
   CYCLING_FILE_ACCEPT,
   flagIsOn,
@@ -36,7 +36,7 @@ import {
   fmtText,
   hasCyclingDataset,
   prettyDatasetName,
-} from '@/lib/cellDisplay';
+} from '@/lib/cell/cellDisplay';
 import { useCellTestFileAttach } from '@/hooks/useCellTestFileAttach';
 import { ProtocolStatusChip } from '@/features/protocol';
 

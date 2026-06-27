@@ -5,7 +5,7 @@
  * dataset label map, flag truthiness, file-accept string) in one place.
  */
 
-import type { CellDatasetSummary } from '@/lib/cellTypes';
+import type { CellDatasetSummary } from '@/lib/cell/cellTypes';
 
 /**
  * Cycling file extensions accepted by the per-cell upload endpoint.

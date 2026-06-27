@@ -14,7 +14,7 @@ import {
   nodeLeftEdge,
   hex2rgb,
 } from '@/lib/treeUtils';
-import { cellIdentityColor } from '@/lib/cellColorScheme';
+import { cellIdentityColor } from '@/lib/color/cellColorScheme';
 import type { TreeLayoutResult } from '@/hooks/useTreeLayout';
 
 interface TooltipData {
