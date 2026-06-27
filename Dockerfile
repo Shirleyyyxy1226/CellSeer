@@ -43,7 +43,6 @@ COPY backend/requirements.txt /app/backend/requirements.txt
 RUN pip install -r /app/backend/requirements.txt
 
 COPY backend/ /app/backend/
-COPY cellviz/ /app/cellviz/
 COPY scripts/ /app/scripts/
 
 # Copy the host-built SPA bundle. CELLSEER_FRONTEND_DIST points the Python
