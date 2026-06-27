@@ -345,25 +345,23 @@ def _cycle_capacity_summary(cycling_uri: str) -> tuple[list[int], list[float], l
         df = _prepare_cycling_df(cycling_uri)
         required = {"Cycle", "Current [A]", "Capacity [Ah]"}
         if required.issubset(set(df.columns)):
-            # Adaptive current deadband = |max current| / 1e4, matching the
-            # canonical CyclingData._current_threshold (cycling_data.py:76-79)
-            # used by cycle_summary and the dQ/dV direction split. A fixed 1e-9
-            # previously diverged here, so the rate plot classified
-            # near-zero-current points differently from the rest of the app.
-            max_i = df.select(pl.col("Current [A]").abs().max()).item()
-            thr = (float(max_i) / 1e4) if max_i else 1e-9
-            summary = (
-                df.with_columns([
-                    pl.when(pl.col("Current [A]") > thr).then(pl.col("Capacity [Ah]")).otherwise(None).alias("_chg"),
-                    pl.when(pl.col("Current [A]") < -thr).then(pl.col("Capacity [Ah]")).otherwise(None).alias("_dch"),
-                ])
-                .group_by("Cycle")
-                .agg([
-                    (pl.col("_chg").max() - pl.col("_chg").min()).alias("chg_ah"),
-                    (pl.col("_dch").max() - pl.col("_dch").min()).alias("dch_ah"),
-                ])
-                .sort("Cycle")
-            )
+            # Reuse the canonical per-cycle reduction so the rate plot and the
+            # dQ/dV split agree — same adaptive |Imax|/1e4 threshold and the same
+            # max-min charge/discharge capacity — instead of re-deriving it here.
+            from compute.analysis.cycling.summary import cycle_summary
+            from compute.data.cycling_data import CyclingData
+
+            # CyclingData validates Time/Voltage columns the capacity reduction
+            # doesn't use; fill placeholders so a (rare) source lacking them still
+            # summarises, matching the previous direct computation's tolerance.
+            fillers = [
+                pl.lit(0.0).alias(c)
+                for c in ("Time [s]", "Voltage [V]")
+                if c not in df.columns
+            ]
+            if fillers:
+                df = df.with_columns(fillers)
+            summary = cycle_summary(CyclingData(lf=df.lazy(), info={})).data.sort("Cycle")
             cycles: list[int] = []
             charge_m_ah: list[float] = []
             discharge_m_ah: list[float] = []
@@ -372,11 +370,11 @@ def _cycle_capacity_summary(cycling_uri: str) -> tuple[list[int], list[float], l
                     cyc = int(r["Cycle"])
                 except Exception:
                     continue
-                chg = float(r["chg_ah"]) if r["chg_ah"] is not None else 0.0
-                dch = float(r["dch_ah"]) if r["dch_ah"] is not None else 0.0
+                chg = r["Charge Capacity [Ah]"]
+                dch = r["Discharge Capacity [Ah]"]
                 cycles.append(cyc)
-                charge_m_ah.append(chg * 1000.0)
-                discharge_m_ah.append(dch * 1000.0)
+                charge_m_ah.append((float(chg) if chg is not None else 0.0) * 1000.0)
+                discharge_m_ah.append((float(dch) if dch is not None else 0.0) * 1000.0)
             if cycles:
                 result = (cycles, charge_m_ah, discharge_m_ah)
     except Exception:
