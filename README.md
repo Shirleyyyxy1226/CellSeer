@@ -25,7 +25,7 @@ Built for material scientists, lab managers, and battery researchers. Grew out o
 - **Protocol attachment**: attach cycle-range / C-rate segments to cells (protocol-scoped retention and fade are planned, not yet computed)
 - **File upload & ingest**: metadata spreadsheets and cycler files (Neware, BioLogic, Arbin via [PyProBE](https://github.com/uk-amrc/PyProBE))
 - **DIGIBAT sync**: mirror Imperial DataLab collections to local PostgreSQL + Parquet for offline dashboards
-- **Annotations**: per-cell notes and tags
+- **Cell management**: per-cell notes, tags, inline metadata editing, and delete
 - **Shareable views**: dashboard tab and filter state live in the URL
 
 ## Built With
@@ -150,10 +150,12 @@ CellSeer/
 │   └── src/
 │       ├── features/         # masterPlot, gcdPlot, differential, ratePerformance, hierarchy, protocol
 │       ├── charts/           # framework-free Plotly figure builders (import: `@/charts`)
+│       ├── lib/              # api/, cell/, color/, plot/ subfolders + shared helpers
 │       └── digibat/          # DIGIBAT sync page, API client, and hooks
 ├── backend/                  # FastAPI + PostgreSQL + Parquet
-│   ├── routers/              # REST endpoints (cells, upload, projects, digibat, …)
+│   ├── routers/              # REST endpoints; cells/ is a package (record · differential · rate · mutations)
 │   ├── compute/              # embedded compute lib: readers, analysis, ingest (import: `compute`)
+│   ├── masterplot/           # Master Plot overview metrics
 │   ├── digibat/              # DIGIBAT client + sync service
 │   └── scripts/              # sync_digibat.py, import scripts
 ├── cellseer/                 # standalone pip-installable plotting package (import: `cellseer`)
