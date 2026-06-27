@@ -218,8 +218,7 @@ export const METRICS: MetricDef[] = [
     // compared early/late cycles blind to C-rate, but ICA peaks shift with C-rate,
     // not only ageing (many cells here are rate tests). A correct version needs
     // same-C-rate windows, which needs protocol segmentation — so it is
-    // protocol-gated like CE/retention (lock → "coming soon"). See
-    // docs/PEAK_DETECTION_RESEARCH.md.
+    // protocol-gated like CE/retention (lock → "coming soon").
     requiresProtocol: true,
     higherIsBetter: true, // score overrides: a stable peak (≈0 shift) is best
     value: (c) => c.peakShiftMv,

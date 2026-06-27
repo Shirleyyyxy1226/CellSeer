@@ -15,7 +15,7 @@ C-rate, which needs protocol segmentation we don't yet have.
 
 When protocol segmentation lands, rebuild this with same-C-rate early/late windows,
 a single upstream smoothing pass (no second smooth), ROI + prominence peak
-detection, and a Gaussian/Pseudo-Voigt apex fit. See docs/PEAK_DETECTION_RESEARCH.md.
+detection, and a Gaussian/Pseudo-Voigt apex fit.
 """
 
 from __future__ import annotations
