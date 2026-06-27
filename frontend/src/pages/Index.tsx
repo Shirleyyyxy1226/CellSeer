@@ -14,7 +14,7 @@ import { useCellSelection } from '@/contexts/CellSelectionContext';
 import { useTreeFilter } from '@/contexts/TreeFilterContext';
 import { useProtocolFilter } from '@/contexts/ProtocolFilterContext';
 import { useCellRecordIndexQuery, useRatePerformanceQuery } from '@/hooks/useCellData';
-import type { RatePerfCell } from '@/lib/cellTypes';
+import type { RatePerfCell } from '@/lib/cell/cellTypes';
 import { House, PanelLeft } from 'lucide-react';
 import { type ImperativePanelHandle, Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 

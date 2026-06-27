@@ -5,8 +5,8 @@ import { fetchDifferentialCells, type DiffSmoothing } from '@/lib/api';
 export const DEFAULT_SMOOTHING: DiffSmoothing = { method: 'lean', targetBins: 180, kernel: 5 };
 import { useCellRecordIndexQuery, useDifferentialQueries } from '@/hooks/useCellData';
 import { useDataRefresh } from '@/contexts/DataRefreshContext';
-import { interpolateOntoGrid } from '@/lib/differentialUtils';
-import { cellIdentityColor } from '@/lib/cellColorScheme';
+import { interpolateOntoGrid } from '@/lib/plot/differentialUtils';
+import { cellIdentityColor } from '@/lib/color/cellColorScheme';
 
 export interface DifferentialCellInfo {
   id: string;

@@ -16,9 +16,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { tracesToCsv, downloadBlob, exportZip, type ExportContext } from '@/lib/exportUtils';
+import { tracesToCsv, downloadBlob, exportZip, type ExportContext } from '@/lib/plot/exportUtils';
 
-const Plot = lazy(() => import('@/lib/plotlyStrict'));
+const Plot = lazy(() => import('@/lib/plot/plotlyStrict'));
 
 export interface TraceIndexToCell {
   idNo: number;

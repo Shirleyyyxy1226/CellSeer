@@ -27,7 +27,7 @@ import {
   hex2rgb,
   treeNodeStableKey,
 } from '@/lib/treeUtils';
-import { cellIdentityColor } from '@/lib/cellColorScheme';
+import { cellIdentityColor } from '@/lib/color/cellColorScheme';
 
 /** Column-level palette for the "leftmost lineage" colour. Each branch
  *  chip and its outgoing edges share the same tint regardless of depth. */

@@ -14,7 +14,7 @@
  */
 
 import type { CellMetadataPatch } from '@/lib/api';
-import type { IndexCell } from '@/lib/cellTypes';
+import type { IndexCell } from '@/lib/cell/cellTypes';
 
 /**
  * Cell columns that can be patched through `PATCH /api/cells/{id}`.

@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { uploadFile, uploadFiles, getUploadStatus } from '@/lib/api/uploadApi';
+import { uploadFile, uploadFiles, getUploadStatus } from '@/lib/api/upload';
 
 export type UploadStatus = 'idle' | 'uploading' | 'processing' | 'done' | 'error';
 

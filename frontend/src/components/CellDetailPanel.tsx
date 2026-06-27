@@ -32,8 +32,8 @@ import { useCellSelection } from '@/contexts/CellSelectionContext';
 import { useDataRefresh } from '@/contexts/DataRefreshContext';
 import { putCellAnnotation, updateCellMetadata } from '@/lib/api';
 import { useCellRecordIndexQuery } from '@/hooks/useCellData';
-import type { IndexCell } from '@/lib/cellTypes';
-import { TAG_CATALOG } from '@/lib/cellTags';
+import type { IndexCell } from '@/lib/cell/cellTypes';
+import { TAG_CATALOG } from '@/lib/cell/cellTags';
 
 type IndexStatus = 'loading' | 'loaded' | 'error';
 

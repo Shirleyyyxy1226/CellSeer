@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { colorForHierPath } from './ratePerfAggregation';
-import { assignColourMapPerceptual, HIGH_CONTRAST_PALETTE, type ColStats } from './treeUtils';
+import { assignColourMapPerceptual, HIGH_CONTRAST_PALETTE, type ColStats } from '@/lib/treeUtils';
 
 // Minimal ColStats — assignColourMapPerceptual only reads `distinctVals`.
 const col = (header: string, distinctVals: string[]): ColStats =>

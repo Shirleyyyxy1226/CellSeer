@@ -7,8 +7,8 @@ import { useCellSelection } from '@/contexts/CellSelectionContext';
 import { useProjectHierarchy } from '@/contexts/ProjectHierarchyContext';
 import { useTreeFilter } from '@/contexts/TreeFilterContext';
 import { collectPreLeafNodeKeys, getPathFromRootToNode, treeNodeStableKey, type TreeNode } from '@/lib/treeUtils';
-import { buildCanonicalCellColorMap, buildPathToColorMap } from '@/lib/ratePerfAggregation';
-import type { RatePerfCell } from '@/lib/cellTypes';
+import { buildCanonicalCellColorMap, buildPathToColorMap } from '@/lib/plot/ratePerfAggregation';
+import type { RatePerfCell } from '@/lib/cell/cellTypes';
 
 /* ── Main panel ─────────────────────────────────────────────────────── */
 

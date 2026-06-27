@@ -28,8 +28,8 @@ import {
   treeNodeStableKey,
   type TreeNode,
 } from '@/lib/treeUtils';
-import { buildCanonicalCellColorMap, buildPathToColorMap } from '@/lib/ratePerfAggregation';
-import type { IndexCell, RatePerfCell } from '@/lib/cellTypes';
+import { buildCanonicalCellColorMap, buildPathToColorMap } from '@/lib/plot/ratePerfAggregation';
+import type { IndexCell, RatePerfCell } from '@/lib/cell/cellTypes';
 
 interface CircuitTreeFilterSidebarProps {
   cells: IndexCell[];

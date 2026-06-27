@@ -15,8 +15,8 @@ import { useCellSelection } from '@/contexts/CellSelectionContext';
 import { useTreeFilter } from '@/contexts/TreeFilterContext';
 import { useProjectHierarchy } from '@/contexts/ProjectHierarchyContext';
 import { getPathFromRootToNode, collectPreLeafNodeKeys, type TreeNode } from '@/lib/treeUtils';
-import { buildCanonicalCellColorMap, buildPathToColorMap } from '@/lib/ratePerfAggregation';
-import type { IndexCell, RatePerfCell } from '@/lib/cellTypes';
+import { buildCanonicalCellColorMap, buildPathToColorMap } from '@/lib/plot/ratePerfAggregation';
+import type { IndexCell, RatePerfCell } from '@/lib/cell/cellTypes';
 import { useDimensions } from '@/hooks/useDimensions';
 import { useTreeLayout } from '@/hooks/useTreeLayout';
 

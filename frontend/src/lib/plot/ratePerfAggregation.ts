@@ -4,8 +4,8 @@
  */
 
 import type { TreeFilterPath } from '@/components/tree/treeTypes';
-import { formatNodeLabel, assignColourMapPerceptual } from './treeUtils';
-import type { ColStats, LabelDecoration } from './treeUtils';
+import { formatNodeLabel, assignColourMapPerceptual } from '@/lib/treeUtils';
+import type { ColStats, LabelDecoration } from '@/lib/treeUtils';
 import {
   buildCellColorMap,
   cellIdentityColor,
@@ -13,11 +13,11 @@ import {
   fallbackPathColor,
   getCellEncoding,
   pathColorFromHues,
-} from './cellColorScheme';
-import type { CellColorAttrs } from './cellColorScheme';
+} from '@/lib/color/cellColorScheme';
+import type { CellColorAttrs } from '@/lib/color/cellColorScheme';
 import type { CellEncoding, LineDash, MarkerSymbol } from '@/charts';
 
-import type { RatePerfCell as CyclingCellLike } from '@/lib/cellTypes';
+import type { RatePerfCell as CyclingCellLike } from '@/lib/cell/cellTypes';
 
 const DEFAULT_COLOR = '#6b7280';
 

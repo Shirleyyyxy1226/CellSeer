@@ -1,21 +1,21 @@
 import { useEffect, useMemo } from 'react';
 import PlotlyChart from '@/components/PlotlyChart';
-import type { ExportContext } from '@/lib/exportUtils';
+import type { ExportContext } from '@/lib/plot/exportUtils';
 import {
   buildRatePerformanceFigure,
   type RatePerfTraceSpec,
 } from '@/charts';
-import { buildTraces } from '@/lib/ratePerfAggregation';
-import { buildCellEncodings } from '@/lib/cellColorScheme';
+import { buildTraces } from '@/lib/plot/ratePerfAggregation';
+import { buildCellEncodings } from '@/lib/color/cellColorScheme';
 import type {
   RatePerfCell as CyclingCell,
   ProtocolSegment,
-} from '@/lib/cellTypes';
+} from '@/lib/cell/cellTypes';
 import type { TreeFilterPath } from '@/components/tree/treeTypes';
 import type { AnalysisResult } from '@/lib/treeUtils';
 import type { ChartAppearanceConfig } from '@/components/ChartEditPopover';
 import type { ChargeDirection } from '@/components/DirectionToggle';
-import { tracesToLegendItems } from '@/lib/traceLegend';
+import { tracesToLegendItems } from '@/lib/plot/traceLegend';
 import type { LegendItem } from '@/components/ChartLegend';
 
 export interface RatePerformancePlotProps {

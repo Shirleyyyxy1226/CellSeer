@@ -1,4 +1,4 @@
-import type { RatePerfCell as CyclingCell } from '@/lib/cellTypes';
+import type { RatePerfCell as CyclingCell } from '@/lib/cell/cellTypes';
 import type { ChargeDirection } from '@/components/DirectionToggle';
 
 /**

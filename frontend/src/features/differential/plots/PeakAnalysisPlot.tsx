@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import PlotlyChart from '@/components/PlotlyChart';
-import type { ExportContext } from '@/lib/exportUtils';
+import type { ExportContext } from '@/lib/plot/exportUtils';
 import type { ChartAppearanceConfig } from '@/components/ChartEditPopover';
 
 interface Props {
