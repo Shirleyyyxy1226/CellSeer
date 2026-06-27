@@ -1,4 +1,4 @@
-"""Cell mutation endpoints: metadata PATCH and protocol attach (single + bulk)."""
+"""Cell mutation endpoints: metadata PATCH, protocol attach (single + bulk), and delete."""
 
 import json
 from typing import Any, List, Optional
