@@ -26,11 +26,20 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { Check, X } from 'lucide-react';
+import { Check, Trash2, X } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { CellMetadataCard } from '@/components/CellMetadataCard';
 import { useCellSelection } from '@/contexts/CellSelectionContext';
 import { useDataRefresh } from '@/contexts/DataRefreshContext';
-import { putCellAnnotation, updateCellMetadata } from '@/lib/api';
+import { useToast } from '@/hooks/use-toast';
+import { deleteCell, putCellAnnotation, updateCellMetadata } from '@/lib/api';
 import { useCellRecordIndexQuery } from '@/hooks/useCellData';
 import type { IndexCell } from '@/lib/cell/cellTypes';
 import { TAG_CATALOG } from '@/lib/cell/cellTags';
@@ -46,8 +55,10 @@ export function CellDetailPanel() {
     annotationsByCell,
     refetchAnnotations,
     dismissDetailPanel,
+    clearSelection,
   } = useCellSelection();
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   // Structural changes (metadata edit, file upload, protocol attach) still bump
   // the global dataVersion so every view refetches. Saving a note/tag does not,
   // to avoid remounting the hierarchy sidebar (see handleSave).
@@ -59,6 +70,8 @@ export function CellDetailPanel() {
   const [localTags, setLocalTags] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const selectedCells = useMemo(() => {
     if (selectedCellIds.length === 0) return [];
@@ -135,6 +148,28 @@ export function CellDetailPanel() {
     indexStatus,
   ]);
 
+  const handleDelete = useCallback(async () => {
+    if (!singleCell?.cellId) return;
+    setDeleting(true);
+    try {
+      await deleteCell(singleCell.cellId);
+      setPendingDelete(false);
+      // The cell is gone from every view — drop it from the selection, close the
+      // panel, and bump dataVersion so index / rate / master-plot all refetch.
+      clearSelection();
+      dismissDetailPanel();
+      triggerDataRefresh();
+    } catch (err) {
+      toast({
+        title: 'Delete failed',
+        description: err instanceof Error ? err.message : 'Could not delete the cell.',
+        variant: 'destructive',
+      });
+    } finally {
+      setDeleting(false);
+    }
+  }, [singleCell, clearSelection, dismissDetailPanel, triggerDataRefresh, toast]);
+
   const toggleTag = useCallback((tag: string) => {
     setLocalTags((prev) =>
       prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag],
@@ -159,15 +194,29 @@ export function CellDetailPanel() {
             )}
           </h3>
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          onClick={dismissDetailPanel}
-          aria-label="Close"
-        >
-          <X className="h-4 w-4" />
-        </Button>
+        <div className="flex items-center gap-1">
+          {singleCell && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-destructive hover:text-destructive"
+              onClick={() => setPendingDelete(true)}
+              aria-label={`Delete cell ${singleCell.cellName || singleCell.cellId || singleCell.idNo}`}
+              title="Delete cell"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={dismissDetailPanel}
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
       <div className="flex-1 overflow-y-auto p-3 space-y-4">
         {singleCell ? (
@@ -321,6 +370,32 @@ export function CellDetailPanel() {
               : 'Save note & tags'}
         </Button>
       </div>
+
+      <Dialog
+        open={pendingDelete}
+        onOpenChange={(open) => {
+          if (!open) setPendingDelete(false);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete cell?</DialogTitle>
+            <DialogDescription>
+              {singleCell
+                ? `"${singleCell.cellName || singleCell.cellId || `Cell ${singleCell.idNo}`}" and its data will be removed from this project. This cannot be undone.`
+                : ''}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPendingDelete(false)} disabled={deleting}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={() => void handleDelete()} disabled={deleting}>
+              {deleting ? 'Deleting…' : 'Delete cell'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
