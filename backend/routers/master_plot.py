@@ -9,8 +9,8 @@ reads.
 
 from fastapi import APIRouter, Query
 
-from master_plot_overview import build_overview
-from master_plot_peakshift import build_peak_shift
+from masterplot.overview import build_overview
+from masterplot.peakshift import build_peak_shift
 from project_scope import normalize_project_id
 from routers.cells import _load_rate_cells
 
