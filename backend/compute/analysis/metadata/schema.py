@@ -118,7 +118,7 @@ class CellMetadata(BaseModel):
             "anode": {"anode"},
             "anode_diameter_mm": {"anodediametermm"},
             "np_ratio": {"npratio"},
-            "separator_type": {"separatortype"},
+            "separator_type": {"separatortype", "separator"},
             "separator_diameter_mm": {"separatordiametermm"},
             "electrolyte": {"electrolyte"},
             # "electrolytevolumel": "(μL)" headers lose the µ under normalize_key.
