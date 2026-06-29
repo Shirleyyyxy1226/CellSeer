@@ -97,6 +97,12 @@ class PostgresBackend(DBBackend):
         """
         m = cell.metadata
         pid = normalize_project_id(getattr(self, "project_id", DEFAULT_PROJECT_ID))
+        # Source fields with no schema column (e.g. DIGIBAT supplier / testing
+        # procedure) ride along in metadata.custom; persist them as JSON so they
+        # survive and stay viewable. display_name is an internal derived key, not
+        # source metadata, so it's excluded.
+        extra_meta = {k: v for k, v in (m.custom or {}).items() if k != "display_name"}
+        custom_meta_json = json.dumps(extra_meta, ensure_ascii=False) if extra_meta else None
         conn = self._connect()
         try:
             ensure_project_exists(conn, pid)
@@ -109,8 +115,8 @@ class PostgresBackend(DBBackend):
                     anode, anode_diameter_mm, np_ratio, separator_type,
                     separator_diameter_mm, electrolyte, electrolyte_volume_ul,
                     spacer_mm, repeat, do_formation, do_ratetest, do_eis,
-                    anode_mass, cathode_mass, notes
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    anode_mass, cathode_mass, notes, custom_meta
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(project_id, cell_id) DO UPDATE SET
                     id_no=excluded.id_no, batch=excluded.batch,
                     category=excluded.category, cathode=excluded.cathode,
@@ -127,6 +133,7 @@ class PostgresBackend(DBBackend):
                     do_ratetest=excluded.do_ratetest, do_eis=excluded.do_eis,
                     anode_mass=excluded.anode_mass, cathode_mass=excluded.cathode_mass,
                     notes=excluded.notes,
+                    custom_meta=excluded.custom_meta,
                     deleted_at=NULL
                 """,
                 (
@@ -137,7 +144,7 @@ class PostgresBackend(DBBackend):
                     m.electrolyte, m.electrolyte_volume_ul,
                     m.spacer_mm, m.repeat,
                     m.do_formation, m.do_ratetest, m.do_eis,
-                    m.anode_mass_g, m.cathode_mass_g, m.notes,
+                    m.anode_mass_g, m.cathode_mass_g, m.notes, custom_meta_json,
                 ),
             )
 

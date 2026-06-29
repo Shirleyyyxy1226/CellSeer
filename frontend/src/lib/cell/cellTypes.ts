@@ -70,6 +70,12 @@ export interface IndexCell {
   doRateTest?: string | null;
   doEis?: string | null;
   notes?: string | null;
+  /**
+   * Source fields with no schema column (e.g. DIGIBAT supplier, testing
+   * procedure). Preserved and shown read-only; not part of the editable
+   * schema and never feeds any calculation.
+   */
+  customMeta?: Record<string, string> | null;
   sourceSystem?: string | null;
   sourceRefcode?: string | null;
   sourceItemId?: string | null;

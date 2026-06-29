@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS cell (
   anode_mass REAL,
   cathode_mass REAL,
   notes TEXT,
+  custom_meta TEXT,                         -- JSON map of source fields with no schema column (e.g. supplier, testing procedure)
   source_system TEXT,                       -- e.g. digibat
   source_refcode TEXT,                      -- remote item refcode
   source_item_id TEXT,                      -- remote item id

@@ -430,6 +430,12 @@ export function CellMetadataCard({
     editing,
   );
 
+  // Source fields with no schema column (e.g. DIGIBAT supplier, testing
+  // procedure). Read-only — preserved for reference, never edited here.
+  const customEntries = Object.entries(cell.customMeta ?? {}).filter(
+    ([, v]) => v != null && String(v).trim().length > 0,
+  );
+
   // Narrow layout uses smaller label width and reduced padding to fit the
   // ~360px sidebar.
   const labelWidth = narrow ? 72 : 88;
@@ -529,6 +535,24 @@ export function CellMetadataCard({
         <Group title="Build" rows={buildRows} />
         <Group title="Electrolyte" rows={electrolyteRows} />
       </div>
+
+      {/* Additional metadata — source fields with no schema column, kept
+          read-only for reference (e.g. supplier, testing procedure). */}
+      {customEntries.length > 0 && (
+        <div>
+          <div className="mb-1 text-[9.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Additional metadata
+          </div>
+          <div className="rounded-md border border-border/60 bg-background/60 px-2.5 py-1.5">
+            {customEntries.map(([k, v]) => (
+              <div key={k} className="py-0.5" title={`${k}: ${v}`}>
+                <div className="text-[10px] text-muted-foreground break-words">{k}</div>
+                <div className="text-[12px] text-foreground break-words">{v}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Status row: real attached datasets + planned tests. */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px]">

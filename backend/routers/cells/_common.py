@@ -88,7 +88,8 @@ def _get_cell_record_index(project_id: str) -> dict:
                        c.separator_type, c.separator_diameter_mm,
                        c.electrolyte, c.electrolyte_volume_ul, c.spacer_mm,
                        c.do_formation, c.do_ratetest, c.do_eis,
-                       c.notes, c.source_system, c.source_refcode, c.source_item_id,
+                       c.notes, c.custom_meta,
+                       c.source_system, c.source_refcode, c.source_item_id,
                        c.last_seen_at,
                        c.protocol_name, c.protocol_segments, c.protocol_updated_at
                 FROM cell c
@@ -164,6 +165,7 @@ def _get_cell_record_index(project_id: str) -> dict:
                 "doRateTest": _safe_str(r["do_ratetest"]),
                 "doEis": _safe_str(r["do_eis"]),
                 "notes": _safe_str(r["notes"]),
+                "customMeta": _parse_custom_meta(r["custom_meta"]),
                 "sourceSystem": _safe_str(r["source_system"]),
                 "sourceRefcode": _safe_str(r["source_refcode"]),
                 "sourceItemId": _safe_str(r["source_item_id"]),
@@ -180,6 +182,39 @@ def _get_cell_record_index(project_id: str) -> dict:
             }
         )
     return {"cells": index}
+
+
+def _parse_custom_meta(value: object) -> dict[str, str] | None:
+    """Decode the ``cell.custom_meta`` JSON blob into a flat string map.
+
+    These are source fields with no schema column (e.g. DIGIBAT supplier,
+    testing procedure). Values are coerced to strings for display; empty maps
+    and unparseable blobs return None so the frontend can skip the section.
+    """
+    if not value:
+        return None
+    if isinstance(value, dict):
+        parsed: object = value
+    else:
+        if isinstance(value, (bytes, bytearray)):
+            try:
+                value = value.decode("utf-8")
+            except Exception:
+                return None
+        if not isinstance(value, str):
+            return None
+        try:
+            parsed = json.loads(value)
+        except Exception:
+            return None
+    if not isinstance(parsed, dict):
+        return None
+    out: dict[str, str] = {}
+    for k, v in parsed.items():
+        if v is None or v == "":
+            continue
+        out[str(k)] = str(v)
+    return out or None
 
 
 def _parse_segments_column(value: object) -> list[dict] | None:

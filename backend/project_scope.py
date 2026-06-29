@@ -87,6 +87,7 @@ def ensure_project_schema(conn) -> None:
           anode_mass   REAL,
           cathode_mass REAL,
           notes        TEXT,
+          custom_meta  TEXT,
           source_system    TEXT,
           source_refcode   TEXT,
           source_item_id   TEXT,
@@ -106,6 +107,11 @@ def ensure_project_schema(conn) -> None:
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_cell_deleted_at ON cell(project_id, deleted_at)"
     )
+
+    # Backfill custom_meta on cell tables created before the dynamic-metadata
+    # feature. CREATE TABLE IF NOT EXISTS won't add it to an existing table.
+    if not _has_column(conn, "cell", "custom_meta"):
+        conn.execute("ALTER TABLE cell ADD COLUMN custom_meta TEXT")
 
     conn.execute(
         """
