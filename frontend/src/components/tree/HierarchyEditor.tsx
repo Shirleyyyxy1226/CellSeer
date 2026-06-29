@@ -15,6 +15,7 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { useState } from 'react';
 
 /** Minimal shape: j, header, cardinality, isNumeric (from API or treeUtils) */
 interface ColCandidate {
@@ -29,6 +30,8 @@ interface HierarchyEditorProps {
   activeJs: number[];
   onChangeOrder: (newJs: number[]) => void;
   onReset: () => void;
+  /** Show the available-fields pool expanded on first render (standalone page). */
+  defaultExpandPool?: boolean;
 }
 
 const HEADER_LABEL_OVERRIDES: Record<string, string> = {
@@ -44,6 +47,37 @@ export function displayHeader(header: string): string {
   const norm = header.trim().toLowerCase().replace(/[\s_]+/g, ' ');
   if (norm === 'repeat' || norm === 'cell' || norm === 'cell id' || norm === 'cell_id') return 'Cell';
   return HEADER_LABEL_OVERRIDES[norm] ?? header;
+}
+
+// Group the available fields by the cell component their header names, so the
+// pool reads as Cathode / Anode / Electrolyte / Build / General clusters
+// instead of one flat list. `prefixes` are matched against the lowercased header.
+const POOL_SECTIONS: { key: string; label: string; prefixes: string[] }[] = [
+  { key: 'cathode', label: 'Cathode', prefixes: ['cathode'] },
+  { key: 'anode', label: 'Anode', prefixes: ['anode'] },
+  { key: 'electrolyte', label: 'Electrolyte', prefixes: ['electrolyte'] },
+  { key: 'build', label: 'Build', prefixes: ['separator', 'spacer'] },
+  { key: 'general', label: 'General', prefixes: [] },
+];
+
+function sectionKeyOf(header: string): string {
+  const norm = (typeof header === 'string' ? header : '').trim().toLowerCase();
+  const hit = POOL_SECTIONS.find(s => s.prefixes.some(p => norm.startsWith(p)));
+  return hit ? hit.key : 'general';
+}
+
+// Within a component section the section label already names the component, so
+// drop the redundant prefix from the chip (e.g. under CATHODE show "Capacity
+// (mAh)" not "Cathode capacity (mAh)"). Other sections keep the full label.
+function chipLabel(header: string, sectionKey: string): string {
+  if (sectionKey === 'cathode' || sectionKey === 'anode' || sectionKey === 'electrolyte') {
+    const norm = header.trim().toLowerCase();
+    if (norm.startsWith(sectionKey) && norm.length > sectionKey.length) {
+      const rest = header.trim().slice(sectionKey.length).replace(/^[\s_:,()-]+/, '').trim();
+      if (rest) return rest.charAt(0).toUpperCase() + rest.slice(1);
+    }
+  }
+  return displayHeader(header);
 }
 
 /** One draggable hierarchy chip. Drag is bound to the ⠿ handle only, so clicking
@@ -105,10 +139,22 @@ export function HierarchyEditor({
   activeJs,
   onChangeOrder,
   onReset,
+  defaultExpandPool = false,
 }: HierarchyEditorProps) {
   const statsByJ = Object.fromEntries(allCandidates.map(c => [c.j, c]));
   const activeSet = new Set(activeJs);
   const pool = allCandidates.filter(c => !activeSet.has(c.j));
+  // Collapsed by default in the sidebar (the pool can be long); the standalone
+  // page opts into showing it expanded from the start.
+  const [showPool, setShowPool] = useState(defaultExpandPool);
+
+  const poolSections = POOL_SECTIONS.map(s => ({
+    key: s.key,
+    label: s.label,
+    items: pool
+      .filter(c => sectionKeyOf(c.header) === s.key)
+      .sort((a, b) => chipLabel(a.header, s.key).localeCompare(chipLabel(b.header, s.key))),
+  })).filter(s => s.items.length > 0);
 
   // distance constraint: a small drag threshold so the × / add clicks still fire
   // as plain clicks instead of being swallowed as drag starts.
@@ -161,23 +207,42 @@ export function HierarchyEditor({
         {/* Separator */}
         <div className="shrink-0 w-px h-5 bg-border" />
 
-        {/* Pool */}
-        <span className="shrink-0 whitespace-nowrap">
+        {/* Available pool — collapsed by default (click to expand) so the long
+            list of pickable metadata fields doesn't dominate the sidebar. */}
+        <button
+          type="button"
+          onClick={() => setShowPool(s => !s)}
+          disabled={pool.length === 0}
+          title={showPool ? 'Hide available fields' : 'Show available fields'}
+          className="shrink-0 inline-flex items-center gap-1 whitespace-nowrap rounded px-1.5 py-1 cursor-pointer hover:bg-muted disabled:opacity-40 disabled:cursor-default transition-colors"
+        >
           <span className="text-[8px] tracking-wider uppercase text-muted-foreground">Available</span>
-          <span className="ml-1 text-[8px] text-muted-foreground/55 font-normal"> · click to add</span>
-        </span>
-        <div className="flex gap-1.5 flex-wrap items-center">
-          {pool.map(col => (
-            <div
-              key={col.j}
-              className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] select-none whitespace-nowrap cursor-pointer border border-dashed border-muted-foreground/40 text-muted-foreground hover:bg-muted hover:text-foreground hover:border-muted-foreground/60 transition-colors"
-              title={(col.isNumeric ? 'numeric · ' : '') + col.cardinality + ' distinct values'}
-              onClick={() => onChangeOrder([...activeJs, col.j])}
-            >
-              {displayHeader(col.header)}
-            </div>
-          ))}
-        </div>
+          <span className="text-[8px] text-muted-foreground/55 font-normal">· {pool.length}</span>
+          <span className="text-[9px] leading-none text-muted-foreground/70">{showPool ? '▾' : '▸'}</span>
+        </button>
+        {showPool && (
+          <div className="flex w-full flex-col divide-y divide-border/50 rounded-md border border-border/70 bg-background/70">
+            {poolSections.map(sec => (
+              <div key={sec.key} className="flex items-start gap-2 px-2 py-1.5">
+                <span className="shrink-0 w-[64px] pt-1 text-[9px] font-semibold tracking-wider uppercase text-muted-foreground">
+                  {sec.label}
+                </span>
+                <div className="flex flex-1 min-w-0 flex-wrap gap-1.5">
+                  {sec.items.map(col => (
+                    <div
+                      key={col.j}
+                      className="inline-flex items-center px-2 py-1 rounded-md text-[10.5px] select-none whitespace-nowrap cursor-pointer border border-dashed border-muted-foreground/50 bg-background text-foreground/80 hover:bg-primary hover:text-primary-foreground hover:border-primary transition-colors"
+                      title={displayHeader(col.header) + ' · ' + (col.isNumeric ? 'numeric · ' : '') + col.cardinality + ' distinct values'}
+                      onClick={() => onChangeOrder([...activeJs, col.j])}
+                    >
+                      {chipLabel(col.header, sec.key)}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Reset */}
         <button

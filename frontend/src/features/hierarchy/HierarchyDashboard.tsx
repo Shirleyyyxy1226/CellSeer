@@ -194,6 +194,7 @@ export function HierarchyDashboard() {
     <div className="flex flex-col h-full bg-background">
       {apiData && (
         <HierarchyEditor
+          defaultExpandPool
           allCandidates={apiData.analysis?.allCandidates ?? []}
           activeJs={activeJs}
           onChangeOrder={(newJs) => {
