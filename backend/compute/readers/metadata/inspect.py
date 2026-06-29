@@ -18,6 +18,49 @@ from compute.analysis.metadata.fields import normalize_key
 DISPLAY_NAME_TEMPLATE = "{cathode}_{anode}_R{repeat}_ID{id_no}"
 
 
+def _clean_columns(raw_headers: list, data_rows: list):
+    """Build records from positional headers/rows, dropping unusable columns and
+    keeping every column's data.
+
+    - Columns with a blank header, or with no value in any row (e.g. a trailing
+      placeholder like ``col_33``), are dropped so empty junk never becomes a
+      field.
+    - A header that repeats keeps every occurrence: the second and later get a
+      ``" (2)"`` / ``" (3)"`` suffix instead of silently overwriting the first
+      (so two ``Active material`` columns both survive).
+    """
+    headers = [str(h).strip() if h is not None else "" for h in raw_headers]
+
+    def nonempty(v) -> bool:
+        return v is not None and str(v).strip() != ""
+
+    col_has_data = [
+        any(nonempty(row[i]) for row in data_rows if i < len(row))
+        for i in range(len(headers))
+    ]
+
+    kept: List = []  # (column index, final unique name)
+    used: set = set()
+    counts: Dict[str, int] = {}
+    for i, h in enumerate(headers):
+        if not h or not col_has_data[i]:
+            continue
+        name = h
+        while name in used:
+            counts[h] = counts.get(h, 1) + 1
+            name = f"{h} ({counts[h]})"
+        used.add(name)
+        kept.append((i, name))
+
+    final_headers = [name for _, name in kept]
+    records = [
+        {name: (row[i] if i < len(row) else None) for i, name in kept}
+        for row in data_rows
+        if any(nonempty(v) for v in row)
+    ]
+    return final_headers, records
+
+
 def inspect_metadata_file(
     filepath: Path,
     preferred_sheet: Optional[str] = None,
@@ -76,12 +119,7 @@ def _inspect_excel_metadata(
                 continue
 
             header_idx = detect_header_row_index(rows)
-            headers = [str(h).strip() if h is not None else "" for h in rows[header_idx]]
-            records = [
-                {h: v for h, v in zip(headers, row) if h}
-                for row in rows[header_idx + 1 :]
-                if any(v is not None and str(v).strip() for v in row)
-            ]
+            headers, records = _clean_columns(rows[header_idx], rows[header_idx + 1 :])
             candidates = candidate_key_headers(headers)
             id_no_candidates = candidate_id_no_headers(headers, records)
             norm_headers = {normalize_key(h) for h in headers if h}
@@ -145,9 +183,8 @@ def _inspect_excel_metadata(
 
 def _inspect_csv_metadata(filepath: Path, preferred_id_no: Optional[str] = None) -> Dict[str, Any]:
     with open(filepath, encoding="utf-8", errors="ignore", newline="") as fh:
-        reader = csv.DictReader(fh)
-        rows = [dict(row) for row in reader]
-        headers = list(reader.fieldnames or [])
+        raw = list(csv.reader(fh))
+    headers, rows = _clean_columns(raw[0], raw[1:]) if raw else ([], [])
     candidates = candidate_key_headers(headers)
     id_no_candidates = candidate_id_no_headers(headers, rows)
     return {
