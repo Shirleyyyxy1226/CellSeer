@@ -132,17 +132,22 @@ export function ProjectHierarchyProvider({ children }: { children: React.ReactNo
   const [apiData, setApiData] = useState<AnalyseResponse | null>(null);
   const [activeJs, setActiveJs] = useState<number[]>([]);
   const cachedTableText = useRef<string>('');
+  // Dynamic-metadata column indices kept out of the default-tree auto-pick.
+  // Echoed back on every re-analyse so reorder/reset don't let those columns
+  // leak into the default tree on the POST path.
+  const cachedExtraCols = useRef<number[]>([]);
   const loadSeqRef = useRef(0);
 
   const applyWithOrder = useCallback(
     async (csvText: string, order?: number[]) => {
+      const extraCols = cachedExtraCols.current;
       if (order && order.length > 0) {
         // Honour the full user-specified order instead of clamping to 4 levels,
         // otherwise the backend silently trims/reorders columns and the user's
         // drag-reorder appears to "not stick".
-        return analyseHierarchy(csvText, { maxLevels: order.length, columnOrder: order });
+        return analyseHierarchy(csvText, { maxLevels: order.length, columnOrder: order, extraCols });
       }
-      return analyseHierarchy(csvText, { maxLevels: 4 });
+      return analyseHierarchy(csvText, { maxLevels: 4, extraCols });
     },
     [],
   );
@@ -157,6 +162,7 @@ export function ProjectHierarchyProvider({ children }: { children: React.ReactNo
       const scopedKey = base.projectKey || 'db-default';
       const csvText = toCsvText(base.parsed.headers, base.parsed.rows);
       cachedTableText.current = csvText;
+      cachedExtraCols.current = base.extraCols ?? [];
       let next = base;
       const savedOrder = await fetchHierarchyOrder(scopedKey);
       if (savedOrder.length > 0) {

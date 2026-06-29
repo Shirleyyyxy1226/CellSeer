@@ -12,12 +12,15 @@ export interface AnalyseResponse {
   pathToColorMap: Record<string, string>;
   pathToColorMapPerceptual: Record<string, string>;
   projectKey?: string;
+  /** Dynamic-metadata column indices kept out of the default tree (picker-only). */
+  extraCols?: number[];
 }
 
 export interface AnalyseRequest {
   csvText: string;
   maxLevels?: number;
   columnOrder?: number[] | null;
+  extraCols?: number[] | null;
 }
 
 export interface HierarchyOrderResponse {
@@ -26,12 +29,13 @@ export interface HierarchyOrderResponse {
 
 export async function analyseHierarchy(
   csvText: string,
-  opts?: { maxLevels?: number; columnOrder?: number[] }
+  opts?: { maxLevels?: number; columnOrder?: number[]; extraCols?: number[] }
 ): Promise<AnalyseResponse> {
   const body: AnalyseRequest = {
     csvText,
     maxLevels: opts?.maxLevels ?? 4,
     columnOrder: opts?.columnOrder ?? null,
+    extraCols: opts?.extraCols ?? null,
   };
   const res = await fetch(withProjectQuery("/api/hierarchy/analyse"), {
     method: "POST",

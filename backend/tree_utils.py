@@ -287,7 +287,15 @@ def analyse_columns(
     rows: list[list[str]],
     max_levels: int = 4,
     config: AnalysisConfig = DEFAULT_CONFIG,
+    extra_cols: frozenset[int] | set[int] = frozenset(),
 ) -> AnalysisResult:
+    """Analyse columns into a hierarchy.
+
+    ``extra_cols`` are opt-in dimensions (e.g. dynamic source metadata with no
+    schema column): they are offered in the order-picker so a user can add them
+    as levels, but excluded from auto leaf / id / flag / root / default-level
+    detection so appending them never disturbs the default tree.
+    """
     n = len(rows)
 
     def cell(r: list[str], j: int) -> str:
@@ -321,6 +329,8 @@ def analyse_columns(
     # Leaf label: rightmost short non-notes non-constant column
     leaf_col = -1
     for j in range(len(headers) - 1, -1, -1):
+        if j in extra_cols:
+            continue
         s = stats[j]
         if s.is_notes or s.avg_len > config.leaf_avg_len_max or s.coverage < config.coverage_min or s.cardinality <= 1:
             continue
@@ -329,7 +339,7 @@ def analyse_columns(
 
     # Row identifier: fully unique
     row_id_col = next(
-        (s.j for s in stats if s.cardinality == n and s.coverage >= 0.9),
+        (s.j for s in stats if s.j not in extra_cols and s.cardinality == n and s.coverage >= 0.9),
         -1,
     )
 
@@ -338,7 +348,8 @@ def analyse_columns(
         (
             s.j
             for s in stats
-            if s.has_nonstd_val
+            if s.j not in extra_cols
+            and s.has_nonstd_val
             and s.j != leaf_col
             and s.j != row_id_col
             and s.cardinality <= max(config.max_card_default, n // 4)
@@ -347,7 +358,7 @@ def analyse_columns(
     )
 
     # Root label
-    constants = [s for s in stats if s.cardinality == 1 and s.coverage >= config.constant_coverage_min]
+    constants = [s for s in stats if s.j not in extra_cols and s.cardinality == 1 and s.coverage >= config.constant_coverage_min]
     root_label_col = next(
         (s for s in constants if not s.is_notes and not s.is_numeric),
         None,
@@ -366,7 +377,7 @@ def analyse_columns(
     excluded_js = {j for j in (leaf_col, row_id_col, flag_col) if j >= 0}
 
     def is_candidate(s: ColStats) -> bool:
-        if s.j in excluded_js:
+        if s.j in excluded_js or s.j in extra_cols:
             return False
         if s.is_notes or s.is_replicate:
             return False
@@ -389,6 +400,7 @@ def analyse_columns(
             s
             for s in stats
             if s.j not in excluded_js
+            and s.j not in extra_cols
             and not s.is_notes
             and not s.is_replicate
             and s.cardinality > 1
@@ -438,8 +450,8 @@ def analyse_columns(
     # that is all that exists) so the user always sees at least a flat cell list.
     if not hier_cols:
         seed = next(
-            (s for s in picker_extra if s.j not in excluded_js and s.cardinality > 1),
-            next((s for s in picker_extra if s.j not in excluded_js), None),
+            (s for s in picker_extra if s.j not in excluded_js and s.j not in extra_cols and s.cardinality > 1),
+            next((s for s in picker_extra if s.j not in excluded_js and s.j not in extra_cols), None),
         )
         if seed:
             hier_cols = [seed]
