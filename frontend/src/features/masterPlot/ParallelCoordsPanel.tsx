@@ -476,7 +476,14 @@ export default function MasterPlot2Panel({
         if (!meta) return null;
         const band = getCategoricalBand(row, ax, meta.domain, meta.counts);
         if (!band) return null;
-        const j = jitter01(row.idNo, ax.id) * 0.42 * (band.n1 - band.n0);
+        // Jitter only separates lines that share a category among *other*
+        // categories. When the axis has a single value, every cell is identical
+        // here, so jitter would only manufacture meaningless crossings — collapse
+        // them onto the band centre for a clean, aligned pass-through.
+        const j =
+          meta.domain.length <= 1
+            ? 0
+            : jitter01(row.idNo, ax.id) * 0.42 * (band.n1 - band.n0);
         const yn = Math.min(band.n1 - 0.02, Math.max(band.n0 + 0.02, band.yCenter + j));
         return trackTop + yn * trackH;
       }
