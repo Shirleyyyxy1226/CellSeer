@@ -379,7 +379,7 @@ def soft_delete_stale_cells(
         SELECT cell_id FROM cell
          WHERE project_id = ?
            AND source_system = 'digibat'
-           AND (last_seen_at IS NULL OR last_seen_at < ?)
+           AND (last_seen_at IS NULL OR last_seen_at::timestamptz < ?)
            AND deleted_at IS NULL
         """,
         (project_id, run_started_at),
