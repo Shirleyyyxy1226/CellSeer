@@ -81,6 +81,18 @@ key also works (see the header matching rule above).
 | Do EIS | No | flag | Yes / No | No | Plan flag. |
 | Notes | No | text | | first replicate | Free-form notes. |
 
+## Custom columns
+
+Add any columns you like beyond the standard set — they are kept with the cell, not
+discarded, and behave the same whether the metadata came from an upload or a DIGIBAT sync.
+
+- **Cell card** — every custom column is shown. Component-named ones (`Cathode …`,
+  `Anode …`, `Electrolyte …`) sit in that component's block; the rest under *Additional
+  metadata*.
+- **Hierarchy** — a custom column becomes a clickable level under *Available* **only if it
+  can group cells**: 2+ distinct values qualifies; a constant or a unique-per-cell value
+  does not (still shown on the card, just not offered as a level).
+
 ## Example
 
 ```csv

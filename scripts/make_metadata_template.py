@@ -15,6 +15,7 @@ from openpyxl import Workbook
 from openpyxl.comments import Comment
 from openpyxl.styles import Alignment, Font
 
+# Standard columns matched by the ingest aliases.
 HEADERS = [
     "Cell name", "ID No", "Batch", "Category", "Repeat",
     "Cathode", "Cathode diameter (mm)", "Cathode mass (mg)",
@@ -24,13 +25,23 @@ HEADERS = [
     "Do formation", "Do ratetest", "Do EIS", "Notes",
 ]
 
+# Extra columns are optional and illustrative: anything beyond the standard set
+# is preserved as-is, shown on the cell card, and offered as a hierarchy filter.
+EXTRA_HEADERS = [
+    "Cathode supplier", "Electrolyte supplier", "Testing procedure",
+]
+
+HEADERS += EXTRA_HEADERS
+
 EXAMPLES = [
     ["P5K-CEL-12", 12, 1, "baseline", 2, "NMC811 (Canrud)", 14.0, 12,
      "Graphite", 15.0, 8, 1.1, "Celgard 2325", 16.0, "1M LiPF6 EC/DMC", 80, 1.0,
-     "Yes", "Yes", "No", "first replicate"],
+     "Yes", "Yes", "No", "first replicate",
+     "Canrud", "Canrud", "rate performance"],
     ["P5K-CEL-13", 13, 1, "baseline", 3, "LFP (Canrud)", 14.0, 11.5,
      "Graphite", 15.0, 8, 1.1, "GlassFiber GF/A", 16.0, "1M LiPF6 EC/DMC", 80, 1.5,
-     "Yes", "Yes", "No", ""],
+     "Yes", "Yes", "No", "",
+     "Canrud", "Canrud", "formation"],
 ]
 
 # Header -> hover comment (only where a note helps).
@@ -39,6 +50,8 @@ COMMENTS = {
     "ID No": "Required. Must equal the number in each cell's cycling filename.",
     "Cathode mass (mg)": "Active-material mass. Required for specific capacity (mAh/g). Keep the (mg) unit.",
     "Spacer (mm)": "Matched by value, so 1 and 1.0 are the same condition.",
+    "Cathode supplier": "Optional. Columns beyond the standard set are preserved as-is, "
+                        "shown on the cell card, and selectable as a hierarchy filter — add any you need.",
 }
 
 
