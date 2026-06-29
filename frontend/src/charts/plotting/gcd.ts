@@ -28,7 +28,7 @@ function resolveKeys(curve: RecordCurve): { vKey: string; qKey: string; iKey: st
 function splitByCurrent(
   curve: RecordCurve,
   scale: number,
-  cathodeMassG: number | null | undefined,
+  activeMassG: number | null | undefined,
   useSpecificCapacity: boolean,
 ): ChargeDischargePoints {
   const { vKey, qKey, iKey } = resolveKeys(curve);
@@ -48,7 +48,7 @@ function splitByCurrent(
       if (ci == null || (ci as number) === 0) continue;
     }
     let qVal = (qq as number) * scale;
-    if (useSpecificCapacity && cathodeMassG && cathodeMassG > 0) qVal = qVal / cathodeMassG;
+    if (useSpecificCapacity && activeMassG && activeMassG > 0) qVal = qVal / activeMassG;
     const isCharge = !current || (current[j] as number) > 0;
     if (isCharge) charge.push({ x: qVal, y: vv as number });
     else discharge.push({ x: qVal, y: vv as number });
@@ -80,7 +80,7 @@ function build3Scatter(datasets: RecordDataset[], opts: BuildGcdOpts): GcdFigure
 
   datasets.forEach((dataset, cellIdx) => {
     const cycles = selectCycles(dataset.curves, opts.allowedCycles, maxCycles);
-    const useSC = useSpecificCapacity && dataset.cathodeMassG != null && dataset.cathodeMassG > 0;
+    const useSC = useSpecificCapacity && dataset.activeMassG != null && dataset.activeMassG > 0;
     const capacityUnit = useSC ? 'mAh g⁻¹' : 'mAh';
     const namePrefix = datasets.length > 1 ? `${dataset.label} — ` : '';
     const cellColor = datasets.length > 1 ? dataset.color ?? '' : (dataset.color ?? '');
@@ -94,7 +94,7 @@ function build3Scatter(datasets: RecordDataset[], opts: BuildGcdOpts): GcdFigure
       if (!curve) return;
       const { qKey } = resolveKeys(curve);
       const scale = qKey === 'Capacity [Ah]' ? 1000 : 1;
-      const { charge, discharge } = splitByCurrent(curve, scale, dataset.cathodeMassG, useSC);
+      const { charge, discharge } = splitByCurrent(curve, scale, dataset.activeMassG, useSC);
       const step = Math.max(1, Math.ceil(Math.max(charge.length, discharge.length) / maxPts));
 
       const qMinChg = charge.length > 0 ? charge.reduce((m, p) => (p.x < m ? p.x : m), charge[0].x) : 0;
@@ -207,7 +207,7 @@ function buildCumulative(datasets: RecordDataset[], opts: BuildGcdOpts): GcdFigu
 
   datasets.forEach((dataset) => {
     const cycles = selectCycles(dataset.curves, opts.allowedCycles, maxCycles);
-    const useSC = useSpecificCapacity && dataset.cathodeMassG != null && dataset.cathodeMassG > 0;
+    const useSC = useSpecificCapacity && dataset.activeMassG != null && dataset.activeMassG > 0;
     const capacityUnit = useSC ? 'mAh g⁻¹' : 'mAh';
     const namePrefix = datasets.length > 1 ? `${dataset.label} — ` : '';
     const cellColor = datasets.length > 1 ? dataset.color ?? '' : '';
@@ -219,7 +219,7 @@ function buildCumulative(datasets: RecordDataset[], opts: BuildGcdOpts): GcdFigu
       if (!curve) return;
       const { qKey } = resolveKeys(curve);
       const scale = qKey === 'Capacity [Ah]' ? 1000 : 1;
-      const { charge, discharge } = splitByCurrent(curve, scale, dataset.cathodeMassG, useSC);
+      const { charge, discharge } = splitByCurrent(curve, scale, dataset.activeMassG, useSC);
 
       const qMinChg = charge.length > 0 ? charge.reduce((m, p) => (p.x < m ? p.x : m), charge[0].x) : 0;
       const qMaxDchg = discharge.length > 0 ? discharge.reduce((m, p) => (p.x > m ? p.x : m), discharge[0].x) : 0;

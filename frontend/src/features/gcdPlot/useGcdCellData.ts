@@ -24,6 +24,9 @@ export interface VQCellIndex {
   separatorType: string;
   spacerMm: number | null;
   cathodeMassG?: number | null;
+  /** Working-electrode active mass (g) for specific capacity — cathode or anode
+   *  depending on capacity basis. Normalisation should use this, not cathodeMassG. */
+  activeMassG?: number | null;
   /** Attached test files from the index; a cell needs a 'cycling' one to plot GCD. */
   datasets?: { name?: string }[];
 }

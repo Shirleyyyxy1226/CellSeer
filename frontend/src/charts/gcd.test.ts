@@ -32,7 +32,7 @@ function sampleDataset(): RecordDataset {
     label: 'Cell A',
     color: '#1f77b4',
     curves,
-    cathodeMassG: null,
+    activeMassG: null,
   };
 }
 

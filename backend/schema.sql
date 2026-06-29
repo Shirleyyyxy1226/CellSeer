@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS cell (
   electrolyte_volume_ul REAL,
   spacer_mm REAL,
   repeat INTEGER,
+  capacity_basis TEXT,                      -- cathode | anode (NULL = infer); which electrode's active mass normalises specific capacity
   do_formation TEXT,
   do_ratetest TEXT,
   do_eis TEXT,

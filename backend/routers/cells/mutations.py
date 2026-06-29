@@ -42,6 +42,7 @@ class CellMetadataPatch(BaseModel):
     doFormation: Optional[str] = None
     doRateTest: Optional[str] = None
     doEis: Optional[str] = None
+    capacityBasis: Optional[str] = None
     notes: Optional[str] = None
 
 
@@ -66,6 +67,7 @@ _PATCH_FIELD_TO_COLUMN: dict[str, str] = {
     "doFormation": "do_formation",
     "doRateTest": "do_ratetest",
     "doEis": "do_eis",
+    "capacityBasis": "capacity_basis",
     "notes": "notes",
 }
 

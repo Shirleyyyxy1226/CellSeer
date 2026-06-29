@@ -297,6 +297,7 @@ export interface CellMetadataPatch {
   doFormation?: string | null;
   doRateTest?: string | null;
   doEis?: string | null;
+  capacityBasis?: string | null;
   notes?: string | null;
 }
 

@@ -53,6 +53,12 @@ export interface IndexCell {
   separatorType: string;
   spacerMm: number | null;
   cathodeMassG?: number | null;
+  /** Explicit capacity basis chosen by the user: 'cathode' | 'anode'; null = auto-infer. */
+  capacityBasis?: string | null;
+  /** Effective basis after inference (never null): 'cathode' | 'anode'. */
+  capacityBasisResolved?: string | null;
+  /** Working-electrode active mass (g) used for specific capacity. */
+  activeMassG?: number | null;
   electrolyte?: string | null;
   // Extended metadata (optional — only present when /api/cell-record-index
   // is served by a backend that surfaces the full cell schema).

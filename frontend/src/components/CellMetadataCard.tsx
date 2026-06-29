@@ -334,6 +334,19 @@ export function CellMetadataCard({
   const [draft, setDraft] = useState<EditDraft>(() => draftFromCell(cell));
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [basisSaving, setBasisSaving] = useState(false);
+
+  const saveCapacityBasis = async (value: string) => {
+    setBasisSaving(true);
+    try {
+      await updateCellMetadata(cell.cellId, { capacityBasis: value === '' ? null : value });
+      onCellMetadataUpdated?.();
+    } catch {
+      /* error surfaces on the next index refresh */
+    } finally {
+      setBasisSaving(false);
+    }
+  };
 
   // When the row's underlying cell changes (parent refresh), reset the
   // draft unless the user is mid-edit — preserves in-progress changes.
@@ -570,6 +583,28 @@ export function CellMetadataCard({
           cellIds={cell.cellId ? [cell.cellId] : []}
           onSaved={onProtocolAttached}
         />
+      </div>
+
+      {/* Capacity basis — which electrode's active mass normalises specific
+          capacity. Editable inline; "Auto" infers from a metal counter electrode. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[9.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          Capacity basis
+        </span>
+        <select
+          value={cell.capacityBasis ?? ''}
+          disabled={basisSaving}
+          onChange={(e) => void saveCapacityBasis(e.target.value)}
+          title="Which electrode's active mass normalises specific capacity (mAh/g)"
+          className="rounded border border-border bg-background px-1.5 py-0.5 text-[11px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-60"
+        >
+          <option value="">Auto · {cell.capacityBasisResolved ?? 'cathode'} mass</option>
+          <option value="cathode">Cathode mass</option>
+          <option value="anode">Anode mass</option>
+        </select>
+        <span className="text-[10px] text-muted-foreground">
+          Specific capacity ÷ {cell.capacityBasisResolved === 'anode' ? 'anode' : 'cathode'} active mass
+        </span>
       </div>
 
       {/* Metadata grid */}

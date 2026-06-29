@@ -171,7 +171,7 @@ const GcdDashboard = ({
           color: enc?.color ?? getColorForCell(cellData, treeFilterPath, hierCols),
           dash: enc?.dash,
           symbol: enc?.symbol,
-          cathodeMassG: cellData.cathodeMassG ?? null,
+          activeMassG: cellData.activeMassG ?? null,
           curves: cellData.curves,
         };
       });
@@ -314,7 +314,7 @@ const GcdDashboard = ({
   const allCellsHaveMass = useMemo(
     () =>
       recordDatasets.length > 0 &&
-      recordDatasets.every((rd) => rd.cathodeMassG != null && rd.cathodeMassG > 0),
+      recordDatasets.every((rd) => rd.activeMassG != null && rd.activeMassG > 0),
     [recordDatasets],
   );
   const cumulativeXLabel = allCellsHaveMass
@@ -325,7 +325,7 @@ const GcdDashboard = ({
   // small-multiple panel must carry its own axis label — a shared label would
   // mislabel mass-having cells whenever the selection is mixed.
   const cellCumulativeXLabel = (rd: RecordDataset) =>
-    rd.cathodeMassG != null && rd.cathodeMassG > 0
+    rd.activeMassG != null && rd.activeMassG > 0
       ? 'Cumulative specific capacity (mAh g⁻¹)'
       : 'Cumulative capacity (mAh)';
 
@@ -407,7 +407,7 @@ const GcdDashboard = ({
 
 
   const useSpecificCapacity =
-    selectedCellData?.cathodeMassG != null && selectedCellData.cathodeMassG > 0;
+    selectedCellData?.activeMassG != null && selectedCellData.activeMassG > 0;
   const autoXLabel = useSpecificCapacity ? 'Specific capacity (mAh g⁻¹)' : 'Capacity (mAh)';
   const effectiveXLabel = xAxisLabel !== GCD_X_DEFAULT ? xAxisLabel : autoXLabel;
   const effectiveTitle =

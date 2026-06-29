@@ -81,6 +81,7 @@ def ensure_project_schema(conn) -> None:
           electrolyte_volume_ul REAL,
           spacer_mm  REAL,
           repeat     INTEGER,
+          capacity_basis TEXT,
           do_formation TEXT,
           do_ratetest  TEXT,
           do_eis       TEXT,
@@ -112,6 +113,8 @@ def ensure_project_schema(conn) -> None:
     # feature. CREATE TABLE IF NOT EXISTS won't add it to an existing table.
     if not _has_column(conn, "cell", "custom_meta"):
         conn.execute("ALTER TABLE cell ADD COLUMN custom_meta TEXT")
+    if not _has_column(conn, "cell", "capacity_basis"):
+        conn.execute("ALTER TABLE cell ADD COLUMN capacity_basis TEXT")
 
     conn.execute(
         """

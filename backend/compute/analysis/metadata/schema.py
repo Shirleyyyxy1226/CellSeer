@@ -15,6 +15,16 @@ from pydantic import BaseModel, Field
 
 from compute.analysis.metadata.fields import normalize_key
 
+# Bare metals used as half-cell counter electrodes (Li-ion plus Na / K / Mg /
+# Ca / Zn / Al chemistries). Matched as the whole value or "<metal> metal" /
+# "<metal> foil" — never as a substring, so a metal-bearing compound like
+# LiCoO2 or Na3V2(PO4)3 is not mistaken for a metal counter.
+_METAL_COUNTER_NAMES = frozenset({
+    "li", "lithium", "na", "sodium", "k", "potassium",
+    "mg", "magnesium", "ca", "calcium", "zn", "zinc",
+    "al", "aluminium", "aluminum",
+})
+
 
 class CellMetadata(BaseModel):
     """
@@ -78,6 +88,11 @@ class CellMetadata(BaseModel):
     spacer_mm: Optional[float] = None
     np_ratio: Optional[float] = None
 
+    # Which electrode's active mass normalises specific capacity: "cathode" or
+    # "anode". None = infer (a metal counter electrode means the other side is
+    # the working electrode).
+    capacity_basis: Optional[str] = None
+
     # Batch bookkeeping
     batch: Optional[int] = None
     category: Optional[str] = None
@@ -94,10 +109,39 @@ class CellMetadata(BaseModel):
 
     model_config = {"extra": "ignore"}
 
+    @staticmethod
+    def _is_metal_counter(name: Optional[str]) -> bool:
+        """True when an electrode name denotes a bare metal counter electrode
+        (e.g. "Li", "Na metal", "Sodium foil") — not a metal-bearing compound
+        like LiCoO2 or Na3V2(PO4)3."""
+        if not name:
+            return False
+        n = re.sub(r"[\s\-_]+", " ", str(name).strip().lower())
+        if n in _METAL_COUNTER_NAMES:
+            return True
+        m = re.match(r"^(\w+) (?:metal|foil)$", n)
+        return bool(m and m.group(1) in _METAL_COUNTER_NAMES)
+
+    @property
+    def active_mass_basis(self) -> str:
+        """Which electrode's active mass normalises specific capacity — the
+        explicit capacity_basis if set, else inferred: a bare metal counter
+        electrode (Li / Na / K / …) means the *other* electrode is the working
+        one; two real electrodes default to cathode."""
+        if self.capacity_basis in ("cathode", "anode"):
+            return self.capacity_basis  # type: ignore[return-value]
+        if self._is_metal_counter(self.anode):
+            return "cathode"
+        if self._is_metal_counter(self.cathode):
+            return "anode"
+        return "cathode"
+
     @property
     def active_mass_g(self) -> Optional[float]:
-        """Cathode mass used for specific capacity normalisation."""
-        return self.cathode_mass_g
+        """Active-material mass used for specific capacity normalisation —
+        the working electrode's mass (cathode for full / cathode-half cells,
+        anode for anode-half cells)."""
+        return self.anode_mass_g if self.active_mass_basis == "anode" else self.cathode_mass_g
 
     @classmethod
     def from_dict(

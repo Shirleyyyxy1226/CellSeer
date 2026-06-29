@@ -99,7 +99,8 @@ export interface RecordDataset {
   /** Orthogonal marker discriminator (see MarkerSymbol). */
   symbol?: MarkerSymbol;
   curves: Record<string, RecordCurve>;
-  cathodeMassG?: number | null;
+  /** Working-electrode active mass (g) for specific-capacity normalisation. */
+  activeMassG?: number | null;
 }
 
 export type GcdDirection = 'discharge' | 'charge' | 'both';

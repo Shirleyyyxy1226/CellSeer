@@ -114,9 +114,9 @@ class PostgresBackend(DBBackend):
                     project_id, cell_id, id_no, batch, category, cathode, cathode_diameter_mm,
                     anode, anode_diameter_mm, np_ratio, separator_type,
                     separator_diameter_mm, electrolyte, electrolyte_volume_ul,
-                    spacer_mm, repeat, do_formation, do_ratetest, do_eis,
+                    spacer_mm, repeat, capacity_basis, do_formation, do_ratetest, do_eis,
                     anode_mass, cathode_mass, notes, custom_meta
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(project_id, cell_id) DO UPDATE SET
                     id_no=excluded.id_no, batch=excluded.batch,
                     category=excluded.category, cathode=excluded.cathode,
@@ -129,6 +129,7 @@ class PostgresBackend(DBBackend):
                     electrolyte=excluded.electrolyte,
                     electrolyte_volume_ul=excluded.electrolyte_volume_ul,
                     spacer_mm=excluded.spacer_mm, repeat=excluded.repeat,
+                    capacity_basis=COALESCE(excluded.capacity_basis, cell.capacity_basis),
                     do_formation=excluded.do_formation,
                     do_ratetest=excluded.do_ratetest, do_eis=excluded.do_eis,
                     anode_mass=excluded.anode_mass, cathode_mass=excluded.cathode_mass,
@@ -142,7 +143,7 @@ class PostgresBackend(DBBackend):
                     m.anode, m.anode_diameter_mm, m.np_ratio,
                     m.separator_type, m.separator_diameter_mm,
                     m.electrolyte, m.electrolyte_volume_ul,
-                    m.spacer_mm, m.repeat,
+                    m.spacer_mm, m.repeat, m.capacity_basis,
                     m.do_formation, m.do_ratetest, m.do_eis,
                     m.anode_mass_g, m.cathode_mass_g, m.notes, custom_meta_json,
                 ),
@@ -352,6 +353,7 @@ def _row_to_metadata(row: dict) -> CellMetadata:
         electrolyte_volume_ul=row.get("electrolyte_volume_ul"),
         spacer_mm=row.get("spacer_mm"),
         repeat=row.get("repeat"),
+        capacity_basis=row.get("capacity_basis"),
         do_formation=row.get("do_formation"),
         do_ratetest=row.get("do_ratetest"),
         do_eis=row.get("do_eis"),

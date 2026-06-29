@@ -18,6 +18,7 @@ import polars as pl
 
 from dataset_store import read_dataset_parquet, resolve_dataset_path
 from db import get_db
+from compute.analysis.metadata import CellMetadata
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -83,6 +84,7 @@ def _get_cell_record_index(project_id: str) -> dict:
                 """
                 SELECT ROW_NUMBER() OVER (ORDER BY c.cell_id) AS _rowid,
                        c.id_no, c.cell_id, c.batch, c.category, c.repeat,
+                       c.capacity_basis,
                        c.cathode, c.cathode_diameter_mm, c.cathode_mass,
                        c.anode, c.anode_diameter_mm, c.anode_mass, c.np_ratio,
                        c.separator_type, c.separator_diameter_mm,
@@ -141,6 +143,21 @@ def _get_cell_record_index(project_id: str) -> dict:
             if r["cathode_mass"] is not None and r["cathode_mass"] > 0
             else None
         )
+        anode_mass_g = (
+            float(r["anode_mass"])
+            if r["anode_mass"] is not None and r["anode_mass"] > 0
+            else None
+        )
+        # Resolve which electrode's active mass normalises specific capacity,
+        # inferring from a metal counter electrode when capacity_basis is unset.
+        _fmt_meta = CellMetadata(
+            cell_id=r["cell_id"] or "cell",
+            cathode=r["cathode"], anode=r["anode"],
+            cathode_mass_g=cathode_mass_g, anode_mass_g=anode_mass_g,
+            capacity_basis=r["capacity_basis"],
+        )
+        capacity_basis_resolved = _fmt_meta.active_mass_basis
+        active_mass_g = anode_mass_g if capacity_basis_resolved == "anode" else cathode_mass_g
         index.append(
             {
                 "idNo": id_no,
@@ -149,12 +166,15 @@ def _get_cell_record_index(project_id: str) -> dict:
                 "batch": _safe_int(r["batch"]),
                 "category": _safe_str(r["category"]),
                 "repeat": _safe_int(r["repeat"]),
+                "capacityBasis": _safe_str(r["capacity_basis"]),
+                "capacityBasisResolved": capacity_basis_resolved,
+                "activeMassG": active_mass_g,
                 "cathode": r["cathode"] or "",
                 "cathodeDiameterMm": _safe_float(r["cathode_diameter_mm"]),
                 "cathodeMassG": cathode_mass_g,
                 "anode": _safe_str(r["anode"]),
                 "anodeDiameterMm": _safe_float(r["anode_diameter_mm"]),
-                "anodeMassG": _safe_float(r["anode_mass"]),
+                "anodeMassG": anode_mass_g,
                 "npRatio": _safe_float(r["np_ratio"]),
                 "separatorType": r["separator_type"] or "",
                 "separatorDiameterMm": _safe_float(r["separator_diameter_mm"]),
@@ -465,10 +485,20 @@ def _build_rate_payload_for_cell(row: dict) -> dict | None:
     if cycle_to_rate and all(c in cycle_to_rate for c in cycles):
         c_rates = [cycle_to_rate[c] for c in cycles]
 
-    cathode_mass = float(row["cathode_mass"]) if row["cathode_mass"] is not None else None
+    # Normalise by the working electrode's active mass (cathode for full /
+    # cathode-half cells, anode for anode-half cells), inferring when unset.
+    _cm = float(row["cathode_mass"]) if row["cathode_mass"] is not None else None
+    _am = float(row["anode_mass"]) if row["anode_mass"] is not None else None
+    _meta = CellMetadata(
+        cell_id=row["cell_id"] or "cell",
+        cathode=row["cathode"], anode=row["anode"],
+        cathode_mass_g=_cm, anode_mass_g=_am,
+        capacity_basis=row["capacity_basis"],
+    )
+    active_mass = _meta.active_mass_g
     specific_capacity: list[float] | None = None
-    if cathode_mass is not None and cathode_mass > 0:
-        specific_capacity = [x / cathode_mass for x in discharge_m_ah]
+    if active_mass is not None and active_mass > 0:
+        specific_capacity = [x / active_mass for x in discharge_m_ah]
 
     payload: dict = {
         "idNo": id_no,
@@ -548,6 +578,7 @@ def _load_rate_cells_uncached(project_id: str) -> tuple[list[dict], list[str]]:
             rows = conn.execute(
                 """
                 SELECT c.id_no, c.cell_id, c.cathode, c.separator_type, c.spacer_mm, c.cathode_mass,
+                       c.anode, c.anode_mass, c.capacity_basis,
                        c.protocol_name, c.protocol_segments,
                        d.storage_uri AS cycling_uri, d.meta AS dataset_meta
                 FROM cell c
