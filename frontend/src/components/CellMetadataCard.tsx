@@ -42,6 +42,32 @@ import { ProtocolStatusChip } from '@/features/protocol';
 
 export type CellMetadataLayout = 'wide' | 'narrow';
 
+const COMPONENT_GROUPS = ['cathode', 'anode', 'electrolyte'] as const;
+type ComponentGroup = (typeof COMPONENT_GROUPS)[number];
+
+// Route a source field to a component group by its header prefix.
+function routeCustomField(header: unknown): { group: ComponentGroup; label: string } | null {
+  const h = typeof header === 'string' ? header.trim() : '';
+  if (!h) return null;
+  const norm = h.toLowerCase();
+  for (const g of COMPONENT_GROUPS) {
+    if (norm.startsWith(g)) {
+      const rest = h.slice(g.length).replace(/^[\s_:,()-]+/, '').trim();
+      const label = rest ? rest.charAt(0).toUpperCase() + rest.slice(1) : h;
+      return { group: g, label };
+    }
+  }
+  return null;
+}
+
+// Trim noisy precision on numeric values (units live in the header).
+function fmtCustomValue(value: unknown): string {
+  const s = value == null ? '' : String(value);
+  if (s.trim() === '') return s;
+  const n = Number(s);
+  return Number.isFinite(n) && /\d/.test(s) ? String(Math.round(n * 1000) / 1000) : s;
+}
+
 export interface CellMetadataCardProps {
   cell: IndexCell;
   /** `wide` = drawer (2-col), `narrow` = sidebar (1-col + smaller spacing). */
@@ -351,6 +377,27 @@ export function CellMetadataCard({
     .filter((x) => x && String(x).trim().length > 0)
     .join(' · ');
 
+  const groupedCustom: Record<ComponentGroup, { key: string; label: string; value: string }[]> = {
+    cathode: [],
+    anode: [],
+    electrolyte: [],
+  };
+  const leftoverCustom: Array<[string, string]> = [];
+  const customMeta = cell.customMeta && typeof cell.customMeta === 'object' ? cell.customMeta : {};
+  for (const [k, v] of Object.entries(customMeta)) {
+    if (v == null) continue;
+    const sval = String(v);
+    const routed = routeCustomField(k);
+    if (routed) {
+      // Empty values are allowed through here; presentRows hides them in view.
+      groupedCustom[routed.group].push({ key: k, label: routed.label, value: fmtCustomValue(sval) });
+    } else if (sval.trim() !== '') {
+      leftoverCustom.push([k, sval]);
+    }
+  }
+  const promotedRows = (g: ComponentGroup) =>
+    groupedCustom[g].map((p) => ({ key: `x_${p.key}`, label: p.label, value: p.value, raw: p.value }));
+
   // -------------------------------------------------------------------------
   // Header crumbs (batch / repeat / category + idNo)
   // -------------------------------------------------------------------------
@@ -400,6 +447,7 @@ export function CellMetadataCard({
       { key: 'cathode_d', label: 'Diameter', value: fmtNum(cell.cathodeDiameterMm, 2, 'mm'), raw: cell.cathodeDiameterMm, field: 'cathodeDiameterMm' },
       { key: 'cathode_m', label: 'Mass', value: fmtNum(cell.cathodeMassG, 3, 'g'), raw: cell.cathodeMassG, field: 'cathodeMassG' },
       { key: 'np', label: 'N/P ratio', value: fmtNum(cell.npRatio, 3), raw: cell.npRatio, field: 'npRatio' },
+      ...promotedRows('cathode'),
     ],
     editing,
   );
@@ -409,6 +457,7 @@ export function CellMetadataCard({
       { key: 'anode', label: 'Material', value: fmtText(cell.anode), raw: cell.anode, field: 'anode' },
       { key: 'anode_d', label: 'Diameter', value: fmtNum(cell.anodeDiameterMm, 2, 'mm'), raw: cell.anodeDiameterMm, field: 'anodeDiameterMm' },
       { key: 'anode_m', label: 'Mass', value: fmtNum(cell.anodeMassG, 3, 'g'), raw: cell.anodeMassG, field: 'anodeMassG' },
+      ...promotedRows('anode'),
     ],
     editing,
   );
@@ -426,14 +475,9 @@ export function CellMetadataCard({
     [
       { key: 'electrolyte', label: 'Chemistry', value: fmtText(cell.electrolyte), raw: cell.electrolyte, title: cell.electrolyte ?? '', field: 'electrolyte' },
       { key: 'electrolyte_v', label: 'Volume', value: fmtNum(cell.electrolyteVolumeUl, 1, 'µL'), raw: cell.electrolyteVolumeUl, field: 'electrolyteVolumeUl' },
+      ...promotedRows('electrolyte'),
     ],
     editing,
-  );
-
-  // Source fields with no schema column (e.g. DIGIBAT supplier, testing
-  // procedure). Read-only — preserved for reference, never edited here.
-  const customEntries = Object.entries(cell.customMeta ?? {}).filter(
-    ([, v]) => v != null && String(v).trim().length > 0,
   );
 
   // Narrow layout uses smaller label width and reduced padding to fit the
@@ -536,15 +580,15 @@ export function CellMetadataCard({
         <Group title="Electrolyte" rows={electrolyteRows} />
       </div>
 
-      {/* Additional metadata — source fields with no schema column, kept
-          read-only for reference (e.g. supplier, testing procedure). */}
-      {customEntries.length > 0 && (
+      {/* Additional metadata — remaining source fields with no schema column
+          and not promoted above, kept read-only for reference. */}
+      {leftoverCustom.length > 0 && (
         <div>
           <div className="mb-1 text-[9.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
             Additional metadata
           </div>
           <div className="rounded-md border border-border/60 bg-background/60 px-2.5 py-1.5">
-            {customEntries.map(([k, v]) => (
+            {leftoverCustom.map(([k, v]) => (
               <div key={k} className="py-0.5" title={`${k}: ${v}`}>
                 <div className="text-[10px] text-muted-foreground break-words">{k}</div>
                 <div className="text-[12px] text-foreground break-words">{v}</div>
