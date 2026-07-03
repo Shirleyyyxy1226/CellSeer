@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+title: CellSeer
+message: "If you use this software, please cite it using the metadata in this file."
+type: software
+authors:
+  - given-names: Shirley
+    family-names: Xiong
+    affiliation: Imperial College London
+    email: sx822@ic.ac.uk
+repository-code: "https://github.com/Shirleyyyxy1226/CellSeer"
+url: "https://cellseer.com"
+abstract: >-
+  CellSeer is a battery cell testing and cycling analysis dashboard
+  (React frontend + FastAPI/PostgreSQL backend) for exploring capacity,
+  rate performance, dQ/dV and dV/dQ differential analysis, Coulombic
+  efficiency, and hierarchical metadata across large cell datasets.
+keywords:
+  - battery
+  - lithium-ion
+  - electrochemistry
+  - battery cycling
+  - dQ/dV
+  - specific capacity
+  - data visualization
+  - materials science
+license: MIT
+version: 1.0.0
+date-released: "2026-07-03"

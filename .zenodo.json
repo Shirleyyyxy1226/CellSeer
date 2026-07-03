@@ -1,0 +1,23 @@
+{
+  "title": "CellSeer",
+  "description": "CellSeer is a battery cell testing and cycling analysis dashboard (React frontend + FastAPI/PostgreSQL backend) for exploring capacity, rate performance, dQ/dV and dV/dQ differential analysis, Coulombic efficiency, and hierarchical metadata across large cell datasets.",
+  "upload_type": "software",
+  "access_right": "open",
+  "license": "MIT",
+  "creators": [
+    {
+      "name": "Xiong, Shirley",
+      "affiliation": "Imperial College London"
+    }
+  ],
+  "keywords": [
+    "battery",
+    "lithium-ion",
+    "electrochemistry",
+    "battery cycling",
+    "dQ/dV",
+    "specific capacity",
+    "data visualization",
+    "materials science"
+  ]
+}
