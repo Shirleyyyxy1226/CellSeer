@@ -37,6 +37,11 @@ services:
       dockerfile: Dockerfile
     image: cellseer:latest
     restart: unless-stopped
+    # Bound container memory so a heavy ingest can't take down the host. The
+    # backend already caps per-file size, batch size, and in-flight tasks;
+    # this is the backstop. Tune down if the host has less RAM available.
+    mem_limit: 10g
+    mem_reservation: 8g
     depends_on:
       db:
         condition: service_healthy

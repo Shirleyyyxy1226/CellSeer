@@ -1,5 +1,6 @@
 """File upload endpoints."""
 
+import gc
 import json
 import uuid
 from pathlib import Path
@@ -11,6 +12,22 @@ from loaders.registry import get_loader, test_type_manifest
 from project_scope import ensure_project_exists, normalize_project_id
 
 router = APIRouter()
+
+# Memory-safety limits for ingestion. Uploaded files are read fully into RAM,
+# so bound the per-file size and how many ride along in one batch, and cap the
+# number of in-flight tasks so concurrent uploads can't exhaust memory (the
+# backend previously OOM-crashed partway through large bulk ingests).
+MAX_UPLOAD_BYTES = 256 * 1024 * 1024  # 256 MB per file
+MAX_BATCH_FILES = 20                  # files accepted per /upload/batch request
+MAX_INFLIGHT_TASKS = 10               # concurrent queued/processing upload tasks
+
+
+def _inflight_task_count(conn: _PGConn) -> int:
+    """Number of upload tasks currently queued or processing (all projects)."""
+    row = conn.execute(
+        "SELECT COUNT(*) AS n FROM upload_task WHERE status IN ('queued','processing')",
+    ).fetchone()
+    return int(row["n"]) if row else 0
 
 
 def _upload_db() -> _PGConn:
@@ -97,6 +114,13 @@ def _run_upload_batch(task_id: str, files_payload: list[tuple[bytes, str]], load
             )
             results.append({"filename": filename, "result": result})
 
+            # Release this file's bytes (held both locally and in the payload
+            # list) and force collection so peak memory stays flat across a
+            # large batch instead of accumulating every file's buffers.
+            del file_bytes, result
+            files_payload[i] = (b"", filename)
+            gc.collect()
+
         write_status(
             "done",
             100,
@@ -138,13 +162,19 @@ async def upload_file(
             )
         raise HTTPException(status_code=415, detail=f"No loader for '{suffix}'")
 
-    MAX_UPLOAD_BYTES = 512 * 1024 * 1024  # 512 MB
     file_bytes = await file.read()
     if len(file_bytes) > MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=413, detail="File too large (max 512 MB)")
+        raise HTTPException(status_code=413, detail="File too large (max 256 MB)")
     project_id = normalize_project_id(projectId)
     conn = _upload_db()
     ensure_project_exists(conn, project_id)
+
+    if _inflight_task_count(conn) >= MAX_INFLIGHT_TASKS:
+        conn.close()
+        raise HTTPException(
+            status_code=429,
+            detail="Too many uploads in progress; please retry shortly.",
+        )
 
     # Reuse an existing in-progress task for the same filename.
     existing = conn.execute(
@@ -206,6 +236,14 @@ async def upload_files_batch(
     """Accept multiple files and process them in one backend task."""
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
+    if len(files) > MAX_BATCH_FILES:
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                f"Too many files in one batch ({len(files)}); "
+                f"max {MAX_BATCH_FILES}. Split the upload into smaller batches."
+            ),
+        )
 
     project_id = normalize_project_id(projectId)
     preferred_file_type = fileType.strip().lower() if fileType else None
@@ -228,14 +266,21 @@ async def upload_files_batch(
                 status_code=415,
                 detail=f"File '{filename}' with suffix '{suffix}' is not compatible with fileType '{loader.FILE_TYPE}'",
             )
-        MAX_UPLOAD_BYTES = 512 * 1024 * 1024  # 512 MB
         file_bytes_data = await f.read()
         if len(file_bytes_data) > MAX_UPLOAD_BYTES:
-            raise HTTPException(status_code=413, detail=f"File '{filename}' too large (max 512 MB)")
+            raise HTTPException(status_code=413, detail=f"File '{filename}' too large (max 256 MB)")
         file_payload.append((file_bytes_data, filename))
 
     conn = _upload_db()
     ensure_project_exists(conn, project_id)
+
+    if _inflight_task_count(conn) >= MAX_INFLIGHT_TASKS:
+        conn.close()
+        raise HTTPException(
+            status_code=429,
+            detail="Too many uploads in progress; please retry shortly.",
+        )
+
     task_id = str(uuid.uuid4())
     pseudo_name = f"{len(file_payload)} files ({file_payload[0][1]})"
     conn.execute(
@@ -334,6 +379,14 @@ async def upload_cell_test_file(
     # Check cell exists before queuing the background task.
     conn = _upload_db()
     ensure_project_exists(conn, project_id)
+
+    if _inflight_task_count(conn) >= MAX_INFLIGHT_TASKS:
+        conn.close()
+        raise HTTPException(
+            status_code=429,
+            detail="Too many uploads in progress; please retry shortly.",
+        )
+
     cell_row = conn.execute(
         "SELECT id_no FROM cell WHERE project_id = ? AND cell_id = ? AND deleted_at IS NULL",
         (project_id, cell_id),
@@ -347,6 +400,9 @@ async def upload_cell_test_file(
     resolved_id_no = cell_row["id_no"]
 
     file_bytes = await file.read()
+    if len(file_bytes) > MAX_UPLOAD_BYTES:
+        conn.close()
+        raise HTTPException(status_code=413, detail="File too large (max 256 MB)")
 
     task_id = str(uuid.uuid4())
     conn.execute(
