@@ -52,7 +52,9 @@ export function PeakAnalysisPlot({
 
     return {
       uirevision,
-      title: { text: titleText, font: { size: titleSize, family: fontFamily } },
+      // Left-anchored so a long title grows leftward and never runs under the
+      // edit / export buttons floating at the chart's top-right corner.
+      title: { text: titleText, font: { size: titleSize, family: fontFamily }, x: 0, xref: 'paper', xanchor: 'left', pad: { l: 4 } },
       font: baseFont,
       xaxis: { title: { text: xText, font: baseFont }, tickfont: tickFont, gridcolor: '#e0e0e0', showgrid: true },
       yaxis: { title: { text: yText, font: baseFont }, tickfont: tickFont, gridcolor: '#e0e0e0', showgrid: true },

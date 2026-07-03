@@ -34,6 +34,10 @@ const DvDqDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
   const { apiData, matchPathToIdNos } = useProjectHierarchy();
   const [direction, setDirection] = useState<ChargeDirection>('discharge');
   const [smoothing, setSmoothing] = useState<DiffSmoothing>(DEFAULT_SMOOTHING);
+  // Normalise each cycle's capacity to 0–1 (Q/Q_max) so cycles overlay for
+  // peak-shift comparison. Default on; toggle off to read absolute mAh (e.g. to
+  // compare capacity magnitude across cells).
+  const [normalizeCapacity, setNormalizeCapacity] = useState(true);
   const TRACE_WARN_THRESHOLD = 200;
   const [heavyRenderConfirmed, setHeavyRenderConfirmed] = useState(false);
   // dV/dQ plots per-cell curves, so it responds ONLY to individual-cell
@@ -56,6 +60,7 @@ const DvDqDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
     direction,
     effectiveCellIdNos,
     smoothing,
+    normalizeCapacity,
   );
   const data = dvdqData;
   const activeAnalysis = apiData?.analysis ?? null;
@@ -76,6 +81,11 @@ const DvDqDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
   const [cycleIndex, setCycleIndex] = useState(Math.max(0, cycles.length - 1));
   const [cycleInput, setCycleInput] = useState(() => String(cycles[cycles.length - 1] ?? 0));
   const selectedCycle = cycles[cycleIndex] ?? 0;
+  // Reference cycles pinned for comparison (faint, light→dark) in the 2D peak view.
+  const [pinnedCycles, setPinnedCycles] = useState<number[]>([]);
+  const togglePinnedCycle = useCallback((cyc: number) => {
+    setPinnedCycles((prev) => (prev.includes(cyc) ? prev.filter((c) => c !== cyc) : [...prev, cyc].sort((a, b) => a - b)));
+  }, []);
 
   // Default the selection to the most recent cycle, but ONLY when the cycle set
   // genuinely changes (new data) — not on every render. `cycles` gets a fresh
@@ -213,17 +223,19 @@ const DvDqDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
   useEffect(() => { setHeavyRenderConfirmed(false); }, [datasets]);
 
   const { data: traces3d, layout: layout3D } = useMemo(
-    () => buildDvDqFigure(datasets, { mode: '3d', cycleIndex, selectedCycle }),
-    [datasets, cycleIndex, selectedCycle]
+    () => buildDvDqFigure(datasets, { mode: '3d', cycleIndex, selectedCycle, normalizedCapacity: normalizeCapacity }),
+    [datasets, cycleIndex, selectedCycle, normalizeCapacity]
   );
   const { data: traces2d, layout: layout2D } = useMemo(
     () => buildDvDqFigure(datasets, {
       mode: '2d',
-      viewMode: 'range',
+      viewMode: 'baseline',
       cycleIndex,
       selectedCycle,
+      baselineCycles: pinnedCycles,
+      normalizedCapacity: normalizeCapacity,
     }),
-    [datasets, cycleIndex, selectedCycle]
+    [datasets, cycleIndex, selectedCycle, pinnedCycles, normalizeCapacity]
   );
 
   const exportContext = useMemo<ExportContext>(
@@ -240,8 +252,8 @@ const DvDqDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
 
   const directionLabel = direction === 'charge' ? 'Charge' : 'Discharge';
   const title2d = selectedCycle
-    ? `dV/dQ peak profile — ${directionLabel.toLowerCase()} · cycle ${selectedCycle} highlighted over all-cycle envelope`
-    : `dV/dQ peak profile — ${directionLabel.toLowerCase()}`;
+    ? `dV/dQ — ${directionLabel.toLowerCase()} · cycle ${selectedCycle}`
+    : `dV/dQ — ${directionLabel.toLowerCase()}`;
   const title3d = `dV/dQ vs capacity — ${directionLabel.toLowerCase()}`;
 
   const surfaceChart = useResizableChart();
@@ -442,25 +454,59 @@ const DvDqDashboard = ({ cathodeFilter, spacerFilter, separatorFilter }: Props) 
                 maxHeight={56}
                 className="shrink-0"
               />
-              <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2 mt-1 shrink-0">
-                <p className="text-xs font-medium text-muted-foreground mb-1.5">Peak profile — select cycle</p>
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-muted-foreground whitespace-nowrap">
+              <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2 mt-1 shrink-0 overflow-hidden">
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <p className="text-xs font-medium text-muted-foreground truncate">Highlight &amp; pin cycles</p>
+                  <label className="flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap shrink-0 cursor-pointer"
+                    title="Normalise each cycle's capacity to 0–1 so cycles overlay. Off = absolute mAh.">
+                    <input type="checkbox" checked={normalizeCapacity}
+                      onChange={(e) => setNormalizeCapacity(e.target.checked)}
+                      className="accent-primary" />
+                    Normalise Q
+                  </label>
+                </div>
+                {/* Row 1 — cycle selector: only the slider flexes, so it can never overflow. */}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
                     Cycle{cycles.length > 0 && <span className="ml-1 text-muted-foreground/60">({cycles[0]}–{cycles[cycles.length - 1]})</span>}:
                   </span>
                   {cycles.length > 1 ? (
                     <input type="range" min={cycles[0]} max={cycles[cycles.length - 1]} value={selectedCycle}
                       onChange={(e) => { const best = closestCycleIndex(parseInt(e.target.value, 10)); setCycleIndex(best); setCycleInput(String(cycles[best])); }}
-                      className="flex-1 accent-primary" />
-                  ) : <div className="flex-1" />}
+                      className="flex-1 min-w-0 accent-primary" />
+                  ) : <div className="flex-1 min-w-0" />}
                   <input type="text" inputMode="numeric" value={cycleInput}
                     placeholder={cycles.length > 0 ? `${cycles[0]}–${cycles[cycles.length - 1]}` : ''}
                     aria-describedby="dvdq-cycle-snap-notice"
                     onChange={(e) => setCycleInput(e.target.value)}
                     onBlur={commitCycleInput}
                     onKeyDown={(e) => e.key === 'Enter' && commitCycleInput()}
-                    className="w-16 rounded border border-input bg-background px-2 py-1 text-xs font-medium tabular-nums text-center focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1" />
-                  {snapNotice && <span id="dvdq-cycle-snap-notice" role="status" aria-live="polite" className="text-xs text-amber-600 dark:text-amber-400 whitespace-nowrap">{snapNotice}</span>}
+                    className="w-14 shrink-0 rounded border border-input bg-background px-2 py-1 text-xs font-medium tabular-nums text-center focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1" />
+                </div>
+                {snapNotice && <p id="dvdq-cycle-snap-notice" role="status" aria-live="polite" className="text-xs text-amber-600 dark:text-amber-400 mt-1">{snapNotice}</p>}
+                {/* Row 2 — pin action + reference chips (wrap inside a bounded, scrollable area). */}
+                <div className="flex items-start gap-1.5 mt-2">
+                  <button type="button"
+                    onClick={() => selectedCycle && togglePinnedCycle(selectedCycle)}
+                    disabled={!selectedCycle}
+                    className="shrink-0 rounded border border-input bg-background px-2 py-1 text-xs font-medium text-foreground hover:bg-muted/80 disabled:opacity-40 whitespace-nowrap"
+                    title="Pin the highlighted cycle as a faint reference curve">
+                    {pinnedCycles.includes(selectedCycle) ? '− Unpin' : '+ Pin'}
+                  </button>
+                  {pinnedCycles.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1.5 min-w-0 max-h-[2.75rem] overflow-y-auto">
+                      <span className="text-xs text-muted-foreground shrink-0">References:</span>
+                      {pinnedCycles.map((cyc) => (
+                        <button key={cyc} type="button" onClick={() => togglePinnedCycle(cyc)}
+                          className="shrink-0 inline-flex items-center gap-1 rounded-full border border-border/60 bg-background px-2 py-0.5 text-xs tabular-nums text-muted-foreground hover:text-foreground hover:border-foreground/40"
+                          title="Remove reference">
+                          {cyc}<span aria-hidden className="text-muted-foreground/60">×</span>
+                        </button>
+                      ))}
+                      <button type="button" onClick={() => setPinnedCycles([])}
+                        className="text-xs text-muted-foreground/70 hover:text-foreground shrink-0">Clear</button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

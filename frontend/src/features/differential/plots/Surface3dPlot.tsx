@@ -108,7 +108,8 @@ export function Surface3dPlot({
       // Eye baked into uirevision so a preset change is applied; same eye keeps
       // the user's manual rotation across data updates.
       uirevision: `${uirevision}|${eyeKey}`,
-      title: { text: titleText, font: { size: titleSize, family: fontFamily } },
+      // Left-anchored so the title clears the edit / export buttons at top-right.
+      title: { text: titleText, font: { size: titleSize, family: fontFamily }, x: 0, xref: 'paper', xanchor: 'left', pad: { l: 4 } },
       font: baseFont,
       ...restOverride,
       scene: {
