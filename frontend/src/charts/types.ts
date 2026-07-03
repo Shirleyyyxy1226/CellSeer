@@ -58,6 +58,9 @@ export interface BuildDqDvOpts {
   selectedCycle?: number;
   baselineCycle?: number;
   baselineCycleIndex?: number;
+  /** 'baseline' view: explicit reference cycles to overlay (faint, light→dark).
+   *  Takes precedence over baselineCycle/baselineCycleIndex when non-empty. */
+  baselineCycles?: number[];
 }
 
 export interface DqDvFigure {
@@ -81,6 +84,12 @@ export interface BuildDvDqOpts {
   selectedCycle?: number;
   baselineCycle?: number;
   baselineCycleIndex?: number;
+  /** 'baseline' view: explicit reference cycles to overlay (faint, light→dark).
+   *  Takes precedence over baselineCycle/baselineCycleIndex when defined. */
+  baselineCycles?: number[];
+  /** Capacity axis is per-cycle normalised (Q/Q_max, 0–1) rather than absolute mAh;
+   *  only changes the axis label. */
+  normalizedCapacity?: boolean;
 }
 
 export interface DvDqFigure {

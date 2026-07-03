@@ -1,4 +1,4 @@
-import { cellColor, cycleFadeColor } from '../style';
+import { cellColor, cellCycleColor, cycleFadeColor } from '../style';
 import type { BuildDqDvOpts, Dataset, DqDv2DViewMode, DqDvFigure } from '../types';
 
 // Categorical palette — distinguishable for up to ~12 cells.
@@ -204,19 +204,44 @@ function build2D(datasets: Dataset[], opts: BuildDqDvOpts): DqDvFigure {
       const color = baseColor(dataset, i);
       const cycle = resolveCycle(dataset, opts.selectedCycle, cycleIndex);
       if (!cycle) return;
-      const baseline = baselineCycle != null
-        ? dataset.cycles.find((c) => c.cycle === baselineCycle)
-        : dataset.cycles[baselineCycleIndex];
-      if (baseline) {
-        baselineLines.push({
-          x: baseline.x,
-          y: baseline.y,
-          type: 'scatter',
-          mode: 'lines',
-          name: `${dataset.label} Cycle ${baseline.cycle}`,
-          line: { color: hexToRgba(color, 0.4), width: 1.5, ...(dataset.dash ? { dash: dataset.dash } : {}) },
-          hovertemplate: `${dataset.label} Cycle ${baseline.cycle}<br>Voltage: %{x:.2f} V<br>dQ/dV: %{y:.2f} mAh V⁻¹<extra></extra>`,
+      // Explicit reference cycles (light → dark by cycle order). When the caller
+      // passes baselineCycles at all (even []), honour it exactly — an empty list
+      // means "no references", so nothing faint is drawn until the user pins one.
+      // Only when baselineCycles is omitted do we fall back to the legacy single
+      // baselineCycle / baselineCycleIndex.
+      const refCycles = opts.baselineCycles !== undefined
+        ? opts.baselineCycles.filter((c) => c !== cycle.cycle).sort((a, b) => a - b)
+        : null;
+      if (refCycles) {
+        refCycles.forEach((cyc, j) => {
+          const ref = dataset.cycles.find((c) => c.cycle === cyc);
+          if (!ref) return;
+          const t = refCycles.length > 1 ? 0.18 + 0.42 * (j / (refCycles.length - 1)) : 0.3;
+          baselineLines.push({
+            x: ref.x,
+            y: ref.y,
+            type: 'scatter',
+            mode: 'lines',
+            name: `${dataset.label} Cycle ${ref.cycle}`,
+            line: { color: cellCycleColor(color, t), width: 1.5, ...(dataset.dash ? { dash: dataset.dash } : {}) },
+            hovertemplate: `${dataset.label} Cycle ${ref.cycle}<br>Voltage: %{x:.2f} V<br>dQ/dV: %{y:.2f} mAh V⁻¹<extra></extra>`,
+          });
         });
+      } else {
+        const baseline = baselineCycle != null
+          ? dataset.cycles.find((c) => c.cycle === baselineCycle)
+          : dataset.cycles[baselineCycleIndex];
+        if (baseline) {
+          baselineLines.push({
+            x: baseline.x,
+            y: baseline.y,
+            type: 'scatter',
+            mode: 'lines',
+            name: `${dataset.label} Cycle ${baseline.cycle}`,
+            line: { color: hexToRgba(color, 0.4), width: 1.5, ...(dataset.dash ? { dash: dataset.dash } : {}) },
+            hovertemplate: `${dataset.label} Cycle ${baseline.cycle}<br>Voltage: %{x:.2f} V<br>dQ/dV: %{y:.2f} mAh V⁻¹<extra></extra>`,
+          });
+        }
       }
       const { index: peakIndex, value: peakValue } = findPeak(cycle.y);
       const peakVoltage = cycle.x[peakIndex] ?? 0;
