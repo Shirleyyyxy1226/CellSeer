@@ -1,6 +1,7 @@
 name: Deploy Demo to GitHub Pages
 # Pages source: GitHub Actions (publishes directly via the Pages API).
 # Deploy allowed from the demo branch via the github-pages environment.
+# (re-trigger after a transient Pages deploy failure)
 
 on:
   push:
