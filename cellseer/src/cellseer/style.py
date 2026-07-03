@@ -73,6 +73,23 @@ def _hsl_to_hex(h: float, s: float, l: float) -> str:
     return f"#{to_hex(r)}{to_hex(g)}{to_hex(b)}"
 
 
+def cell_cycle_color(hex_color: str, t: float) -> str:
+    """Tint hex_color toward white for early cycles (t=0 → 50% white, t=1 → full color).
+
+    Matches the TS cellCycleColor function: keeps the hue, only tints toward
+    white so every cycle still reads as the same cell colour.
+    """
+    if not hex_color or len(hex_color) != 7 or hex_color[0] != '#':
+        return hex_color
+    x = max(0.0, min(1.0, t))
+    r = int(hex_color[1:3], 16)
+    g = int(hex_color[3:5], 16)
+    b = int(hex_color[5:7], 16)
+    tint = 0.5 * (1 - x)
+    ch = lambda c: int(round(c + (255 - c) * tint))
+    return f"#{ch(r):02x}{ch(g):02x}{ch(b):02x}"
+
+
 def cycle_fade_color(hex_color: str, t: float) -> str:
     r = int(hex_color[1:3], 16) / 255.0
     g = int(hex_color[3:5], 16) / 255.0
@@ -96,6 +113,61 @@ def cycle_fade_color(hex_color: str, t: float) -> str:
     s_new = 0.35 + t * max(0.0, s - 0.35)
     l_new = min(0.9, l + (1 - t) * 0.35)
     return _hsl_to_hex(h, s_new, l_new)
+
+
+def base_layout() -> dict:
+    """Shared Plotly layout defaults matching the CellSeer web app (PlotlyChart.tsx)."""
+    return {
+        "template": "plotly_white",
+        "font": {"family": "Inter, sans-serif", "size": 13, "color": "#3a3a3c"},
+        "paper_bgcolor": "white",
+        "plot_bgcolor": "white",
+        "margin": {"t": 40, "r": 40, "b": 50, "l": 60},
+        "legend": {"bgcolor": "rgba(255,255,255,0.85)", "borderwidth": 0},
+        "xaxis": {"gridcolor": "rgba(128,128,128,0.2)"},
+        "yaxis": {"gridcolor": "rgba(128,128,128,0.2)"},
+    }
+
+
+def build_shared_grid(
+    values: Iterable[float],
+    default_min: float,
+    default_max: float,
+    default_step: float,
+    n_pts: int = 150,
+) -> list[float]:
+    """Uniform grid spanning the data range — mirrors the web app's buildSharedGrid.
+
+    ~150 points between the min and max of ``values`` (avoids the rectangular
+    artifact a coarse grid produces). Falls back to ``default_min..default_max``
+    stepped by ``default_step`` when ``values`` is empty.
+    """
+    vals = [float(v) for v in values if v is not None]
+    if not vals:
+        out = []
+        x = default_min
+        while x <= default_max:
+            out.append(x)
+            x += default_step
+        return out
+    v_min = min(vals)
+    v_max = max(vals)
+    rng = max(v_max - v_min, default_step)
+    step = rng / n_pts
+    out: list[float] = []
+    x = v_min
+    while x <= v_max:
+        out.append(round(x, 6))
+        x += step
+    return out if len(out) >= 2 else [v_min, v_max]
+
+
+def hex_to_rgba(hex_color: str, alpha: float) -> str:
+    """#rrggbb → rgba(r,g,b,a). Mirrors the web app's hexToRgba."""
+    r = int(hex_color[1:3], 16)
+    g = int(hex_color[3:5], 16)
+    b = int(hex_color[5:7], 16)
+    return f"rgba({r},{g},{b},{alpha})"
 
 
 def _lerp(x: float, x0: float, y0: float, x1: float, y1: float) -> float:

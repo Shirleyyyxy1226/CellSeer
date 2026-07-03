@@ -6,7 +6,14 @@ import plotly.graph_objects as go
 
 from ..compute import compute_dqdv_dvdq_per_cycle
 from ..io import CellData, CyclerName, load_many
-from ..style import cell_color, cycle_fade_color
+from ..style import (
+    base_layout,
+    build_shared_grid,
+    cell_color,
+    cycle_fade_color,
+    hex_to_rgba,
+    interpolate_onto_grid,
+)
 
 
 Direction = Literal["discharge", "charge"]
@@ -65,47 +72,93 @@ def _find_peak(values: list[float]) -> tuple[int, float]:
 
 
 def _build_traces_2d(cells: list[CellData], per_cell: list[list[tuple[int, list[float], list[float]]]]) -> list[go.Scatter]:
-    traces: list[go.Scatter] = []
+    """Range view matching the web app's dQ/dV 2D 'range' viewMode.
+
+    Each cycle's dQ/dV (Ah/V) is converted to mAh/V (×1000) and resampled onto a
+    shared voltage grid (out-of-range → 0). All cycles are drawn as one faint
+    joined envelope; the last cycle is drawn bold with a peak diamond.
+    """
+    # Shared voltage grid across every cell/cycle (web app: buildSharedGrid).
+    all_v = [v for rows in per_cell for (_, vs, _) in rows for v in vs]
+    v_grid = build_shared_grid(all_v, 2.5, 4.3, 0.002)
+
+    envelopes: list[go.Scatter] = []
+    lines: list[go.Scatter] = []
+    peaks: list[go.Scatter] = []
     for i, (cell, rows) in enumerate(zip(cells, per_cell)):
         if not rows:
             continue
         base = cell.color or cell_color(cell.cell_id or cell.label or f"dataset-{i+1}", i)
-        baseline = rows[1] if len(rows) > 1 else None
-        selected = rows[-1]
-        if baseline:
-            traces.append(
+        faint = hex_to_rgba(base, 0.25)
+
+        # Faint joined envelope of every cycle (nulls separate cycles).
+        x_parts: list[float | None] = []
+        y_parts: list[float | None] = []
+        for idx, (cyc, vs, dqdv) in enumerate(rows):
+            y_grid = interpolate_onto_grid(vs, [d * 1000.0 for d in dqdv], v_grid, 0.0)
+            if idx > 0:
+                x_parts.append(None)
+                y_parts.append(None)
+            x_parts.extend(v_grid)
+            y_parts.extend(y_grid)
+        if len(rows) > 1:
+            envelopes.append(
                 go.Scatter(
-                    x=baseline[1],
-                    y=baseline[2],
+                    x=x_parts,
+                    y=y_parts,
                     mode="lines",
-                    name=f"{cell.label} Cycle {baseline[0]}",
-                    line={"color": "rgba(31,119,180,0.4)" if base == "#1f77b4" else base, "width": 1.5},
-                    hovertemplate=f"{cell.label} Cycle {baseline[0]}<br>Voltage: %{{x:.2f}} V<br>dQ/dV: %{{y:.2f}} Ah/V<extra></extra>",
+                    name=cell.label,
+                    legendgroup=cell.cell_id or cell.label or f"group-{i}",
+                    line={"color": faint, "width": 1.5},
+                    connectgaps=False,
+                    hovertemplate=f"{cell.label}<br>Voltage: %{{x:.2f}} V<br>dQ/dV: %{{y:.2f}} mAh V⁻¹<extra></extra>",
                 )
             )
-        peak_idx, peak_val = _find_peak(selected[2])
-        peak_v = selected[1][peak_idx]
-        traces.append(
+
+        # Last cycle bold + peak diamond (both on the shared grid).
+        last_cyc, last_v, last_dqdv = rows[-1]
+        last_y = interpolate_onto_grid(last_v, [d * 1000.0 for d in last_dqdv], v_grid, 0.0)
+        peak_idx, peak_val = _find_peak(last_y)
+        peak_v = v_grid[peak_idx]
+        lines.append(
             go.Scatter(
-                x=selected[1],
-                y=selected[2],
+                x=v_grid,
+                y=last_y,
                 mode="lines",
-                name=cell.label,
+                name=f"{cell.label} · Cycle {last_cyc}",
+                legendgroup=cell.cell_id or cell.label or f"group-{i}",
                 line={"color": base, "width": 2},
-                hovertemplate=f"{cell.label}<br>Voltage: %{{x:.2f}} V<br>dQ/dV: %{{y:.2f}} Ah/V<br>Peak: {peak_v:.2f} V, {peak_val:.2f} Ah/V<extra></extra>",
+                hovertemplate=f"{cell.label}<br>Voltage: %{{x:.2f}} V<br>dQ/dV: %{{y:.2f}} mAh V⁻¹<extra></extra>",
             )
         )
-        traces.append(
+        peaks.append(
             go.Scatter(
                 x=[peak_v],
                 y=[peak_val],
                 mode="markers",
-                name=f"{cell.label} peak",
+                name="Peak",
+                legendgroup=cell.cell_id or cell.label or f"group-{i}",
+                showlegend=False,
                 marker={"size": 10, "color": base, "symbol": "diamond", "line": {"width": 1, "color": "#fff"}},
-                hovertemplate=f"{cell.label} peak<br>Voltage: %{{x:.2f}} V<br>dQ/dV: %{{y:.2f}} Ah/V<extra></extra>",
+                hovertemplate=f"{cell.label} peak<br>Voltage: %{{x:.2f}} V<br>dQ/dV: %{{y:.2f}} mAh V⁻¹<extra></extra>",
             )
         )
-    return traces
+    return envelopes + lines + peaks
+
+
+def _layout_2d() -> dict[str, Any]:
+    """2D layout matching the web app's dQ/dV figure (font 10, #e0e0e0 grid)."""
+    font = {"family": "Inter, sans-serif", "size": 10, "color": "#3a3a3c"}
+    return {
+        "font": font,
+        "paper_bgcolor": "white",
+        "plot_bgcolor": "white",
+        "xaxis": {"title": {"text": "Voltage (V)", "font": font}, "tickfont": font, "gridcolor": "#e0e0e0", "showgrid": True},
+        "yaxis": {"title": {"text": "dQ/dV (mAh V⁻¹)", "font": font}, "tickfont": font, "gridcolor": "#e0e0e0", "showgrid": True},
+        "legend": {"x": 1.02, "y": 1, "xanchor": "left", "yanchor": "top", "orientation": "v", "font": font},
+        "margin": {"t": 36, "r": 8, "b": 48, "l": 40},
+        "showlegend": True,
+    }
 
 
 def _scene(v_range: tuple[float, float] | None) -> dict[str, Any]:
@@ -142,13 +195,17 @@ def dqdv_plot(
 
     if mode == "2d":
         fig = go.Figure(data=_build_traces_2d(cells, per_cell))
-        fig.update_layout(
-            xaxis={"title": {"text": "Voltage (V)"}},
-            yaxis={"title": {"text": "dQ/dV (Ah/V)"}},
-            showlegend=True,
-        )
+        fig.update_layout(**_layout_2d())
         return fig
 
     fig = go.Figure(data=_build_traces_3d(cells, per_cell))
-    fig.update_layout(scene=_scene(_voltage_range(per_cell)), showlegend=True)
+    fig.update_layout(
+        scene=_scene(_voltage_range(per_cell)),
+        scene_aspectmode="manual",
+        scene_aspectratio={"x": 1.4, "y": 1.0, "z": 0.7},
+        margin={"l": 20, "r": 20, "t": 60, "b": 20},
+        font={"family": "Inter, system-ui, sans-serif", "size": 12, "color": "#3a3a3c"},
+        paper_bgcolor="white",
+        showlegend=True,
+    )
     return fig

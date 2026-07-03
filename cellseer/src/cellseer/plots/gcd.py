@@ -6,11 +6,14 @@ import plotly.graph_objects as go
 
 from ..gcd import compute_gcd_per_cycle
 from ..io import CellData, CyclerName, load_many
-from ..style import cell_color
+from ..style import base_layout, cell_color, cell_cycle_color
 
 
 Direction = Literal["discharge", "charge"]
 Mode = Literal["scatter", "cumulative"]
+
+
+MIN_CAP_MAH = 0.01
 
 
 def _filter_cycles(per_cycle: dict[int, dict[str, Any]], cycles: list[int] | None) -> list[tuple[int, list[float], list[float]]]:
@@ -21,8 +24,11 @@ def _filter_cycles(per_cycle: dict[int, dict[str, Any]], cycles: list[int] | Non
             continue
         q = list(payload.get("q", []))
         v = list(payload.get("v", []))
-        if len(q) >= 2 and len(v) >= 2:
-            out.append((cyc, q, v))
+        if len(q) < 2 or len(v) < 2:
+            continue
+        if max(q) - min(q) < MIN_CAP_MAH:
+            continue
+        out.append((cyc, q, v))
     return out
 
 
@@ -34,25 +40,42 @@ def _build_scatter(
 ) -> list[go.Scatter]:
     traces: list[go.Scatter] = []
     multi = len(cells) > 1
+    # Open circle for discharge (matches TS: circle-open for single-cell discharge traces).
+    dchg_symbol = "circle-open" if (not multi and direction in ("discharge", "both")) else "circle"
     for i, (cell, rows) in enumerate(zip(cells, per_cell)):
         base = cell.color or cell_color(cell.cell_id or cell.label or f"dataset-{i+1}", i)
         prefix = f"{cell.label} — " if multi else ""
-        for cyc, qs, vs in rows:
-            traces.append(
+        total = len(rows)
+        cell_traces: list[go.Scatter] = []
+        for j, (cyc, qs, vs) in enumerate(rows):
+            # In multi-cell mode use flat per-cell colour; single-cell gets turbo below.
+            color = base
+            cell_traces.append(
                 go.Scatter(
                     x=qs,
                     y=vs,
                     mode="lines" if show_lines else "markers",
                     name=f"{prefix}Cycle {cyc} ({direction})",
-                    line={"width": 1.5, "color": base} if show_lines else None,
-                    marker=None if show_lines else {"size": 3, "color": base},
-                    legendgroup=f"{cell.cell_id or cell.label or i}-{cyc}",
+                    line={"width": 1.5, "color": color} if show_lines else None,
+                    marker={"size": 3, "color": color, "symbol": dchg_symbol} if not show_lines else None,
+                    legendgroup=f"{cell.cell_id or cell.label or i}",
+                    showlegend=(j == 0 or j == total - 1),
                     hovertemplate=(
                         f"{cell.label}<br>Cycle: {cyc} ({direction})<br>"
                         "Capacity: %{x:.2f} mAh<br>Voltage: %{y:.3f} V<extra></extra>"
                     ),
                 )
             )
+        # Apply cellCycleColor fade for single-cell view (early=light tint, late=full colour).
+        if not multi and len(cell_traces) > 1:
+            n = len(cell_traces)
+            for idx, tr in enumerate(cell_traces):
+                c = cell_cycle_color(base, idx / (n - 1))
+                if tr.line:
+                    tr.line.color = c
+                if tr.marker:
+                    tr.marker.color = c
+        traces.extend(cell_traces)
     return traces
 
 
@@ -126,9 +149,9 @@ def gcd_plot(
         fig = go.Figure(data=_build_scatter(cells, per_cell, direction, show_lines))
         x_title = "Capacity (mAh)"
 
-    fig.update_layout(
-        xaxis={"title": {"text": x_title}},
-        yaxis={"title": {"text": "Voltage (V)"}},
-        showlegend=True,
-    )
+    layout = base_layout()
+    layout["xaxis"]["title"] = {"text": x_title}
+    layout["yaxis"]["title"] = {"text": "Voltage (V)"}
+    layout["showlegend"] = True
+    fig.update_layout(**layout)
     return fig

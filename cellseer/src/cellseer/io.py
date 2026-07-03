@@ -20,6 +20,7 @@ class CellData:
     cell_id: str = ""
     label: str = ""
     color: str | None = None
+    cathode_mass_g: float | None = None  # cathode active-material mass, for specific capacity (mAh/g)
     meta: dict[str, Any] = field(default_factory=dict)
 
 
@@ -71,7 +72,13 @@ def is_record_dict(d: Any) -> bool:
     )
 
 
-def load(data: Any, *, label: str | None = None, cycler: CyclerName = "auto") -> CellData:
+def load(
+    data: Any,
+    *,
+    label: str | None = None,
+    cycler: CyclerName = "auto",
+    cathode_mass_g: float | None = None,
+) -> CellData:
     """Coerce any supported input into a single CellData.
 
     Accepts: CellData (returned as-is), pandas DataFrame, a path to .csv /
@@ -79,14 +86,22 @@ def load(data: Any, *, label: str | None = None, cycler: CyclerName = "auto") ->
     or a PyProBE-like object. Column names are alias-matched, so Neware,
     PyProBE and CellSeer data-lake spellings all work.
 
-    >>> cell = cellseer.load(df, label="CEL-1")
+    ``cathode_mass_g`` (cathode active-material mass, grams) enables specific
+    capacity (mAh/g) in rate / GCD plots.
+
+    >>> cell = cellseer.load(df, label="CEL-1", cathode_mass_g=0.0371)
     """
     if isinstance(data, CellData):
-        return data if label is None else CellData(**{**data.__dict__, "label": label})
+        overrides: dict[str, Any] = {}
+        if label is not None:
+            overrides["label"] = label
+        if cathode_mass_g is not None:
+            overrides["cathode_mass_g"] = cathode_mass_g
+        return data if not overrides else CellData(**{**data.__dict__, **overrides})
 
     if isinstance(data, pd.DataFrame):
         curves = _df_to_curves(data)
-        return CellData(curves=curves, label=label or "DataFrame")
+        return CellData(curves=curves, label=label or "DataFrame", cathode_mass_g=cathode_mass_g)
 
     if isinstance(data, (str, Path)):
         path = Path(data)
@@ -94,15 +109,15 @@ def load(data: Any, *, label: str | None = None, cycler: CyclerName = "auto") ->
         file_label = label or path.stem
         if suffix == ".csv":
             df = pd.read_csv(path)
-            return CellData(curves=_df_to_curves(df), label=file_label, cell_id=path.stem)
+            return CellData(curves=_df_to_curves(df), label=file_label, cell_id=path.stem, cathode_mass_g=cathode_mass_g)
         if suffix == ".parquet":
             df = pd.read_parquet(path)
-            return CellData(curves=_df_to_curves(df), label=file_label, cell_id=path.stem)
+            return CellData(curves=_df_to_curves(df), label=file_label, cell_id=path.stem, cathode_mass_g=cathode_mass_g)
         if suffix in {".xlsx", ".xlsm"}:
             curves = load_cycler_curves(path, cycler=cycler)
             if not curves:
                 raise ValueError(f"Could not load curves from {path}")
-            return CellData(curves=curves, label=file_label, cell_id=path.stem)
+            return CellData(curves=curves, label=file_label, cell_id=path.stem, cathode_mass_g=cathode_mass_g)
         raise ValueError(f"Unsupported file type: {suffix}")
 
     if is_record_dict(data):

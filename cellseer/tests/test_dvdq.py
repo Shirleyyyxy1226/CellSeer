@@ -41,8 +41,9 @@ def test_dvdq_plot_charge_direction():
 def test_dvdq_plot_2d_mode():
     fig = dvdq_plot(_sample_df(), mode="2d")
     assert len(fig.data) >= 2
-    assert fig.layout.xaxis.title.text == "Capacity (Ah)"
-    assert fig.layout.yaxis.title.text == "dV/dQ (V·h/Ah)"
+    # Units match the web app's dV/dQ figure (capacity in mAh, dV/dQ in V mAh⁻¹).
+    assert fig.layout.xaxis.title.text == "Capacity (mAh)"
+    assert fig.layout.yaxis.title.text == "dV/dQ (V mAh⁻¹)"
 
 
 def test_dvdq_multi_input_map_labels():

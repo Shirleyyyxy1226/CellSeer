@@ -63,14 +63,25 @@ def compute_gcd_per_cycle(
 
         if direction == "charge" and len(charge) >= 2:
             q_min = min(p[0] for p in charge)
-            pts = charge[:max_points]
+            pts = _subsample(charge, max_points)
             qs = [p[0] - q_min for p in pts]
             vs = [p[1] for p in pts]
             out[int(cycle)] = {"q": qs, "v": vs}
         elif direction == "discharge" and len(discharge) >= 2:
             q_max = max(p[0] for p in discharge)
-            pts = discharge[:max_points]
+            pts = _subsample(discharge, max_points)
             qs = [q_max - p[0] for p in pts]
             vs = [p[1] for p in pts]
             out[int(cycle)] = {"q": qs, "v": vs}
     return out
+
+
+def _subsample(pts: list[tuple[float, float]], max_points: int) -> list[tuple[float, float]]:
+    """Stride across the whole curve so long (low-rate) discharges aren't chopped
+    to their first ``max_points`` samples — mirrors the web app's step decimation.
+    """
+    n = len(pts)
+    if n <= max_points:
+        return pts
+    step = (n + max_points - 1) // max_points  # ceil(n / max_points)
+    return pts[::step]

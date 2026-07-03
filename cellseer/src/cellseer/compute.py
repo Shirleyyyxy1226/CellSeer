@@ -12,6 +12,13 @@ try:
 except Exception:
     _HAS_PYPROBE = False
 
+try:
+    import navani.echem  # noqa: F401
+
+    _HAS_NAVANI = True
+except Exception:
+    _HAS_NAVANI = False
+
 
 Direction = Literal["discharge", "charge"]
 
@@ -122,29 +129,59 @@ def _lean_diff(
 
     v_range = float(v_grid.max() - v_grid.min())
     spacing = np.diff(np.unique(np.sort(v_grid)))
-    gap = float(np.min(spacing)) if spacing.size else 0.0
-    if not (np.isfinite(gap) and gap > 0.0 and v_range > 0.0):
+    if spacing.size == 0 or not (np.isfinite(v_range) and v_range > 0.0):
         return None
-    k = max(1, int(round(v_range / (target_bins * gap))))
 
-    res = Result(
-        lf=pl.DataFrame({"Capacity [Ah]": q_grid, "Voltage [V]": v_grid}).lazy(),
-        info={},
-    )
     gradient = "dxdy" if want == "dqdv" else "dydx"
-    try:
-        out = differentiate_lean(
-            res, x="Capacity [Ah]", y="Voltage [V]", k=k, gradient=gradient,
-            smoothing_filter=list(kernel) if kernel else _LEAN_KERNEL, section="longest",
-        ).data
-    except Exception:
-        return None
-    deriv_cols = [c for c in out.columns if c.startswith("d(")]
-    if not deriv_cols or out.height < 2:
-        return None
+    smoothing = list(kernel) if kernel else _LEAN_KERNEL
     axis_col = "Voltage [V]" if want == "dqdv" else "Capacity [Ah]"
-    out = out.sort(axis_col)
-    return out[axis_col].to_list(), out[deriv_cols[0]].to_list()
+    blow_cap = 1.0 if want == "dqdv" else 1.0e5  # non-physical above this → blow-up
+
+    def _attempt(gap: float):
+        if not (np.isfinite(gap) and gap > 0.0):
+            return None
+        k = max(1, int(round(v_range / (target_bins * gap))))
+        res = Result(
+            lf=pl.DataFrame({"Capacity [Ah]": q_grid, "Voltage [V]": v_grid}).lazy(),
+            info={},
+        )
+        try:
+            out = differentiate_lean(
+                res, x="Capacity [Ah]", y="Voltage [V]", k=k, gradient=gradient,
+                smoothing_filter=smoothing, section="longest",
+            ).data
+        except Exception:
+            return None
+        deriv_cols = [c for c in out.columns if c.startswith("d(")]
+        if not deriv_cols or out.height < 2:
+            return None
+        out = out.sort(axis_col)
+        return out[axis_col].to_list(), out[deriv_cols[0]].to_list()
+
+    def _blown(result) -> bool:
+        if result is None:
+            return True
+        y = np.asarray(result[1], dtype=float)
+        return (not np.all(np.isfinite(y))) or float(np.max(np.abs(y))) > blow_cap
+
+    # min-spacing k first; if it blows up to non-physical values, self-repair by
+    # recomputing this cycle with a robust 25th-percentile spacing (one near-flat
+    # region can't then inflate k). Whole cycle recomputed — not a clamp.
+    result = _attempt(float(np.min(spacing)))
+    if _blown(result):
+        repaired = _attempt(float(np.percentile(spacing, 25)))
+        if not _blown(repaired):
+            result = repaired
+    if result is None:
+        return None
+    # Cap resolution: the robust-spacing retry can over-resolve (tiny k → many
+    # bins). Decimate to ≤max_out points; preserves the curve and integral.
+    ax, dy = result
+    max_out = 1000
+    if len(ax) > max_out:
+        step = (len(ax) + max_out - 1) // max_out
+        ax, dy = ax[::step], dy[::step]
+    return ax, dy
 
 
 def _raw_cycle(
@@ -175,6 +212,82 @@ def _raw_cycle(
             if v_grid.size >= 2:
                 payload["dvdq"] = {"q": q_grid.tolist(), "dvdq": np.gradient(v_grid, q_grid).tolist()}
     return payload
+
+
+def _navani_diff(
+    v_raw: np.ndarray,
+    q_raw: np.ndarray,
+    *,
+    want: str,
+    max_points: int = 200,
+) -> tuple[list[float], list[float]] | None:
+    """navani Savitzky–Golay + spline differentiation (mirrors the backend).
+
+    ``want`` = "dqdv" → (voltage, dQ/dV [Ah/V]); "dvdq" → (capacity, dV/dQ [V/Ah]).
+    Differentiates a smoothed spline, so the derivative is bounded by construction
+    (no bin-division blow-up, no capacity-range collapse). Needs ≳101 points;
+    returns None for shorter segments. Output decimated to ~max_points.
+    """
+    import navani.echem as ne
+
+    v = np.asarray(v_raw, dtype=float)
+    q = np.asarray(q_raw, dtype=float)
+    n = min(v.size, q.size)
+    if n < 101:
+        return None
+    v, q = v[:n], q[:n]
+    q_mah = q * 1000.0  # navani's smoothing defaults are tuned on mAh-scale capacity
+    try:
+        if want == "dqdv":
+            x_axis, deriv, _ = ne.dqdv_single_cycle(q_mah, v)
+            x_axis = np.asarray(x_axis, dtype=float)
+            deriv = np.asarray(deriv, dtype=float) / 1000.0  # mAh/V → Ah/V
+        else:
+            x_axis, deriv, _ = ne.dqdv_single_cycle(v, q_mah)
+            x_axis = np.asarray(x_axis, dtype=float) / 1000.0  # mAh → Ah
+            deriv = np.asarray(deriv, dtype=float) * 1000.0   # V/mAh → V/Ah
+    except Exception:
+        return None
+    mask = np.isfinite(x_axis) & np.isfinite(deriv)
+    x_axis, deriv = x_axis[mask], deriv[mask]
+    if x_axis.size < 2:
+        return None
+    if x_axis.size > max_points:
+        idx = np.linspace(0, x_axis.size - 1, max_points).round().astype(int)
+        x_axis, deriv = x_axis[idx], deriv[idx]
+    order = np.argsort(x_axis)
+    return x_axis[order].tolist(), deriv[order].tolist()
+
+
+def _compute_navani(
+    curves: dict[int, dict[str, list[float]]],
+    direction: Direction,
+    sampling_interval_v: float,
+    sampling_interval_q: float | None,
+) -> dict[int, dict[str, Any]]:
+    out: dict[int, dict[str, Any]] = {}
+    for cycle, curve in sorted(curves.items()):
+        extracted = _extract_directional_vq(curve, direction)
+        if extracted is None:
+            continue
+        v_raw, q_raw = extracted
+        payload: dict[str, Any] = {"dqdv": None, "dvdq": None}
+
+        dq = _navani_diff(v_raw, q_raw, want="dqdv")
+        if dq is not None:
+            payload["dqdv"] = {"v": dq[0], "dqdv": dq[1]}
+        dv = _navani_diff(v_raw, q_raw, want="dvdq")
+        if dv is not None:
+            payload["dvdq"] = {"q": dv[0], "dvdq": dv[1]}
+
+        # Short segments (< navani's SG window) fall back to raw so they still
+        # produce a usable derivative rather than vanishing.
+        if payload["dqdv"] is None and payload["dvdq"] is None:
+            payload = _raw_cycle(v_raw, q_raw, sampling_interval_v, sampling_interval_q)
+        if payload["dqdv"] is None and payload["dvdq"] is None:
+            continue
+        out[int(cycle)] = payload
+    return out
 
 
 def _compute_lean(
@@ -239,10 +352,16 @@ def compute_dqdv_dvdq_per_cycle(
 ) -> dict[int, dict[str, Any]]:
     """Per-cycle dQ/dV and dV/dQ.
 
-    method="lean" (default) — PyProBE LEAN + bin protection (noise-robust; Savitzky–
-    Golay was never used here). Falls back to "raw" if PyProBE is unavailable.
+    method="lean" (default) — PyProBE LEAN + bin protection, with self-repair:
+    cycles whose min-spacing k produces non-physical blow-ups are recomputed with a
+    robust 25th-percentile spacing. Conserves the physics (integral) far better than
+    the spline alternative. Falls back to "raw" if PyProBE is unavailable.
+    method="navani" — Savitzky–Golay + spline (bounded but under-integrates on
+    non-monotonic discharge; kept as an option).
     method="raw" — plain numpy.gradient, no smoothing/clipping/sign-flip.
     """
+    if method == "navani" and _HAS_NAVANI:
+        return _compute_navani(curves, direction, sampling_interval_v, sampling_interval_q)
     if method == "lean" and _HAS_PYPROBE:
         return _compute_lean(
             curves, direction, lean_target_bins, lean_kernel,

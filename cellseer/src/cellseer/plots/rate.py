@@ -11,7 +11,7 @@ from ..rate import (
     compute_rate_performance,
     from_cell_dict,
 )
-from ..style import cell_color
+from ..style import base_layout, cell_color
 
 
 Direction = Literal["discharge", "charge"]
@@ -48,6 +48,7 @@ def _to_rate_cells(data: Any, *, direction: Direction, labels: list[str] | None,
         compute_rate_performance(
             cell.curves,
             direction=direction,
+            cathode_mass_g=cell.cathode_mass_g,
             cell_id=cell.cell_id,
             label=cell.label or cell.cell_id or f"Cell {i+1}",
             color=cell.color,
@@ -184,13 +185,13 @@ def rate_plot(
         if use_specific_capacity
         else f"{direction_label} capacity (mAh)"
     )
-    fig.update_layout(
-        xaxis={"title": {"text": "Cycle number"}},
-        yaxis={"title": {"text": y_label}},
-        shapes=_protocol_shapes(segments, max_y),
-        annotations=_protocol_annotations(segments),
-        showlegend=True,
-    )
+    layout = base_layout()
+    layout["xaxis"]["title"] = {"text": "Cycle number"}
+    layout["yaxis"]["title"] = {"text": y_label}
+    layout["shapes"] = _protocol_shapes(segments, max_y)
+    layout["annotations"] = _protocol_annotations(segments)
+    layout["showlegend"] = True
+    fig.update_layout(**layout)
     return fig
 
 
