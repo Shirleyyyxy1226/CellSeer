@@ -92,6 +92,12 @@ export function useDifferentialData(
   direction: 'discharge' | 'charge' = 'discharge',
   selectedIdNos: number[] = [],
   smoothing: DiffSmoothing = DEFAULT_SMOOTHING,
+  // dV/dQ only: normalise each cycle's discharge capacity to 0–1 (Q/Q_max) so
+  // cycles overlay for peak-shift comparison. The cycler's capacity counter is
+  // cumulative, so without this successive cycles scatter along the axis. dQ/dV
+  // (vs voltage) is unaffected. Trade-off: across cells it hides absolute-capacity
+  // differences, so it is exposed as a toggle.
+  normalizeDvdqCapacity: boolean = true,
 ): {
   dqdvData: DqDvData | null;
   dvdqData: DvDqData | null;
@@ -218,7 +224,10 @@ export function useDifferentialData(
     }
 
     const vGrid = buildSharedGrid(allV, 2.5, 4.3, 0.002);
-    const qGrid = buildSharedGrid(allQ, 0, 10, 0.1);
+    // Absolute capacity grid (mAh), or a 0–1 grid when normalising per cycle.
+    const qGrid = normalizeDvdqCapacity
+      ? buildSharedGrid([0, 1], 0, 1, 0.01)
+      : buildSharedGrid(allQ, 0, 10, 0.1);
 
     const dqdvCellData: DqDvData['cellData'] = [];
     const dvdqCellData: DvDqData['cellData'] = [];
@@ -255,15 +264,24 @@ export function useDifferentialData(
           // Ah/V → mAh/V to match the mAh capacity axis.
           dqdv: interpolateOntoGrid(d.dqdv.v, d.dqdv.dqdv.map((y) => y * 1000), vGrid, 0),
         });
+        // dV/dQ: V/Ah → V/mAh. Capacity axis: per-cycle Q/Q_max (0–1) when
+        // normalising, else absolute mAh (Ah × 1000).
+        let qAxis: number[];
+        if (normalizeDvdqCapacity) {
+          let mn = d.dvdq.q[0];
+          let mx = d.dvdq.q[0];
+          for (let i = 1; i < d.dvdq.q.length; i++) {
+            if (d.dvdq.q[i] < mn) mn = d.dvdq.q[i];
+            if (d.dvdq.q[i] > mx) mx = d.dvdq.q[i];
+          }
+          const span = mx - mn || 1;
+          qAxis = d.dvdq.q.map((x) => (x - mn) / span);
+        } else {
+          qAxis = d.dvdq.q.map((x) => x * 1000);
+        }
         dvdqTraces.push({
           cycle: cyc,
-          // Q: Ah → mAh; dV/dQ: V/Ah → V/mAh (out-of-range placeholder scaled too).
-          dvdq: interpolateOntoGrid(
-            d.dvdq.q.map((x) => x * 1000),
-            d.dvdq.dvdq.map((y) => y / 1000),
-            qGrid,
-            0.0001,
-          ),
+          dvdq: interpolateOntoGrid(qAxis, d.dvdq.dvdq.map((y) => y / 1000), qGrid, 0.0001),
         });
       }
 
@@ -278,7 +296,7 @@ export function useDifferentialData(
       dvdqData:
         dvdqCellData.length > 0 ? { capacities: qGrid, cycles, cellData: dvdqCellData } : null,
     };
-  }, [cellIndex, filteredCells, byCell]);
+  }, [cellIndex, filteredCells, byCell, normalizeDvdqCapacity]);
 
   // Distinguish why data is absent so the UI can show a targeted message.
   const noFilterMatch =
