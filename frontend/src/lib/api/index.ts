@@ -7,6 +7,7 @@ import type {
 } from '@/lib/cell/cellTypes';
 import type { CellAnnotation } from '@/contexts/CellSelectionContext';
 import { currentProjectIdFromLocation, withProjectQuery } from '@/lib/projectScope';
+import { DEMO_CONFIG, loadMockData, fetchDemoArtifact } from '@/lib/mockData';
 
 export type {
   RatePerfCell,
@@ -82,8 +83,15 @@ async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
   return res.json();
 }
 
-export const fetchCellRecordIndex = (): Promise<{ cells: IndexCell[] }> =>
-  apiFetch('/api/cell-record-index');
+export const fetchCellRecordIndex = async (): Promise<{ cells: IndexCell[] }> => {
+  if (DEMO_CONFIG.isDemo) {
+    const mockData = await loadMockData();
+    if (mockData?.cells) {
+      return { cells: mockData.cells as IndexCell[] };
+    }
+  }
+  return apiFetch('/api/cell-record-index');
+};
 
 /**
  * Condition scope for the rate-performance fetch. Narrows the
@@ -96,9 +104,15 @@ export interface RateScope {
   spacer?: string;
 }
 
-export const fetchRatePerformance = (
+export const fetchRatePerformance = async (
   scope?: RateScope,
 ): Promise<{ cells: RatePerfCell[]; protocols?: string[] }> => {
+  if (DEMO_CONFIG.isDemo) {
+    const mockData = await loadMockData();
+    if (mockData?.ratePerformance) {
+      return mockData.ratePerformance as { cells: RatePerfCell[]; protocols?: string[] };
+    }
+  }
   const params = new URLSearchParams();
   if (scope?.cathode && scope.cathode !== 'All') params.set('cathode', scope.cathode);
   if (scope?.separator && scope.separator !== 'All') params.set('separator', scope.separator);
@@ -146,8 +160,15 @@ export interface MasterPlotOverview {
   cells: OverviewCell[];
 }
 
-export const fetchMasterPlotOverview = (): Promise<MasterPlotOverview> =>
-  apiFetch('/api/master-plot/overview');
+export const fetchMasterPlotOverview = async (): Promise<MasterPlotOverview> => {
+  if (DEMO_CONFIG.isDemo) {
+    const mockData = await loadMockData();
+    if (mockData?.masterPlotOverview) {
+      return mockData.masterPlotOverview as unknown as MasterPlotOverview;
+    }
+  }
+  return apiFetch('/api/master-plot/overview');
+};
 
 /**
  * Per-cell dQ/dV peak-shift scalars — ΔV (mV) of the dominant redox
@@ -160,8 +181,15 @@ export interface PeakShiftResponse {
   cells: { cellId: string; peakShiftMv: number | null }[];
 }
 
-export const fetchMasterPlotPeakShift = (): Promise<PeakShiftResponse> =>
-  apiFetch('/api/master-plot/peak-shift');
+export const fetchMasterPlotPeakShift = async (): Promise<PeakShiftResponse> => {
+  if (DEMO_CONFIG.isDemo) {
+    const mockData = await loadMockData();
+    if (mockData?.peakShift) {
+      return mockData.peakShift as unknown as PeakShiftResponse;
+    }
+  }
+  return apiFetch('/api/master-plot/peak-shift');
+};
 
 /**
  * Per-cell cycling curves. Dashboards request stride-downsampled traces
@@ -169,10 +197,15 @@ export const fetchMasterPlotPeakShift = (): Promise<PeakShiftResponse> =>
  * ~9 MB full payload); pass `maxPointsPerCycle: null` for full resolution
  * (e.g. for data export).
  */
-export const fetchCellRecord = (
+export const fetchCellRecord = async (
   cellId: string,
   opts?: { maxPointsPerCycle?: number | null },
 ): Promise<unknown> => {
+  if (DEMO_CONFIG.isDemo) {
+    // GCD cycling curves are hosted on the demo-data branch, fetched on demand.
+    const data = await fetchDemoArtifact(`cell-record/${encodeURIComponent(cellId)}.json`);
+    return data ?? { cellId, curves: {} };
+  }
   const maxPts = opts?.maxPointsPerCycle === undefined ? 500 : opts.maxPointsPerCycle;
   const qs = maxPts != null ? `?maxPointsPerCycle=${maxPts}` : '';
   return apiFetch(`/api/cell-record/${encodeURIComponent(cellId)}${qs}`);
@@ -184,11 +217,19 @@ export interface DiffSmoothing {
   kernel: number;     // LEAN smoothing kernel width: 3 | 5 | 7 point
 }
 
-export const fetchDifferential = (
+export const fetchDifferential = async (
   cellId: string,
   direction: 'discharge' | 'charge' = 'discharge',
   smoothing?: DiffSmoothing,
 ): Promise<unknown> => {
+  if (DEMO_CONFIG.isDemo) {
+    // Per-cell differential is hosted on the demo-data branch (default LEAN
+    // smoothing). Smoothing-panel tweaks reuse the same precomputed traces.
+    const data = await fetchDemoArtifact(
+      `differential/${encodeURIComponent(cellId)}_${encodeURIComponent(direction)}.json`,
+    );
+    return data ?? { cellId, direction, cycles: {} };
+  }
   let url = `/api/cell-record/${encodeURIComponent(cellId)}/differential?direction=${encodeURIComponent(direction)}`;
   if (smoothing) {
     url += `&method=${encodeURIComponent(smoothing.method)}&targetBins=${smoothing.targetBins}&kernel=${smoothing.kernel}`;
@@ -196,13 +237,25 @@ export const fetchDifferential = (
   return apiFetch(url);
 };
 
-export const fetchDifferentialCells = (
+export const fetchDifferentialCells = async (
   direction: 'discharge' | 'charge' = 'discharge',
-): Promise<{ cellIds: string[] }> =>
-  apiFetch(`/api/differential-cells?direction=${encodeURIComponent(direction)}`);
+): Promise<{ cellIds: string[] }> => {
+  if (DEMO_CONFIG.isDemo) {
+    const mockData = await loadMockData();
+    if (mockData?.cells) {
+      return { cellIds: (mockData.cells as IndexCell[]).map((c) => c.cellId) };
+    }
+    return { cellIds: [] };
+  }
+  return apiFetch(`/api/differential-cells?direction=${encodeURIComponent(direction)}`);
+};
 
-export const fetchCellAnnotations = (): Promise<{ annotations: Record<string, CellAnnotation> }> =>
-  apiFetch('/api/cell-annotations');
+export const fetchCellAnnotations = async (): Promise<{ annotations: Record<string, CellAnnotation> }> => {
+  if (DEMO_CONFIG.isDemo) {
+    return { annotations: {} };
+  }
+  return apiFetch('/api/cell-annotations');
+};
 
 export const fetchCellAnnotation = (cellId: string): Promise<CellAnnotation> =>
   apiFetch(`/api/cell-annotation/${encodeURIComponent(cellId)}`);
@@ -368,8 +421,28 @@ export const fetchUploadStatus = (taskId: string): Promise<UploadTaskStatus> =>
 export const fetchUploadHistory = (): Promise<{ tasks: UploadTaskStatus[] }> =>
   apiFetch(withProjectQuery('/api/upload/history'));
 
-export const fetchProjects = (): Promise<{ projects: ProjectSummary[] }> =>
-  apiFetch('/api/projects');
+export const fetchProjects = async (): Promise<{ projects: ProjectSummary[] }> => {
+  if (DEMO_CONFIG.isDemo) {
+    const mockData = await loadMockData();
+    const cells = (mockData?.cells ?? []) as IndexCell[];
+    const cathodeTypes = Array.from(
+      new Set(cells.map((c) => c.cathode).filter(Boolean)),
+    ) as string[];
+    return {
+      projects: [
+        {
+          id: DEMO_CONFIG.projectId,
+          name: DEMO_CONFIG.projectName,
+          createdAt: DEMO_CONFIG.datasetMetadata.exportDate,
+          updatedAt: DEMO_CONFIG.datasetMetadata.exportDate,
+          cellCount: cells.length || DEMO_CONFIG.datasetMetadata.cellCount,
+          cathodeTypes,
+        },
+      ],
+    };
+  }
+  return apiFetch('/api/projects');
+};
 
 export const createProject = (name: string): Promise<ProjectSummary> =>
   apiFetch('/api/projects', {
@@ -470,6 +543,18 @@ export const setCellProtocolBulk = (
   });
 
 export async function fetchProjectReadiness(projectId: string): Promise<ProjectReadiness> {
+  if (DEMO_CONFIG.isDemo) {
+    const mockData = await loadMockData();
+    const cells = (mockData?.cells ?? []) as IndexCell[];
+    return {
+      projectId,
+      projectName: DEMO_CONFIG.projectName,
+      hasMetadata: true,
+      metadataColumnCount: 12,
+      cyclingFileCount: cells.length || DEMO_CONFIG.datasetMetadata.cellCount,
+      canEnterDashboard: true,
+    };
+  }
   const res = await fetch(withProjectQuery(`/api/projects/${encodeURIComponent(projectId)}/readiness`), {
     cache: 'no-store',
   });

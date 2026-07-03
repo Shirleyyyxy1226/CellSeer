@@ -2,6 +2,7 @@
 
 import type { AnalysisResult, TreeNode } from '@/lib/treeUtils';
 import { withProjectQuery } from '@/lib/projectScope';
+import { DEMO_CONFIG, loadMockData } from '@/lib/mockData';
 
 export interface AnalyseResponse {
   parsed: { headers: string[]; rows: string[][] };
@@ -50,6 +51,12 @@ export async function analyseHierarchy(
 }
 
 export async function fetchDefaultHierarchyAnalyse(): Promise<AnalyseResponse> {
+  if (DEMO_CONFIG.isDemo) {
+    const mockData = await loadMockData();
+    if (mockData?.hierarchy) {
+      return mockData.hierarchy as AnalyseResponse;
+    }
+  }
   const res = await fetch(withProjectQuery('/api/hierarchy'));
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
@@ -64,6 +71,7 @@ function withProjectKey(path: string, projectKey?: string): string {
 }
 
 export async function fetchHierarchyOrder(projectKey?: string): Promise<number[]> {
+  if (DEMO_CONFIG.isDemo) return [];
   const res = await fetch(withProjectKey('/api/hierarchy-order', projectKey));
   if (!res.ok) return [];
   const d = (await res.json()) as HierarchyOrderResponse;

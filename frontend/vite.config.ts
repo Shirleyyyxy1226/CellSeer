@@ -4,6 +4,9 @@ import path from "path";
 
 // https://vitejs.dev/config/
 export default defineConfig(() => ({
+  // GitHub Pages demo is served from a subpath (Shirleyyyxy1226.github.io/CellSeer/);
+  // production (cellseer.com) serves from root.
+  base: process.env.DEPLOY_ENV === 'gh-pages' ? '/CellSeer/' : '/',
   server: {
     host: "::",
     port: 8080,

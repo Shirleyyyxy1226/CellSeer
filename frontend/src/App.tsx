@@ -10,6 +10,7 @@ import { ProtocolFilterProvider } from "@/contexts/ProtocolFilterContext";
 import { DataRefreshProvider } from "@/contexts/DataRefreshContext";
 import { ProjectHierarchyProvider } from "@/contexts/ProjectHierarchyContext";
 import { ProtocolDialogProvider } from "@/features/protocol";
+import { DemoCredit } from "@/components/DemoCredit";
 import Index from "./pages/Index";
 import HomePage from "./pages/HomePage";
 import ProjectDetailPage from "./pages/ProjectDetailPage";
@@ -32,7 +33,7 @@ const App = () => (
                   URL (useLocation) and reload the hierarchy/tree when the project
                   in the path changes — otherwise switching projects shows the old
                   tree until a full refresh. */}
-              <BrowserRouter>
+              <BrowserRouter basename={import.meta.env.BASE_URL}>
                 <ProjectHierarchyProvider>
                   <ProtocolDialogProvider>
                     <Routes>
@@ -47,6 +48,7 @@ const App = () => (
                   </ProtocolDialogProvider>
                 </ProjectHierarchyProvider>
               </BrowserRouter>
+              <DemoCredit />
             </ProtocolFilterProvider>
           </TreeFilterProvider>
         </MasterPlotBridgeProvider>
