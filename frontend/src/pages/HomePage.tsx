@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Check,
-  FlaskConical,
   LayoutDashboard,
   Pencil,
   Plus,
@@ -213,9 +212,7 @@ export default function HomePage() {
         <div className="mx-auto max-w-6xl px-6 pb-4 pt-5">
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-md border border-border bg-background">
-                <FlaskConical className="h-5 w-5 text-primary" />
-              </div>
+              <img src="/cellseer.svg" alt="CellSeer" className="h-9 w-auto block shrink-0" />
               <div>
                 <h1 className="text-xl font-bold leading-tight tracking-tight">CellSeer</h1>
                 <p className="text-xs text-muted-foreground">Battery cell library</p>
