@@ -7,6 +7,8 @@
 [![React](https://img.shields.io/badge/React-18-61dafb?logo=react&logoColor=white)](https://react.dev/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100%2B-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 
+**🔗 [Live demo](https://shirleyyyxy1226.github.io/CellSeer/) · [Documentation](https://shirleyyyxy1226.github.io/CellSeer/docs/) · [Developer docs](https://shirleyyyxy1226.github.io/CellSeer/docs/developer/)**
+
 Built for material scientists, lab managers, and battery researchers. Grew out of an **Imperial College London MEng Design Engineering** thesis, with integration with Imperial's **DIGIBAT** DataLab.
 
 | | |
