@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CellSeer repository docs</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="logo" href="index.html"><img src="assets/cellseer.svg" alt="CellSeer"> CellSeer repo</a>
+  <span class="spacer"></span>
+  <a class="ghlink cross-site" href="../index.html">User guide</a>
+</header>
+
+<div class="shell">
+<aside class="sidebar">
+  <div class="group">Start</div>
+  <a href="index.html" class="active">Home</a>
+  <a href="overview.html">Overview</a>
+  <a href="structure.html">Repository structure</a>
+  <div class="group">Build</div>
+  <a href="architecture.html">Architecture</a>
+  <a href="features.html">Features overview</a>
+  <a href="dashboard-guide.html">Dashboard &amp; plot guide</a>
+  <a href="design.html">Design language</a>
+  <div class="group">Data</div>
+  <a href="ingestion-pipeline.html">Ingestion pipeline</a>
+  <a href="digibat-sync.html">DIGIBAT sync</a>
+  <a href="protocol-attachment.html">Protocol attachment</a>
+  <a href="data-model.html">Data model</a>
+  <a href="api.html">REST API</a>
+  <div class="group">Analytics</div>
+  <a href="master-plot-metrics.html">Master Plot metrics</a>
+  <a href="computation-report.html">Computation report</a>
+  <div class="group">Run</div>
+  <a href="deployment.html">Deployment</a>
+  <a href="dependencies.html">Dependencies</a>
+  <div class="group">External</div>
+  <a href="../index.html" class="ext">User guide</a>
+</aside>
+
+<main class="landing-main">
+<section class="hero">
+  <h1>CellSeer repository docs</h1>
+  <p class="lede">React app, FastAPI backend, and TypeScript <code>@/charts</code> builders — for contributors.</p>
+  <div class="ctas">
+    <a class="btn primary" href="overview.html">Get started &rarr;</a>
+    <a class="btn ghost" href="../index.html">User guide</a>
+  </div>
+</section>
+
+<div class="landing-wrap">
+
+  <h2>Start</h2>
+  <div class="cards c2">
+    <a class="card" href="overview.html">
+      <h3>Overview</h3>
+      <p>What CellSeer is, the four layers, and how data flows from ingest to plots. <span class="chev">&rarr;</span></p>
+    </a>
+    <a class="card" href="structure.html">
+      <h3>Repository structure</h3>
+      <p>Directory map, key entry points, and where to add features. <span class="chev">&rarr;</span></p>
+    </a>
+  </div>
+
+  <h2>Build</h2>
+  <div class="cards c3">
+    <a class="card" href="architecture.html">
+      <h3>Architecture</h3>
+      <p>System diagrams: browser ↔ API ↔ PostgreSQL/Parquet/DIGIBAT, feature modules, workflows. <span class="chev">&rarr;</span></p>
+    </a>
+    <a class="card" href="features.html">
+      <h3>Features overview</h3>
+      <p>Protocols, upload, annotations, export, home/projects — capability map with links to deep dives. <span class="chev">&rarr;</span></p>
+    </a>
+    <a class="card" href="dashboard-guide.html">
+      <h3>Dashboard &amp; plot guide</h3>
+      <p>Routes, readiness gate, tab registry, hooks, endpoints, and every tab control — contributor reference for all six dashboard tabs. <span class="chev">&rarr;</span></p>
+    </a>
+    <a class="card" href="design.html">
+      <h3>Design language</h3>
+      <p>Visual and interaction conventions — principles, views, colour system, accessibility. <span class="chev">&rarr;</span></p>
+    </a>
+  </div>
+
+  <h2>Data</h2>
+  <div class="cards c3">
+    <a class="card" href="ingestion-pipeline.html">
+      <h3>Ingestion pipeline</h3>
+      <p>Upload routes, loaders, Parquet layout, and PostgreSQL rows — traced from code. <span class="chev">&rarr;</span></p>
+    </a>
+    <a class="card" href="digibat-sync.html">
+      <h3>DIGIBAT sync</h3>
+      <p>Remote collection sync, provenance tables, and convergence with upload ingest. <span class="chev">&rarr;</span></p>
+    </a>
+    <a class="card" href="protocol-attachment.html">
+      <h3>Protocol attachment</h3>
+      <p>Wizard steps, segment persistence, and dashboard protocol filtering. <span class="chev">&rarr;</span></p>
+    </a>
+    <a class="card" href="data-model.html">
+      <h3>Data model</h3>
+      <p>PostgreSQL schema, Parquet data lake, dataset naming, soft deletes. <span class="chev">&rarr;</span></p>
+    </a>
+    <a class="card" href="api.html">
+      <h3>REST API</h3>
+      <p>Three-column API reference — sidebar nav, live docs, curl/JSON examples for all 45 REST endpoints. <span class="chev">&rarr;</span></p>
+    </a>
+  </div>
+
+  <h2>Analytics</h2>
+  <div class="cards c2">
+    <a class="card" href="master-plot-metrics.html">
+      <h3>Master Plot metrics</h3>
+      <p>Metric registry, overview data path, URL state, and cross-view linking. <span class="chev">&rarr;</span></p>
+    </a>
+    <a class="card" href="computation-report.html">
+      <h3>Computation report</h3>
+      <p>Formulas, methods, and references for analytical computations. <span class="chev">&rarr;</span></p>
+    </a>
+  </div>
+
+  <h2>Run</h2>
+  <div class="cards c2">
+    <a class="card" href="deployment.html">
+      <h3>Deployment</h3>
+      <p>Local dev ports 8080/8000; production runbook in <code>DEPLOY.md</code>. <span class="chev">&rarr;</span></p>
+    </a>
+    <a class="card" href="dependencies.html">
+      <h3>Dependencies</h3>
+      <p>Python, Node, and plotting stack across all layers. <span class="chev">&rarr;</span></p>
+    </a>
+  </div>
+
+  <h2>Quick facts</h2>
+  <table>
+    <tr><th>Item</th><th>Value</th></tr>
+    <tr><td>License</td><td>MIT — Imperial College London MEng Design Engineering project</td></tr>
+    <tr><td>Database</td><td>PostgreSQL via <code>CELLSEER_DATABASE_URL</code></td></tr>
+    <tr><td>Time series</td><td>Parquet under <code>data_lake/</code> (see <a href="data-model.html">data model</a>)</td></tr>
+    <tr><td>Plotting</td><td>Web app <code>@/charts</code> builders</td></tr>
+    <tr><td>Production ops</td><td><a href="https://github.com/Shirleyyyxy1226/CellSeer/blob/main/DEPLOY.md"><code>DEPLOY.md</code></a></td></tr>
+    <tr><td>Colour system</td><td><a href="design.html#visual-language">Design language</a> · <a href="dashboard-guide.html#colour-system">Implementation</a></td></tr>
+  </table>
+</div>
+</main>
+</div>
+
+<footer class="site">
+  CellSeer repository docs &middot;
+  <a href="../index.html">User guide</a> &middot;
+  <a href="acknowledgments.html" class="muted">Acknowledgments</a>
+</footer>
+<script src="site-links.js"></script>
+</body>
+</html>

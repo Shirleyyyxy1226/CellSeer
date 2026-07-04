@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Deployment — CellSeer repo docs</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="logo" href="index.html"><img src="assets/cellseer.svg" alt="CellSeer"> CellSeer repo</a>
+  <span class="spacer"></span>
+  <a class="ghlink cross-site" href="../index.html">User guide</a>
+</header>
+
+<div class="shell">
+<aside class="sidebar">
+  <div class="group">Start</div>
+  <a href="index.html">Home</a>
+  <a href="overview.html">Overview</a>
+  <a href="structure.html">Repository structure</a>
+  <div class="group">Build</div>
+  <a href="architecture.html">Architecture</a>
+  <a href="features.html">Features overview</a>
+  <a href="dashboard-guide.html">Dashboard &amp; plot guide</a>
+  <a href="design.html">Design language</a>
+  <div class="group">Data</div>
+  <a href="ingestion-pipeline.html">Ingestion pipeline</a>
+  <a href="digibat-sync.html">DIGIBAT sync</a>
+  <a href="protocol-attachment.html">Protocol attachment</a>
+  <a href="data-model.html">Data model</a>
+  <a href="api.html">REST API</a>
+  <div class="group">Analytics</div>
+  <a href="master-plot-metrics.html">Master Plot metrics</a>
+  <a href="computation-report.html">Computation report</a>
+  <div class="group">Run</div>
+  <a href="deployment.html" class="active">Deployment</a>
+  <a href="dependencies.html">Dependencies</a>
+  <div class="group">External</div>
+  <a href="../index.html" class="ext">User guide</a>
+</aside>
+
+<main>
+<div class="content">
+<h1>Deployment</h1>
+  <p class="lede">Production deployment, Docker, PostgreSQL, auth, backups, and update procedures are documented in the repository runbook — not duplicated here.</p>
+
+<p>The canonical guide is <a href="https://github.com/Shirleyyyxy1226/CellSeer/blob/main/DEPLOY.md"><code>DEPLOY.md</code></a> at the repo root. It covers Docker Compose profiles (Caddy, Cloudflare Tunnel), environment setup, bearer-token auth, backup scripts, and the three deployment paths (Mac, cloud VM, Windows).</p>
+
+<h2>Local development</h2>
+<p>Run the backend on port <strong>8000</strong> and the Vite dev server on port <strong>8080</strong> (not Vite’s default 5173). The frontend proxies <code>/api</code> to <code>http://127.0.0.1:8000</code>. Stack versions and packages: <a href="dependencies.html">Dependencies</a>. Path-related env vars: <a href="data-model.html">Data model</a>.</p>
+
+<p>For Docker production builds, PostgreSQL, TLS exposure, and ops — use <a href="https://github.com/Shirleyyyxy1226/CellSeer/blob/main/DEPLOY.md"><code>DEPLOY.md</code></a>.</p>
+
+<div class="pager">
+  <span></span>
+  <a class="next" href="dependencies.html"><span class="dir">Next &rarr;</span><span class="ttl">Dependencies</span></a>
+</div>
+</div>
+</main>
+</div>
+
+<footer class="site">CellSeer repository docs</footer><script src="site-links.js"></script>
+</body>
+</html>

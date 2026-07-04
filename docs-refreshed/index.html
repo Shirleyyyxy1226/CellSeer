@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CellSeer documentation</title>
+<link rel="stylesheet" href="assets/docs.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="logo" href="index.html"><img src="assets/cellseer.svg" alt="CellSeer"> CellSeer</a>
+  <nav>
+    <a href="first_steps.html">First steps</a>
+    <a href="user_guide.html">User guide</a>
+  </nav>
+  <span class="spacer"></span>
+  <a class="ghlink cross-site" href="developer/index.html">Developer docs</a>
+</header>
+
+<section class="hero">
+  <h1>See your whole cell library at a glance</h1>
+  <p class="lede">Open-source visualisation and analysis for high-throughput coin-cell campaigns — an independent layer above your lab’s files or DIGIBAT datalab. Compare a whole campaign, then drill into any cell.</p>
+  <div class="ctas">
+    <a class="btn primary" href="user_guide.html">User guide</a>
+    <a class="btn ghost" href="developer/index.html">Repo docs</a>
+  </div>
+</section>
+
+<div class="landing-wrap">
+  <figure>
+    <img src="assets/app/masterplot.png" alt="CellSeer Master Plot condition heatmap">
+    <figcaption>The Master Plot condition heatmap: every experimental condition as a row, replicate
+    cells coloured by performance &mdash; the bird's-eye view of a cycling campaign.</figcaption>
+  </figure>
+
+  <h2 style="border:none;padding-top:8px">Start where you are</h2>
+  <div class="cards c3">
+    <a class="card" href="first_steps.html"><h3>First steps</h3><p>Install hosted or locally and open your first project. <span class="chev">&rarr;</span></p></a>
+    <a class="card" href="user_guide.html"><h3>User guide</h3><p>Projects, ingest, six dashboard tabs, protocols, export. <span class="chev">&rarr;</span></p></a>
+    <a class="card" href="developer/index.html"><h3>Developer docs</h3><p>Full repository documentation — architecture, ingestion, API, deployment. <span class="chev">&rarr;</span></p></a>
+  </div>
+
+  <h2>What CellSeer is</h2>
+  <p>An open-source web app for browsing, comparing, and annotating high-throughput coin-cell campaigns:</p>
+  <table>
+    <tr><th>Component</th><th>What it is</th><th>Use it when</th></tr>
+    <tr><td><strong>Web app</strong></td><td>React + TypeScript dashboard over a FastAPI + PostgreSQL + Parquet backend</td><td>You want to browse, compare and annotate a whole library interactively &mdash; hosted or local</td></tr>
+    <tr><td><strong>Chart builders</strong></td><td>Framework-free TypeScript Plotly builders (<code>buildGcdFigure</code>, etc.)</td><td>Embedding CellSeer charts in another web app &mdash; see <a href="developer/index.html">Developer docs</a></td></tr>
+  </table>
+
+  <h2>Colour system</h2>
+  <p>Cell hues from cathode hash; per-cycle blue ramp. Details: <a href="developer/design.html#visual-language">Design language</a> · <a href="developer/dashboard-guide.html#colour-system">Developer reference</a>.</p>
+
+</div>
+
+<footer class="site">
+  CellSeer &mdash; Imperial College London &middot;
+  <a href="developer/index.html">Developer docs</a>
+</footer>
+<script src="site-links.js"></script>
+</body>
+</html>

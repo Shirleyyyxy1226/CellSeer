@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Master Plot metrics — CellSeer repo docs</title>
+<link rel="stylesheet" href="styles.css">
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script src="mermaid-init.js"></script>
+<script src="mermaid-lightbox.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <a class="logo" href="index.html"><img src="assets/cellseer.svg" alt="CellSeer"> CellSeer repo</a>
+  <span class="spacer"></span>
+  <a class="ghlink cross-site" href="../index.html">User guide</a>
+</header>
+
+<div class="shell">
+<aside class="sidebar">
+  <div class="group">Start</div>
+  <a href="index.html">Home</a>
+  <a href="overview.html">Overview</a>
+  <a href="structure.html">Repository structure</a>
+  <div class="group">Build</div>
+  <a href="architecture.html">Architecture</a>
+  <a href="features.html">Features overview</a>
+  <a href="dashboard-guide.html">Dashboard &amp; plot guide</a>
+  <a href="design.html">Design language</a>
+  <div class="group">Data</div>
+  <a href="ingestion-pipeline.html">Ingestion pipeline</a>
+  <a href="digibat-sync.html">DIGIBAT sync</a>
+  <a href="protocol-attachment.html">Protocol attachment</a>
+  <a href="data-model.html">Data model</a>
+  <a href="api.html">REST API</a>
+  <div class="group">Analytics</div>
+  <a href="master-plot-metrics.html" class="active">Master Plot metrics</a>
+  <a href="computation-report.html">Computation report</a>
+  <div class="group">Run</div>
+  <a href="deployment.html">Deployment</a>
+  <a href="dependencies.html">Dependencies</a>
+  <div class="group">External</div>
+  <a href="../index.html" class="ext">User guide</a>
+</aside>
+
+<main>
+<div class="content">
+<h1>Master Plot metrics pipeline</h1>
+  <p class="lede">End-to-end trace of how the Master Plot overview tab turns rate-performance data into per-cell scalars, condition aggregates, and the metric-driven views. Per-cell overview scalars always come from <code>GET /api/master-plot/overview</code> (Python <code>build_overview</code>) → <code>summariesFromOverview</code>; the full per-cycle rate-performance payload is fetched lazily and scoped to active filters only when Trajectories, Inspector, or parallel coordinates need series data. The metric selector exposes exactly six metrics: peak capacity, peak specific capacity, Coulombic efficiency, cycles completed, capacity retention, and dQ/dV peak shift.</p>
+
+<div class="callout tip">
+  <strong>Related pages.</strong>
+  <a href="computation-report.html">Computation report</a> (formulas) ·
+  <a href="dashboard-guide.html">Dashboard &amp; plot guide</a> (UI wiring) ·
+  <a href="protocol-attachment.html">Protocol attachment</a> (protocol gating).
+</div>
+
+<h2>Terminology</h2>
+<table>
+  <tr><th>Term</th><th>Meaning in CellSeer</th></tr>
+  <tr><td><strong>CellSummary</strong></td><td>Per-cell scalar record adapted from the server overview in <code>overview/aggregate.ts</code>: peak capacity (raw and specific), cycle count, per-cell <code>hasProtocol</code>, optional <code>capacitySeries</code> (grafted from lazy per-cycle fetch). Protocol-gated fields (<code>medianCE</code>, <code>retention</code>, <code>peakShiftMv</code>) are present in the type but not yet populated.</td></tr>
+  <tr><td><strong>MetricDef</strong></td><td>Entry in <code>METRICS[]</code> (id, label, unit, <code>value(cell)</code>, optional <code>requiresProtocol</code>, <code>higherIsBetter</code>, <code>score()</code>). Drives heatmap colour, ranking bars, trajectory sort.</td></tr>
+  <tr><td><strong>CondRow</strong></td><td>One experimental condition (cathode + separator + spacer) with its member cells, built by <code>groupConditions()</code> in <code>overview/conditions.ts</code>.</td></tr>
+  <tr><td><strong>Overview path</strong></td><td><code>GET /api/master-plot/overview</code> → Python <code>summarise_cell</code> / <code>build_overview</code> → <code>summariesFromOverview()</code>. Always used for condition views (heatmap, ranking, KPIs). Produces scalars with empty <code>capacitySeries</code> and <code>peakShiftMv=null</code>.</td></tr>
+  <tr><td><strong>Lazy per-cycle path</strong></td><td>Scoped <code>GET /api/rate-performance</code> → <code>capacitySeriesForCell()</code> / <code>ceSeriesForCell()</code> in <code>overview/metrics.ts</code>. Fetched only when Trajectories, Inspector, or parallel coordinates is open; grafted onto summaries by <code>cellId</code>.</td></tr>
+  <tr><td><strong>Cross-plot hover</strong></td><td><code>MasterPlotBridgeContext</code> carries <code>hoveredIdNo</code> only (parallel coords ↔ scatter).</td></tr>
+  <tr><td><strong>URL state</strong></td><td>Query params <code>mpView</code>, <code>mpMetric</code>, <code>mpRamp</code>, <code>mpCathode</code>, <code>mpSeparator</code>, <code>mpSpacer</code> synced by <code>useOverviewUrlState()</code>.</td></tr>
+</table>
+
+<h2>Orchestrator: data fetch</h2>
+<p><code>ProjectOverviewDashboard.tsx</code> is the single orchestrator for the Master Plot tab (<code>?tab=particle-master</code> in <code>Index.tsx</code>). Per-cell scalars always come from the overview endpoint; there is no cell-count switch and no in-browser <code>summariseCell</code>.</p>
+<pre><code>const overviewQuery = useMasterPlotOverviewQuery({ enabled: true });
+const rateQuery = useRatePerformanceQuery({
+  enabled: view === 'trajectories' || inspectedId != null,
+  scope: { cathode, separator, spacer },
+});</code></pre>
+<table>
+  <tr><th>Fetch</th><th>When</th><th>Endpoint / function</th><th>Purpose</th></tr>
+  <tr>
+    <td><strong>Overview (always)</strong></td>
+    <td>On tab load</td>
+    <td><code>useMasterPlotOverviewQuery()</code> → <code>GET /api/master-plot/overview</code> → <code>summariesFromOverview()</code></td>
+    <td>Per-cell scalars and condition category map for heatmap, ranking, KPIs, protocol gate</td>
+  </tr>
+  <tr>
+    <td><strong>Per-cycle (lazy)</strong></td>
+    <td>Trajectories view open, Inspector open, or parallel coords needs series</td>
+    <td><code>useRatePerformanceQuery({ scope })</code> — scoped to active cathode/separator/spacer filters</td>
+    <td><code>capacitySeries</code> / <code>ceSeries</code> grafted by <code>cellId</code>; condition views still use the project-wide overview</td>
+  </tr>
+  <tr>
+    <td><strong>Peak shift (lazy)</strong></td>
+    <td>Metric <code>dqdv-peak-shift</code> selected</td>
+    <td><code>useMasterPlotPeakShiftQuery()</code> → <code>GET /api/master-plot/peak-shift</code></td>
+    <td>Protocol-gated metric; endpoint reserved for future segment-aware peak tracking</td>
+  </tr>
+</table>
+<p>Condition views always consume the project-wide overview aggregate — never the scoped per-cycle payload — so opening Trajectories does not drop unseen conditions from heatmap/ranking.</p>
+
+<h2>Overview vs lazy per-cycle flowchart</h2>
+<div class="mermaid-wrap mermaid-wrap--wide">
+<p class="caption">Overview scalars always come from the server; per-cycle series and peak-shift are lazy add-ons</p>
+<pre class="mermaid">
+flowchart TB
+  subgraph orch["ProjectOverviewDashboard.tsx"]
+    IDX["useCellRecordIndexQuery()"]
+    OV["useMasterPlotOverviewQuery()"]
+    ADAPT["summariesFromOverview() · aggregate.ts"]
+    LAZY["useRatePerformanceQuery(scope)<br/>trajectories / inspector / parcoords"]
+    PS["useMasterPlotPeakShiftQuery()<br/>dqdv-peak-shift metric only"]
+    FILT["Dropdown filters<br/>cathode / separator / spacer / electrolyte / protocol"]
+    URL["useOverviewUrlState()<br/>mpView mpMetric mpRamp …"]
+  end
+
+  subgraph server["Server overview"]
+    API["GET /api/master-plot/overview"]
+    PY["build_overview() · masterplot/overview.py"]
+  end
+
+  subgraph cond["Shared condition pipeline"]
+    GRP["groupConditions()"]
+    STATS["computeCondStats() · stats.ts"]
+  end
+
+  subgraph views["Overview subviews"]
+    HM["ConditionHeatmap"]
+    RK["ConditionRanking"]
+    TR["Trajectories"]
+    INS["Inspector"]
+    PC["MasterPlot2Panel · parcoords"]
+  end
+
+  IDX --> OV --> API --> PY --> ADAPT
+  PS -.->|"merge peakShiftMv (null)"| ADAPT
+  ADAPT --> GRP
+  LAZY -->|"capacitySeries / ceSeries by cellId"| TR
+  LAZY --> INS
+  LAZY --> PC
+  FILT --> GRP
+  GRP --> STATS
+  STATS --> HM
+  STATS --> RK
+  ADAPT --> TR
+  ADAPT --> INS
+  URL --> HM
+</pre>
+</div>
+
+<h2>Sequence: filters → metric compute → render</h2>
+<div class="mermaid-wrap mermaid-wrap--seq">
+<p class="caption">Typical interaction: condition views read overview scalars; per-cycle fetch is separate</p>
+<pre class="mermaid">
+sequenceDiagram
+  actor User
+  participant POD as ProjectOverviewDashboard
+  participant URL as useOverviewUrlState
+  participant OQ as useMasterPlotOverviewQuery
+  participant API as GET /api/master-plot/overview
+  participant AD as aggregate.ts
+  participant C as conditions.ts
+  participant S as stats.ts
+  participant V as ConditionHeatmap
+
+  User->>POD: Change cathode filter
+  POD->>URL: write mpCathode=…
+  POD->>POD: displayCells = summaries filtered
+  POD->>C: groupConditions(displayCells)
+  POD->>C: computeCondStats(conditions, metric)
+  POD->>V: re-render with metricDomain colours
+
+  Note over OQ,API: Overview already loaded on tab open
+  OQ->>API: GET overview
+  API-->>AD: build_overview scalars
+  AD-->>POD: CellSummary[]
+
+  User->>POD: Switch metric to retention
+  POD->>POD: METRICS.find(id) · requiresProtocol?
+  alt protocol missing on all cells
+    POD->>POD: MetricLockedNotice ("needs a protocol")
+  else protocol present
+    POD->>POD: "Coming soon" notice
+  end
+</pre>
+</div>
+
+<h2>Step-by-step tables</h2>
+
+<h3>Phase A — Orchestrator &amp; data fetch</h3>
+<table>
+  <tr><th>Step</th><th>Name</th><th>File</th><th>Function</th><th>Input → Output</th></tr>
+  <tr><td>A1</td><td>Cell index</td><td><code>ProjectOverviewDashboard.tsx</code></td><td><code>useCellRecordIndexQuery()</code></td><td>Electrolyte map, differential availability, KPI cell count</td></tr>
+  <tr><td>A2</td><td>Overview aggregate (always)</td><td><code>hooks/useCellData.ts</code></td><td><code>useMasterPlotOverviewQuery({ enabled: true })</code></td><td><code>fetchMasterPlotOverview()</code> → <code>MasterPlotOverview</code> with per-cell scalars + <code>protocolCellCount</code></td></tr>
+  <tr><td>A3</td><td>Per-cycle payload (lazy)</td><td><code>hooks/useCellData.ts</code></td><td><code>useRatePerformanceQuery({ enabled, scope })</code></td><td><code>fetchRatePerformance(scope?)</code> → <code>RatePerfCellRaw[]</code> with per-cycle arrays</td></tr>
+  <tr><td>A4</td><td>Build summaries</td><td><code>ProjectOverviewDashboard.tsx</code></td><td><code>useMemo summaries</code></td><td><code>summariesFromOverview(aggregate)</code>; optional merge of lazy <code>peakShiftMv</code> by <code>cellId</code></td></tr>
+  <tr><td>A5</td><td>Per-cycle enrichment</td><td><code>ProjectOverviewDashboard.tsx</code></td><td><code>capacitySeriesByCellId</code></td><td>Lazy scoped <code>rateQuery</code> → <code>capacitySeriesForCell</code> / <code>ceSeriesForCell</code> grafted for Trajectories / Inspector</td></tr>
+</table>
+
+<h3>Phase B — Per-cell metrics (server source of truth)</h3>
+<table>
+  <tr><th>Step</th><th>Name</th><th>File</th><th>Function</th><th>Input → Output</th></tr>
+  <tr><td>B1</td><td>Summarise cell</td><td><code>masterplot/overview.py</code></td><td><code>summarise_cell(raw)</code></td><td>Rate-perf cell dict → per-cell scalars (peak capacity raw/spec via <code>max()</code> over positive finite cycles, cycle count, per-cell <code>hasProtocol</code>; <code>medianCE</code> and <code>retention</code> always null)</td></tr>
+  <tr><td>B2</td><td>Peak capacity</td><td><code>masterplot/overview.py</code></td><td><code>_peak_of(series)</code></td><td><code>max(value)</code> over the per-cycle capacity series (spec preferred when cathode mass present, else raw mAh)</td></tr>
+  <tr><td>B3</td><td>Per-cycle series (client)</td><td><code>overview/metrics.ts</code></td><td><code>capacitySeriesForCell(raw)</code>, <code>ceSeriesForCell(raw)</code></td><td>Extracts per-cycle arrays from the lazy rate-performance payload for Trajectories / Inspector; scalars are not recomputed here.</td></tr>
+  <tr><td>B4</td><td>Metric registry</td><td><code>overview/metrics.ts</code></td><td><code>METRICS[]</code>, <code>metricScore()</code></td><td><code>CellSummary</code> + metric id → normalised score for colour scale. Score function varies per metric (see registry table below).</td></tr>
+  <tr><td>B5</td><td>Adapt overview</td><td><code>overview/aggregate.ts</code></td><td><code>summariesFromOverview(ov)</code></td><td>Server overview JSON → <code>CellSummary[]</code> with empty <code>capacitySeries</code>, real per-cell <code>hasProtocol</code>, <code>peakShiftMv=null</code> until lazy merge. Condition fields resolved from <code>ov.conditions[condKey]</code>.</td></tr>
+</table>
+
+<h3>Phase C — Condition aggregation</h3>
+<table>
+  <tr><th>Step</th><th>Name</th><th>File</th><th>Function</th><th>Input → Output</th></tr>
+  <tr><td>C1</td><td>Group by condition</td><td><code>overview/conditions.ts</code></td><td><code>groupConditions(cells)</code></td><td><code>CellSummary[]</code> → <code>CondRow[]</code> keyed by cathode|separator|spacer</td></tr>
+  <tr><td>C2</td><td>Cohort statistics</td><td><code>overview/conditions.ts</code></td><td><code>computeCondStats(conditions, metric)</code></td><td>Per condition: arithmetic mean; population SD (/n) for SD and CV; sample SD (n−1) for SEM; 95% CI half-width = t-critical(df=n−1) × SEM. t-table: df≤30 exact, df 31–60 → 2.0, df&gt;60 → 1.96.</td></tr>
+  <tr><td>C3</td><td>Cohort outliers</td><td>—</td><td>—</td><td>Not implemented</td></tr>
+  <tr><td>C4</td><td>Correlations</td><td>—</td><td>—</td><td>Not implemented</td></tr>
+  <tr><td>C5</td><td>Pairwise significance</td><td>—</td><td>—</td><td>Not implemented</td></tr>
+</table>
+
+<h3>Phase D — Server overview endpoint</h3>
+<table>
+  <tr><th>Step</th><th>Name</th><th>File</th><th>Function</th><th>Input → Output</th></tr>
+  <tr><td>D1</td><td>HTTP route</td><td><code>routers/master_plot.py</code></td><td><code>master_plot_overview()</code></td><td><code>GET /api/master-plot/overview?projectId=</code></td></tr>
+  <tr><td>D2</td><td>Load raw cells</td><td><code>routers/cells/</code></td><td><code>_load_rate_cells(projectId)</code></td><td>Parquet reads + cache → same shape as rate-performance cells</td></tr>
+  <tr><td>D3</td><td>Reduce</td><td><code>masterplot/overview.py</code></td><td><code>build_overview(raw_cells)</code></td><td>Per-cell scalars + per-condition category map (stats computed client-side)</td></tr>
+  <tr><td>D4</td><td>Protocol gate count</td><td><code>routers/master_plot.py</code></td><td><code>protocol_cell_count</code></td><td>Count cells with <code>protocolSegments</code> or legacy <code>protocol</code> → <code>protocolCellCount</code> in response</td></tr>
+</table>
+
+<h3>Phase D′ — Peak-shift endpoint</h3>
+<p>Fetched only when metric <code>dqdv-peak-shift</code> is selected. Protocol-gated like CE and retention; shows lock → "Coming soon" in the UI.</p>
+<table>
+  <tr><th>Step</th><th>Name</th><th>File</th><th>Function</th><th>Input → Output</th></tr>
+  <tr><td>D′1</td><td>HTTP route</td><td><code>routers/master_plot.py</code></td><td><code>master_plot_peak_shift()</code></td><td><code>GET /api/master-plot/peak-shift?projectId=</code></td></tr>
+  <tr><td>D′2</td><td>Reduce</td><td><code>masterplot/peakshift.py</code></td><td><code>build_peak_shift(project_id)</code></td><td>Per-cell peak-shift payload (protocol-gated metric)</td></tr>
+  <tr><td>D′3</td><td>Client merge</td><td><code>ProjectOverviewDashboard.tsx</code></td><td><code>useMasterPlotPeakShiftQuery</code></td><td>Merges <code>peakShiftMv</code> into summaries by <code>cellId</code> when metric selected</td></tr>
+</table>
+
+<h3>Phase E — View render &amp; linking</h3>
+<table>
+  <tr><th>Step</th><th>Name</th><th>File</th><th>Function</th><th>Input → Output</th></tr>
+  <tr><td>E1</td><td>Heatmap</td><td><code>overview/ConditionHeatmap.tsx</code></td><td>D3 / SVG grid</td><td><code>computeCondStats</code> means → cell colour via <code>metricScore</code> + active ramp</td></tr>
+  <tr><td>E2</td><td>Ranking</td><td><code>overview/ConditionRanking.tsx</code></td><td>Bar chart</td><td>Condition means sorted; CI whiskers from <code>ciHalf</code></td></tr>
+  <tr><td>E3</td><td>Treemap</td><td><code>overview/LibraryTreemap.tsx</code></td><td>Hierarchy layout</td><td>Experimental component; not mounted in the current dashboard</td></tr>
+  <tr><td>E4</td><td>Trajectories</td><td><code>overview/Trajectories.tsx</code></td><td>Line chart</td><td>Requires <code>capacitySeries</code> — triggers scoped rate-performance fetch; Y toggle: Capacity (basis) / CE (%)</td></tr>
+  <tr><td>E5</td><td>Cross-plot hover</td><td><code>contexts/MasterPlotBridgeContext.tsx</code></td><td><code>hoveredIdNo</code></td><td>Parallel coords ↔ scatter hover</td></tr>
+  <tr><td>E6</td><td>URL sync</td><td><code>overview/useOverviewUrlState.ts</code></td><td><code>useOverviewUrlState(params)</code></td><td>Restore on mount; write with <code>replace: true</code>; omit defaults</td></tr>
+</table>
+
+<h2>Tests</h2>
+<p>Per-cell overview scalars are computed only on the server (<code>build_overview</code> / <code>summarise_cell</code>). The frontend adapter and per-cycle helpers have separate unit tests; there is no shared golden-file parity harness on this branch:</p>
+<table>
+  <tr><th>Side</th><th>File</th><th>Role</th></tr>
+  <tr>
+    <td>TypeScript (adapter + series)</td>
+    <td><code>frontend/src/features/masterPlot/overview/metrics.test.ts</code>, <code>aggregate.test.ts</code></td>
+    <td><code>capacitySeriesForCell</code>, <code>metricAvailability</code>; <code>summariesFromOverview</code> scalar mapping, condition resolution, and null medianCE/retention/peakShift contract</td>
+  </tr>
+  <tr>
+    <td>Python (server path)</td>
+    <td><code>backend/tests/test_master_plot_overview.py</code>, <code>backend/tests/test_peak_shift.py</code></td>
+    <td>Pins <code>summarise_cell</code> / <code>build_overview</code> per-cell scalar contract and category-only condition map</td>
+  </tr>
+</table>
+<p>Run the Master Plot tests after formula changes:</p>
+<pre><code>cd frontend &amp;&amp; npx vitest run src/features/masterPlot/overview
+cd backend &amp;&amp; python3 -m pytest tests/test_master_plot_overview.py -c /dev/null</code></pre>
+
+<h3>Scientific validation (CEL-79)</h3>
+<p>Reference cell CEL-79 (NMC622/Graphite, cathode mass 0.03623&nbsp;g) checked against Neware export sheets and published NMC622 dQ/dV peak positions. Formulas and parity notes: <a href="computation-report.html">Computation report</a> §6.</p>
+<figure>
+  <a href="../assets/cel79-validation-summary.png" target="_blank">
+    <img src="../assets/cel79-validation-summary.png" alt="CEL-79 validation summary: per-step capacity, GCD curve, and dQ/dV peak vs ground truth" loading="lazy" style="width:100%;border:1px solid var(--line);border-radius:10px;">
+  </a>
+  <figcaption>Three checks on real CEL-79 data: per-step discharge capacity vs the Neware step sheet (max |Δ| = 0.128&nbsp;mAh/g), GCD discharge curve overlay for cycle&nbsp;7 (≤0.003&nbsp;mAh/g), and LEAN dQ/dV peak at 3.640&nbsp;V (literature band 3.63–3.72&nbsp;V).</figcaption>
+</figure>
+
+<h2>Metric registry</h2>
+<p>All metrics are defined in <code>METRICS[]</code> in <code>overview/metrics.ts</code>. The <em>score</em> column is what drives colour-scale placement; it may differ from the raw value for diverging metrics.</p>
+<table>
+  <tr><th>Metric id</th><th>CellSummary field</th><th>Unit</th><th>Requires protocol</th><th>Score / direction</th><th>Notes</th></tr>
+  <tr>
+    <td><code>capacity-raw</code></td><td><code>peakCapacityRaw</code></td><td>mAh</td><td>No</td>
+    <td>Raw value; higher = better</td>
+    <td><code>max()</code> over positive finite per-cycle <code>dischargeCapacityMah</code>. Format: ≥10 → <code>toFixed(0)</code>, else <code>toFixed(2)</code>.</td>
+  </tr>
+  <tr>
+    <td><code>capacity-spec</code></td><td><code>peakCapacitySpec</code></td><td>mAh/g</td><td>No (needs cathode mass)</td>
+    <td>Raw value; higher = better</td>
+    <td><code>max()</code> over positive finite per-cycle <code>specificCapacityMahG</code>. Null when cathode mass unavailable. Format: <code>toFixed(0)</code>.</td>
+  </tr>
+  <tr>
+    <td><code>ce</code></td><td><code>medianCE</code></td><td>%</td><td>Yes</td>
+    <td>−|v − 100|; diverging, target = 100%</td>
+    <td>Protocol-gated; UI shows lock + "needs a protocol" without segments, "Coming soon" once attached</td>
+  </tr>
+  <tr>
+    <td><code>cycles</code></td><td><code>cycleCount</code></td><td>(count)</td><td>No</td>
+    <td>Raw value; higher = better</td>
+    <td>Count of finite, &gt;0 entries in <code>capacitySeries</code> (spec series preferred, else raw). Returns null if count = 0. Format: <code>Math.round(v).toString()</code>.</td>
+  </tr>
+  <tr>
+    <td><code>retention</code></td><td><code>retention</code></td><td>%</td><td>Yes</td>
+    <td>Raw value; higher = better</td>
+    <td>Protocol-gated; UI shows lock + "needs a protocol" without segments, "Coming soon" once attached</td>
+  </tr>
+  <tr>
+    <td><code>dqdv-peak-shift</code></td><td><code>peakShiftMv</code></td><td>mV</td><td>Yes</td>
+    <td>−|v|; diverging, target = 0 (stable peak = best)</td>
+    <td>Protocol-gated; requires <code>discharge_dqdv</code> dataset. Lazy fetch when selected. UI shows lock → "Coming soon". Format: <code>+v.toFixed(0)</code> (sign always shown).</td>
+  </tr>
+</table>
+
+<h3>Capacity basis fallback</h3>
+<p>If the <code>specificCapacityMahG</code> series is non-empty, it is used as <code>capacitySeries</code> (mAh/g) and recorded as <code>capacityBasis='mAh/g'</code>; otherwise <code>dischargeCapacityMah</code> is used (mAh, basis <code>'mAh'</code>). The peak-capacity and cycles metrics, plus the inspector sparkline and trajectories, all read this same series (per-cycle path) or the server scalar (overview path).</p>
+
+<h3>Protocol gate</h3>
+<p id="protocol-gate">The three <code>requiresProtocol: true</code> metrics (Coulombic efficiency, capacity retention, and dQ/dV peak shift) are protocol-gated in the UI. When no cell in the project has a protocol (<code>summaries.every(c =&gt; !c.hasProtocol)</code>, using per-cell <code>hasProtocol</code> from the overview), the metric shows a lock + "needs a protocol"; once a protocol is attached, it shows "Coming soon". The overview response also carries project-level <code>protocolCellCount</code> for API consumers; the dashboard gate uses per-cell <code>hasProtocol</code>.</p>
+
+<div class="pager">
+  <span></span>
+  <a class="next" href="computation-report.html"><span class="dir">Next &rarr;</span><span class="ttl">Computation report</span></a>
+</div>
+</div>
+</main>
+</div>
+
+<footer class="site">CellSeer repository docs</footer><script src="site-links.js"></script>
+</body>
+</html>

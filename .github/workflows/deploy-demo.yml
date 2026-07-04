@@ -9,6 +9,9 @@ on:
       - demo
     paths:
       - 'frontend/**'
+      - 'docs-refreshed/**'
+      - 'repo-docs-refreshed/**'
+      - 'scripts/build_docs_site.sh'
       - '.github/workflows/deploy-demo.yml'
   workflow_dispatch:
 
@@ -42,6 +45,9 @@ jobs:
 
       - name: SPA fallback (serve index.html for deep links)
         run: cp frontend/dist/index.html frontend/dist/404.html
+
+      - name: Build docs into dist/docs (served at /CellSeer/docs/)
+        run: bash scripts/build_docs_site.sh frontend/dist/docs
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
