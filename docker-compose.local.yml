@@ -1,0 +1,26 @@
+# Local-evaluation overlay — NOT for production.
+#
+# The base docker-compose.yml only *exposes* the app on the internal network
+# (it's meant to sit behind Caddy or a Cloudflare Tunnel). This overlay
+# publishes the app on http://localhost:8000 and relaxes the auth/CORS
+# requirements so you can try CellSeer on your own machine.
+#
+# Because it is a separate file (not docker-compose.override.yml) it is NEVER
+# loaded automatically — you opt in explicitly with `-f`, so it can't leak a
+# published port into a production deploy.
+#
+# Usage:
+#   ( cd frontend && npm ci && npm run build )        # base image needs the SPA
+#   POSTGRES_PASSWORD=dev CELLSEER_API_TOKEN=local \
+#     docker compose -f docker-compose.yml -f docker-compose.local.yml up --build
+#
+# Then open http://localhost:8000, create a project, and ingest the synthetic
+# sample in data/samples/ (see data/samples/README.md).
+
+services:
+  app:
+    ports:
+      - "8000:8000"
+    environment:
+      # Localhost-only: allow the browser origin the published port serves.
+      CELLSEER_ALLOWED_ORIGINS: ${CELLSEER_ALLOWED_ORIGINS:-http://localhost:8000}

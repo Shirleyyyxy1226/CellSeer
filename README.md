@@ -89,7 +89,7 @@ For production Docker deployment see **[DEPLOY.md](DEPLOY.md)**.
 A typical workflow:
 
 1. **Create a project** on the home page (or open an existing one).
-2. **Ingest data**: upload a metadata spreadsheet and cycler files, or sync from DIGIBAT.
+2. **Ingest data**: upload a metadata spreadsheet and cycler files, or sync from DIGIBAT. To try the app end-to-end without your own data, use the synthetic sample in [`data/samples/`](data/samples/).
 3. **Wait for readiness**: the project detail page shows ingest progress; cycling data lands as Parquet in `data_lake/` with metadata in PostgreSQL.
 4. **Open the dashboard** at `/projects/:projectId/dashboard`.
 5. **Explore**: start with the Hierarchy Tree or Master Plot for campaign-level views; select cells and drill into GCD, dQ/dV, dV/dQ, or Rate Performance tabs.
