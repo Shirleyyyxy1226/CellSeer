@@ -56,9 +56,10 @@ class PostgresBackend(DBBackend):
     DBBackend implementation backed by PostgreSQL (connection from DATABASE_URL).
     """
 
-    def __init__(self, db_path: Path | str) -> None:
-        # db_path is ignored — connection comes from DATABASE_URL in config
-        self.db_path = Path(db_path)
+    def __init__(self, db_path: Path | str | None = None) -> None:
+        # db_path is ignored — connection comes from DATABASE_URL in config.
+        # Upload loaders construct PostgresBackend(None), so guard the coercion.
+        self.db_path = Path(db_path) if db_path is not None else None
         self.project_id = DEFAULT_PROJECT_ID
         self._ensure_schema()
 

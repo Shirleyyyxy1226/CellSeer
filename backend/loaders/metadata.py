@@ -50,9 +50,10 @@ class MetadataLoader(BaseTestTypeLoader):
                 db,
                 primary_key_header=options.get("primaryKeyHeader"),
                 id_no_header=options.get("idNoHeader"),
-                display_name_template=options.get(
-                    "displayNameTemplate", "{cathode}_{anode}_R{repeat}_ID{id_no}"
-                ),
+                # `or` (not .get default): the upload form sends the key with a
+                # None value when unset, which would bypass a .get() default.
+                display_name_template=options.get("displayNameTemplate")
+                or "{cathode}_{anode}_R{repeat}_ID{id_no}",
                 metadata_sheet=options.get("metadataSheet"),
                 progress_cb=update_progress,
                 project_id=project_id,
@@ -64,9 +65,8 @@ class MetadataLoader(BaseTestTypeLoader):
                 "sampleCellIds": cell_ids[:12],
                 "primary_key_header": options.get("primaryKeyHeader"),
                 "id_no_header": options.get("idNoHeader"),
-                "display_name_template": options.get(
-                    "displayNameTemplate", "{cathode}_{anode}_R{repeat}_ID{id_no}"
-                ),
+                "display_name_template": options.get("displayNameTemplate")
+                or "{cathode}_{anode}_R{repeat}_ID{id_no}",
                 "metadata_sheet": options.get("metadataSheet"),
             }
         finally:
