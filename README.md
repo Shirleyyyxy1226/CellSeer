@@ -99,6 +99,9 @@ Dashboard tabs are URL-addressable (`?tab=tree`, `?tab=particle-master`, `?tab=r
 
 ## Documentation
 
+- **User guide** — [shirleyyyxy1226.github.io/CellSeer/docs](https://shirleyyyxy1226.github.io/CellSeer/docs/)
+- **Developer docs** — [shirleyyyxy1226.github.io/CellSeer/docs/developer](https://shirleyyyxy1226.github.io/CellSeer/docs/developer/)
+
 The interactive API reference is available at [http://localhost:8000/docs](http://localhost:8000/docs) (FastAPI OpenAPI) when the backend is running.
 
 <details>
