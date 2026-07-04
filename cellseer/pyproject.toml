@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cellseer"
-version = "0.1.0"
+version = "1.0.0"
 description = "Plotly figure builders and Dash dashboards for battery cycling analysis — dQ/dV, dV/dQ, GCD, and rate performance — with multi-cell support and optional PyProBE compute."
 readme = "README.md"
 requires-python = ">=3.9"
