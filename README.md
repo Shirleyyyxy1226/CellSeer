@@ -181,10 +181,10 @@ pip install -e "cellseer[test]"
 python -m pytest cellseer/tests -q
 ```
 
-**Backend** (Master Plot parity, peak-shift, rate-performance scope):
+**Backend** (Master Plot parity, peak-shift, rate-performance scope) — run from the `backend/` directory:
 
 ```bash
-python -m pytest backend/tests -q
+cd backend && python -m pytest tests -q
 ```
 
 ## Known Limitations
