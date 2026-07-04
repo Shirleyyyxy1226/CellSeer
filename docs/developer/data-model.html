@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Data model — CellSeer repo docs</title>
+<link rel="stylesheet" href="styles.css?v=1783150572">
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script src="mermaid-init.js"></script>
+<script src="mermaid-lightbox.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <a class="logo" href="index.html"><img src="assets/cellseer.svg" alt="CellSeer"> CellSeer repo</a>
+  <span class="spacer"></span>
+  <a class="ghlink cross-site" href="../index.html">User guide</a>
+</header>
+
+<div class="shell">
+<aside class="sidebar">
+  <div class="group">Start</div>
+  <a href="index.html">Home</a>
+  <a href="overview.html">Overview</a>
+  <a href="structure.html">Repository structure</a>
+  <div class="group">Build</div>
+  <a href="architecture.html">Architecture</a>
+  <a href="features.html">Features overview</a>
+  <a href="dashboard-guide.html">Dashboard &amp; plot guide</a>
+  <a href="design.html">Design language</a>
+  <div class="group">Data</div>
+  <a href="ingestion-pipeline.html">Ingestion pipeline</a>
+  <a href="digibat-sync.html">DIGIBAT sync</a>
+  <a href="protocol-attachment.html">Protocol attachment</a>
+  <a href="data-model.html" class="active">Data model</a>
+  <a href="api.html">REST API</a>
+  <div class="group">Analytics</div>
+  <a href="master-plot-metrics.html">Master Plot metrics</a>
+  <a href="computation-report.html">Computation report</a>
+  <div class="group">Run</div>
+  <a href="deployment.html">Deployment</a>
+  <a href="dependencies.html">Dependencies</a>
+  <div class="group">External</div>
+  <a href="../index.html" class="ext">User guide</a>
+</aside>
+
+<main>
+<div class="content">
+<h1>Data model</h1>
+  <p class="lede">PostgreSQL metadata + Parquet time series in <code>data_lake/</code>. Schema: <code>backend/project_scope.py:ensure_project_schema()</code> (11 tables).</p>
+
+<h2 id="relationships">Entity relationships</h2>
+<p>All child rows have <code>project_id</code> (cascade delete). <code>cell_id</code> = routing key; <code>id_no</code> = display only.</p>
+
+<h3 id="diagram-core">Core domain</h3>
+<div class="mermaid-wrap mermaid-wrap--wide">
+<p class="caption"><strong>Figure 1.</strong> Core domain — project, cell, dataset, annotations, ingest audit, upload tasks. Parquet outside DB.</p>
+<pre class="mermaid">
+erDiagram
+    project ||--o{ cell : "contains"
+    cell ||--o{ dataset : "has datasets"
+    cell ||--o| cell_annotation : "user notes"
+    cell ||--o{ ingest_log : "ingest audit"
+    project ||--o{ ingest_log : "scoped to"
+    project ||--o{ upload_task : "upload queue"
+    project ||--o{ cell_annotation : "scoped to"
+    project ||--o{ dataset : "scoped to"
+
+    project {
+        TEXT id PK
+        TEXT name
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+    }
+
+    cell {
+        TEXT project_id PK,FK
+        TEXT cell_id PK
+        INTEGER id_no
+        INTEGER batch
+        TEXT category
+        TEXT cathode
+        TEXT anode
+        TEXT electrolyte
+        TEXT separator_type
+        REAL cathode_diameter_mm
+        REAL anode_diameter_mm
+        REAL np_ratio
+        REAL separator_diameter_mm
+        REAL electrolyte_volume_ul
+        REAL spacer_mm
+        TEXT do_formation
+        TEXT do_ratetest
+        TEXT do_eis
+        REAL anode_mass
+        REAL cathode_mass
+        TEXT notes
+        TEXT source_system
+        TEXT source_refcode
+        TEXT source_item_id
+        TEXT last_seen_at
+        INTEGER repeat
+        TEXT capacity_basis
+        TEXT custom_meta
+        TEXT protocol_name
+        TEXT protocol_segments
+        TEXT protocol_updated_at
+        TEXT deleted_at
+    }
+
+    dataset {
+        BIGINT id PK
+        TEXT project_id FK
+        TEXT cell_id FK
+        TEXT name
+        TEXT storage_kind
+        TEXT storage_uri
+        TEXT data_format
+        INTEGER size_bytes
+        TEXT checksum_sha256
+        TEXT source_file_id
+        TEXT source_system
+        TEXT source_refcode
+        TEXT source_version
+        TEXT last_synced_at
+        TEXT meta
+        TEXT deleted_at
+        TIMESTAMPTZ created_at
+    }
+
+    cell_annotation {
+        TEXT project_id PK,FK
+        TEXT cell_id PK
+        TEXT note
+        TEXT tags
+        TEXT updated_at
+    }
+
+    ingest_log {
+        INTEGER id PK
+        TEXT project_id FK
+        TEXT cell_id FK
+        TEXT filepath
+        INTEGER file_order
+        TEXT cycler
+        REAL confidence
+        TIMESTAMPTZ ingested_at
+    }
+
+    upload_task {
+        TEXT id PK
+        TEXT project_id FK
+        TEXT filename
+        TEXT file_type
+        INTEGER item_count
+        TEXT status
+        TEXT message
+        INTEGER progress
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+    }
+</pre>
+</div>
+
+<h3 id="diagram-digibat">DIGIBAT sync</h3>
+<div class="mermaid-wrap mermaid-wrap--wide">
+<p class="caption"><strong>Figure 2.</strong> External sync tables: one API connection per project, refcode/file mappings to local cells, and per-run observability. <code>digibat_file_map</code> links to <code>dataset</code> logically via matching <code>source_file_id</code> (no FK).</p>
+<pre class="mermaid">
+erDiagram
+    project ||--|| digibat_connection : "API credentials"
+    project ||--o{ digibat_cell_map : "item mappings"
+    cell ||--o{ digibat_cell_map : "local target"
+    project ||--o{ digibat_file_map : "file mappings"
+    cell |o--o{ digibat_file_map : "optional target"
+    project ||--o{ digibat_sync_run : "sync history"
+    cell ||--o{ dataset : "receives files"
+    digibat_file_map }o..o{ dataset : "source_file_id match"
+
+    project {
+        TEXT id PK
+        TEXT name
+    }
+
+    cell {
+        TEXT project_id FK,PK
+        TEXT cell_id PK
+        TEXT source_system
+        TEXT source_refcode
+        TEXT source_item_id
+        TEXT last_seen_at
+    }
+
+    dataset {
+        BIGINT id PK
+        TEXT cell_id FK
+        TEXT source_system
+        TEXT source_refcode
+        TEXT source_file_id
+        TEXT source_version
+        TEXT last_synced_at
+        TEXT storage_uri
+        TEXT created_at
+    }
+
+    digibat_connection {
+        TEXT project_id PK
+        TEXT base_url
+        TEXT api_key
+        TEXT key_source
+        TEXT created_at
+        TEXT updated_at
+    }
+
+    digibat_cell_map {
+        TEXT project_id PK
+        TEXT remote_refcode PK
+        TEXT cell_id FK
+        TEXT remote_item_id
+        TEXT last_seen_at
+    }
+
+    digibat_file_map {
+        TEXT project_id PK
+        TEXT source_file_id PK
+        TEXT remote_refcode
+        TEXT filename
+        TEXT source_version
+        TEXT cell_id FK
+        TEXT last_status
+        TEXT last_error
+        TEXT last_synced_at
+        TEXT deleted_at
+    }
+
+    digibat_sync_run {
+        TEXT id PK
+        TEXT project_id FK
+        TEXT mode
+        TEXT status
+        TEXT collection_ids_json
+        TEXT totals_json
+        TEXT error_message
+        TEXT started_at
+        TEXT completed_at
+    }
+</pre>
+</div>
+
+<h3 id="diagram-protocol">Protocols</h3>
+<div class="mermaid-wrap">
+<p class="caption"><strong>Figure 3.</strong> Reusable templates are project-scoped rows in <code>protocol_template</code>. Applying a template <em>copies</em> segment JSON onto the cell — there is no <code>protocol_template_id</code> foreign key on <code>cell</code> (see <a href="#terminology">terminology</a>).</p>
+<pre class="mermaid">
+erDiagram
+    project ||--o{ protocol_template : "templates"
+    protocol_template }o..o| cell : "apply copies segments"
+    cell ||--o{ dataset : "mirrors protocol meta"
+
+    project {
+        TEXT id PK
+        TEXT name
+    }
+
+    protocol_template {
+        TEXT id PK
+        TEXT project_id FK
+        TEXT name
+        TEXT description
+        TEXT segments_json
+        INTEGER is_builtin
+        TEXT created_at
+        TEXT updated_at
+    }
+
+    cell {
+        TEXT cell_id PK
+        TEXT project_id FK
+        TEXT protocol_name
+        TEXT protocol_segments
+        TEXT protocol_updated_at
+    }
+
+    dataset {
+        INTEGER id PK
+        TEXT cell_id FK
+        TEXT name
+        TEXT meta
+    }
+</pre>
+</div>
+
+<h3 id="data-lifecycle">Data lifecycle</h3>
+<div class="mermaid-wrap mermaid-wrap--wide">
+<p class="caption"><strong>Figure 4.</strong> How rows and files are created — browser upload path and DIGIBAT sync path both end with a <code>dataset.storage_uri</code> pointing at a Parquet file under <code>data_lake/</code>.</p>
+<pre class="mermaid">
+flowchart LR
+    subgraph upload["Browser upload"]
+        U1["upload_task<br/>queued"]
+        U2["ingest loader"]
+        U3["ingest_log row"]
+    end
+
+    subgraph sync["DIGIBAT sync"]
+        S1["digibat_sync_run"]
+        S2["digibat_cell_map"]
+        S3["digibat_file_map"]
+    end
+
+    subgraph postgres["PostgreSQL metadata"]
+        C["cell row"]
+        D["dataset row<br/>name · storage_uri"]
+    end
+
+    subgraph lake["data_lake/"]
+        P["Parquet file"]
+    end
+
+    U1 --> U2 --> C
+    U2 --> D
+    U2 --> U3
+    U2 --> P
+
+    S1 --> S2 --> C
+    S1 --> S3 --> D
+    S3 --> P
+    D -->|"storage_uri"| P
+
+    classDef task fill:#dbeafe,stroke:#1e40af,color:#0f172a
+    classDef meta fill:#e0e7ff,stroke:#3730a3,color:#0f172a
+    classDef file fill:#dcfce7,stroke:#15803d,color:#0f172a
+    class U1,U2,U3,S1,S2,S3 task
+    class C,D meta
+    class P file
+</pre>
+</div>
+
+<h2 id="terminology">Terminology</h2>
+<table>
+  <tr><th>Term</th><th>Meaning</th></tr>
+  <tr><td><code>project</code></td><td>Top-level tenant boundary. All other tables reference <code>project.id</code>.</td></tr>
+  <tr><td><code>cell_id</code></td><td>Primary key string for a physical cell (e.g. recipe + repeat). Used for API routing and dataset joins.</td></tr>
+  <tr><td><code>id_no</code></td><td>Integer label matching cycler filename prefix. Not unique per project — routing always uses <code>cell_id</code>.</td></tr>
+  <tr><td><code>capacity_basis</code></td><td>Which electrode's active mass normalises specific capacity (<code>cathode</code> | <code>anode</code>; <code>NULL</code> = infer at read time).</td></tr>
+  <tr><td><code>custom_meta</code></td><td>JSON map on <code>cell</code> for spreadsheet/source fields that have no dedicated column (dynamic metadata ingest).</td></tr>
+  <tr><td><code>dataset.name</code></td><td>Logical time-series slot per cell (<code>cycling</code>, <code>dqdv</code>, <code>dvdq</code>, <code>eis</code>, …). Unique with <code>(project_id, cell_id, name)</code>.</td></tr>
+  <tr><td><code>storage_uri</code></td><td>Relative or absolute path to the Parquet payload; resolved by <code>backend/dataset_store.py</code>.</td></tr>
+  <tr><td><code>storage_kind</code></td><td>Storage backend for a dataset row — currently always <code>local</code>; schema allows future values such as <code>s3</code>.</td></tr>
+  <tr><td><code>deleted_at</code></td><td>Soft-delete tombstone on <code>cell</code>, <code>dataset</code>, and <code>digibat_file_map</code>. NULL means active.</td></tr>
+  <tr><td><code>protocol_template</code></td><td>Reusable segment list (<code>segments_json</code>). Builtins (<code>is_builtin = 1</code>) are seeded per project and read-only.</td></tr>
+  <tr><td><code>protocol_segments</code></td><td>Inline JSON on <code>cell</code> (and mirrored in <code>dataset.meta</code>) after a template is applied or edited — not a FK to <code>protocol_template</code>. Each segment: <code>{ cycleStart, cycleEnd, cRate, name? }</code>.</td></tr>
+  <tr><td><code>source_file_id</code></td><td>DIGIBAT file identifier; joins <code>digibat_file_map</code> to <code>dataset</code> by value, not foreign key.</td></tr>
+  <tr><td><code>checksum_sha256</code></td><td>SHA-256 of the raw Parquet bytes, computed on write by <code>dataset_store.py</code>. Supports idempotent DIGIBAT re-sync.</td></tr>
+  <tr><td><code>confidence</code></td><td>Float 0.0–1.0 on <code>ingest_log</code> — cycler-detection confidence score from the format-detection step.</td></tr>
+</table>
+
+<h2 id="pg-schema">PostgreSQL schema</h2>
+<p>Canonical definition: <code>backend/project_scope.py:ensure_project_schema()</code>. The schema is applied at startup against the PostgreSQL database configured via <code>CELLSEER_DATABASE_URL</code> (exposed in code as <code>config.DATABASE_URL</code>). Column types use PostgreSQL-native types: <code>BIGSERIAL</code> for auto-increment PKs, <code>TIMESTAMPTZ</code> for all timestamp columns, <code>TEXT</code> for strings, <code>INTEGER</code> / <code>REAL</code> for numerics.</p>
+
+<div class="callout warn">
+  <strong>Table count.</strong> The schema defines <strong>11 tables</strong>.</div>
+
+<h3 id="tables-core">Core entities</h3>
+<table>
+  <tr><th>Table</th><th>Purpose</th><th>Diagram</th></tr>
+  <tr>
+    <td><code>project</code></td>
+    <td>Top-level container (<code>id</code>, <code>name</code>, <code>created_at</code>, <code>updated_at</code>)</td>
+    <td><a href="#diagram-core">Fig. 1</a></td>
+  </tr>
+  <tr>
+    <td><code>cell</code></td>
+    <td>One row per physical cell — full build metadata (electrode chemistry, dimensions, mass, electrolyte, formation flags), <code>capacity_basis</code> (which electrode normalises specific capacity), <code>custom_meta</code> (JSON for source fields without a dedicated column), DIGIBAT provenance (<code>source_system</code>, <code>source_refcode</code>, <code>source_item_id</code>, <code>last_seen_at</code>), inline protocol fields (<code>protocol_name</code>, <code>protocol_segments</code>, <code>protocol_updated_at</code>), soft-delete via <code>deleted_at</code></td>
+    <td><a href="#diagram-core">Fig. 1</a> · <a href="#diagram-protocol">Fig. 3</a></td>
+  </tr>
+  <tr>
+    <td><code>dataset</code></td>
+    <td>Logical dataset per cell (<code>name</code>, <code>storage_uri</code>, <code>storage_kind</code>, <code>data_format</code>, <code>size_bytes</code>, <code>checksum_sha256</code>, sync provenance fields, <code>meta</code> JSON). Unique on <code>(project_id, cell_id, name)</code></td>
+    <td><a href="#diagram-core">Fig. 1</a> · <a href="#data-lifecycle">Fig. 4</a></td>
+  </tr>
+</table>
+
+<h3 id="tables-ops">Operations and audit</h3>
+<table>
+  <tr><th>Table</th><th>Purpose</th><th>Diagram</th></tr>
+  <tr>
+    <td><code>ingest_log</code></td>
+    <td>Audit trail per ingested file (<code>filepath</code>, <code>file_order</code> for multi-file concatenation, <code>cycler</code> detection name, <code>confidence</code> score 0.0–1.0, <code>ingested_at</code>)</td>
+    <td><a href="#diagram-core">Fig. 1</a> · <a href="#data-lifecycle">Fig. 4</a></td>
+  </tr>
+  <tr>
+    <td><code>cell_annotation</code></td>
+    <td>User notes + JSON tags (separate from <code>cell.notes</code>). One row per cell (PK: <code>project_id</code> + <code>cell_id</code>). Tracks <code>updated_at</code>.</td>
+    <td><a href="#diagram-core">Fig. 1</a></td>
+  </tr>
+  <tr>
+    <td><code>upload_task</code></td>
+    <td>Async browser upload queue. Status lifecycle: <code>queued</code> → <code>processing</code> → <code>done</code> | <code>error</code>. Carries <code>file_type</code>, <code>item_count</code> (batch size), integer <code>progress</code> 0–100, <code>message</code> (JSON result on done; error string on error).</td>
+    <td><a href="#diagram-core">Fig. 1</a> · <a href="#data-lifecycle">Fig. 4</a></td>
+  </tr>
+</table>
+
+<h3 id="tables-digibat">DIGIBAT integration</h3>
+<table>
+  <tr><th>Table</th><th>Purpose</th><th>Diagram</th></tr>
+  <tr>
+    <td><code>digibat_connection</code></td>
+    <td>One row per project: DIGIBAT base URL and API key (<code>key_source</code>: <code>env</code> | <code>user</code>)</td>
+    <td><a href="#diagram-digibat">Fig. 2</a></td>
+  </tr>
+  <tr>
+    <td><code>digibat_cell_map</code></td>
+    <td>Remote <code>remote_refcode</code> → local <code>cell_id</code> (PK: <code>project_id</code> + <code>remote_refcode</code>). Also stores <code>remote_item_id</code> and <code>last_seen_at</code>.</td>
+    <td><a href="#diagram-digibat">Fig. 2</a></td>
+  </tr>
+  <tr>
+    <td><code>digibat_file_map</code></td>
+    <td>Remote file → ingest status; optional <code>cell_id</code> (nullable TEXT, no FK). Carries <code>filename</code>, <code>source_version</code>, <code>last_status</code>, <code>last_error</code>, <code>last_synced_at</code>, <code>deleted_at</code>. Links to <code>dataset</code> via <code>source_file_id</code>.</td>
+    <td><a href="#diagram-digibat">Fig. 2</a></td>
+  </tr>
+  <tr>
+    <td><code>digibat_sync_run</code></td>
+    <td>Per-run sync observability (<code>mode</code>, <code>status</code>, <code>collection_ids_json</code>, <code>totals_json</code>, <code>error_message</code>, <code>started_at</code>, <code>completed_at</code>)</td>
+    <td><a href="#diagram-digibat">Fig. 2</a></td>
+  </tr>
+</table>
+
+<h3 id="tables-protocol">Protocols</h3>
+<table>
+  <tr><th>Table</th><th>Purpose</th><th>Diagram</th></tr>
+  <tr>
+    <td><code>protocol_template</code></td>
+    <td>Reusable protocol segment templates (<code>segments_json</code> — JSON array of <code>{ cycleStart, cycleEnd, cRate, name? }</code> objects). Project-scoped; builtins (<code>is_builtin = 1</code>) are read-only seeds. Optional <code>description</code> field.</td>
+    <td><a href="#diagram-protocol">Fig. 3</a></td>
+  </tr>
+</table>
+
+<h3 id="fk-summary">Foreign-key summary</h3>
+<p>All listed FKs use <code>ON DELETE CASCADE</code>. <code>digibat_file_map.cell_id</code> is a nullable routing hint with <em>no</em> declared foreign key in <code>ensure_project_schema()</code> (legacy <code>schema.sql</code> had <code>ON DELETE SET NULL</code>).</p>
+<table>
+  <tr><th>Child table</th><th>Foreign keys</th><th>Cardinality</th></tr>
+  <tr><td><code>cell</code></td><td><code>project_id</code> → <code>project</code></td><td>many cells per project</td></tr>
+  <tr><td><code>dataset</code></td><td><code>project_id</code>, <code>cell_id</code></td><td>many datasets per cell</td></tr>
+  <tr><td><code>ingest_log</code></td><td><code>project_id</code>, <code>cell_id</code></td><td>many logs per cell</td></tr>
+  <tr><td><code>cell_annotation</code></td><td><code>project_id</code>, <code>cell_id</code> (PK)</td><td>zero or one per cell</td></tr>
+  <tr><td><code>upload_task</code></td><td><code>project_id</code></td><td>many tasks per project</td></tr>
+  <tr><td><code>digibat_connection</code></td><td><code>project_id</code> (PK)</td><td>zero or one per project</td></tr>
+  <tr><td><code>digibat_cell_map</code></td><td><code>project_id</code>, <code>cell_id</code></td><td>many mappings per project</td></tr>
+  <tr><td><code>digibat_file_map</code></td><td><code>project_id</code> only (<code>cell_id</code> nullable, no FK)</td><td>many files per project</td></tr>
+  <tr><td><code>digibat_sync_run</code></td><td><code>project_id</code></td><td>many runs per project</td></tr>
+  <tr><td><code>protocol_template</code></td><td><code>project_id</code></td><td>many templates per project</td></tr>
+</table>
+
+<h3 id="indexes">Indexes</h3>
+<p>Key indexes defined in <code>backend/project_scope.py:ensure_project_schema()</code>:</p>
+<table>
+  <tr><th>Index name</th><th>Table</th><th>Columns</th></tr>
+  <tr><td><code>idx_cell_project_id</code></td><td><code>cell</code></td><td><code>project_id</code></td></tr>
+  <tr><td><code>idx_cell_deleted_at</code></td><td><code>cell</code></td><td><code>project_id, deleted_at</code></td></tr>
+  <tr><td><code>idx_dataset_project_id</code></td><td><code>dataset</code></td><td><code>project_id</code></td></tr>
+  <tr><td><code>idx_dataset_cell_id</code></td><td><code>dataset</code></td><td><code>cell_id</code></td></tr>
+  <tr><td><code>idx_dataset_deleted_at</code></td><td><code>dataset</code></td><td><code>project_id, deleted_at</code></td></tr>
+  <tr><td><code>idx_upload_task_project</code></td><td><code>upload_task</code></td><td><code>project_id, created_at DESC</code></td></tr>
+  <tr><td><code>idx_upload_task_created</code></td><td><code>upload_task</code></td><td><code>created_at DESC</code></td></tr>
+  <tr><td><code>idx_digibat_file_map_deleted_at</code></td><td><code>digibat_file_map</code></td><td><code>project_id, deleted_at</code></td></tr>
+  <tr><td><code>idx_digibat_sync_run_project</code></td><td><code>digibat_sync_run</code></td><td><code>project_id, started_at DESC</code></td></tr>
+  <tr><td><code>idx_protocol_template_project</code></td><td><code>protocol_template</code></td><td><code>project_id, is_builtin, name</code></td></tr>
+</table>
+
+<h2 id="cell-identity">Cell identity</h2>
+<ul>
+  <li><strong><code>cell_id</code></strong> — stable string identifier (often encodes build recipe + repeat); composite primary key with <code>project_id</code></li>
+  <li><strong><code>id_no</code></strong> — integer label matching cycler filename prefix; <em>not</em> unique per project (routing uses <code>cell_id</code>). If an incoming cell's <code>id_no</code> would collide with an existing cell in the same project, it is set to <code>NULL</code> during metadata ingest.</li>
+</ul>
+
+<h2 id="dataset-naming">Dataset naming</h2>
+<p>The <code>dataset.name</code> column identifies which time series a Parquet file holds. Names used by core dashboards:</p>
+<table>
+  <tr><th>Name</th><th>Used by</th></tr>
+  <tr><td><code>cycling</code></td><td>Rate performance, GCD, Master Plot capacity metrics</td></tr>
+  <tr><td><code>dqdv</code></td><td>dQ/dV differential plots (shorthand; also stored as <code>discharge_dqdv</code> / <code>charge_dqdv</code> from some ingest paths)</td></tr>
+  <tr><td><code>dvdq</code></td><td>dV/dQ differential plots (shorthand; also stored as <code>discharge_dvdq</code> / <code>charge_dvdq</code>)</td></tr>
+  <tr><td><code>eis</code></td><td>EIS impedance spectra</td></tr>
+  <tr><td><code>discharge_dqdv</code></td><td>Discharge dQ/dV (DIGIBAT provenance path and direct ingest)</td></tr>
+  <tr><td><code>discharge_dvdq</code></td><td>Discharge dV/dQ (DIGIBAT provenance path and direct ingest)</td></tr>
+  <tr><td><code>charge_dqdv</code></td><td>Charge dQ/dV (computed alongside discharge; non-fatal if unavailable)</td></tr>
+  <tr><td><code>charge_dvdq</code></td><td>Charge dV/dQ (computed alongside discharge; non-fatal if unavailable)</td></tr>
+</table>
+
+<p>README documents the <code>discharge_*</code> names as required for the default dashboard views; older or imported data may use the shorthand <code>dqdv</code> / <code>dvdq</code> names.</p>
+
+<h2 id="parquet-lake">Parquet data lake</h2>
+
+<div class="callout tip" id="datalab-credit">
+  <strong>Design note.</strong> The split between PostgreSQL metadata (<code>cell</code>, <code>dataset</code>) and Parquet payloads under <code>data_lake/</code> was informed by Imperial <strong>DataLab</strong>'s model of catalogue records pointing at file-backed datasets, with provenance fields carried on ingest. Browser uploads and <a href="digibat-sync.html">DIGIBAT sync</a> both converge on this layout. See <a href="acknowledgments.html">Acknowledgments</a> for the full credit statement.
+</div>
+
+<ul>
+  <li>Directory: <code>data_lake/</code> (gitignored; override with <code>CELLSEER_DATA_LAKE_DIR</code>)</li>
+  <li>Access: <code>backend/dataset_store.py</code> resolves <code>storage_uri</code> paths and reads/writes Parquet</li>
+  <li>Path pattern: <code>{project_seg}/{cell_seg}/{dataset_seg}.parquet</code> where each segment is sanitized to <code>[A-Za-z0-9._-]</code></li>
+  <li>Written via Polars <code>LazyFrame.collect().write_parquet()</code> with <code>lz4</code> compression; atomically renamed from a <code>.tmp</code> file</li>
+  <li>Read back via <code>polars.read_parquet()</code>; no fixed schema enforced at the storage layer — schema is dataset-name-dependent</li>
+  <li><code>storage_kind</code> on dataset rows is currently always <code>local</code>; schema allows future values such as <code>s3</code></li>
+  <li>Checksums (<code>checksum_sha256</code>) are computed on raw bytes at write time and support idempotent DIGIBAT re-sync</li>
+</ul>
+
+<h2 id="soft-deletes">Soft deletes</h2>
+<p>Both <code>cell</code> and <code>dataset</code> use <code>deleted_at</code> tombstones instead of hard deletes during DIGIBAT sync. <code>digibat_file_map</code> also carries a <code>deleted_at</code> column. Purge via CLI <code>--purge</code> flag on the sync script after the applicable retention period.</p>
+<h2 id="frontend-types">Frontend types</h2>
+<p>TypeScript shapes mirroring API payloads live in <code>frontend/src/lib/cellTypes.ts</code> and <code>frontend/src/lib/api/</code>. React Query hooks in <code>frontend/src/hooks/useCellData.ts</code> normalise API responses for dashboards. Key interfaces:</p>
+<table>
+  <tr><th>Interface</th><th>File</th><th>Purpose</th></tr>
+  <tr><td><code>IndexCell</code></td><td><code>cellTypes.ts</code></td><td>Full cell row shape returned by the cell index API; includes all build metadata, protocol fields, and optional <code>datasets</code> array of <code>CellDatasetSummary</code></td></tr>
+  <tr><td><code>CellDatasetSummary</code></td><td><code>cellTypes.ts</code></td><td>Lightweight dataset entry embedded in <code>IndexCell.datasets</code>: <code>name</code>, <code>sizeBytes</code>, <code>createdAt</code>, <code>sourceFileId</code>, <code>sourceVersion</code></td></tr>
+  <tr><td><code>RatePerfCell</code></td><td><code>cellTypes.ts</code></td><td>Rate-performance API response shape per cell: cycle arrays, capacity arrays, optional <code>protocolSegments</code></td></tr>
+  <tr><td><code>ProtocolSegment</code></td><td><code>cellTypes.ts</code></td><td><code>{ cycleStart: number; cycleEnd: number; cRate: number; name?: string }</code> — used downstream of <code>/api/rate-performance</code> (both ends are finite numbers)</td></tr>
+  <tr><td><code>OpenEndedProtocolSegment</code></td><td><code>cellTypes.ts</code></td><td>Same as <code>ProtocolSegment</code> but <code>cycleEnd: number | null</code> — used by the cell index API when the protocol extends beyond observed cycles</td></tr>
+  <tr><td><code>UploadTaskStatus</code></td><td><code>api.ts</code></td><td>Upload task poll response: <code>id</code>, <code>filename</code>, <code>file_type</code>, <code>status</code>, <code>message</code>, <code>progress</code> (0–100), timestamps</td></tr>
+  <tr><td><code>ProjectSummary</code></td><td><code>api.ts</code></td><td>Project list entry: <code>id</code>, <code>name</code>, <code>createdAt</code>, <code>updatedAt</code>, <code>cellCount</code>, <code>cathodeTypes</code></td></tr>
+  <tr><td><code>ProjectReadiness</code></td><td><code>api.ts</code></td><td>Pre-dashboard check: <code>hasMetadata</code>, <code>cyclingFileCount</code>, <code>canEnterDashboard</code></td></tr>
+  <tr><td><code>MasterPlotOverview</code></td><td><code>api.ts</code></td><td>Master Plot aggregate: conditions map (<code>OverviewCondition</code>) and per-cell stats (<code>OverviewCell</code>)</td></tr>
+  <tr><td><code>OverviewCell</code></td><td><code>api.ts</code></td><td>Per-cell stats: <code>peakCapacitySpec</code>, <code>peakCapacityRaw</code>, <code>medianCE</code>, <code>retention</code>, <code>cycleCount</code>, <code>capacityBasis</code> (<code>'mAh/g'</code> | <code>'mAh'</code>). <code>medianCE</code> and <code>retention</code> are protocol-gated and currently always null (computed value coming soon).</td></tr>
+  <tr><td><code>OverviewCondition</code></td><td><code>api.ts</code></td><td>Per-condition aggregate stats: <code>n</code>, <code>flaggedCount</code>, metrics map of <code>OverviewCondStat</code> (mean, sd, cv, sem, ciHalf)</td></tr>
+  <tr><td><code>LoaderManifestEntry</code></td><td><code>api.ts</code></td><td>Upload loader descriptor: <code>fileType</code>, <code>displayName</code>, <code>description</code>, <code>extensions</code></td></tr>
+  <tr><td><code>MetadataUploadOptions</code></td><td><code>api.ts</code></td><td>Pre-upload inspection result for metadata files: key-column candidates, id_no candidates, sheet names, display-name template</td></tr>
+</table>
+
+<h2 id="python-domain">Python domain model</h2>
+<p><code>backend/compute/</code> defines internal types for ingest and analysis (<code>cell.py</code>, <code>data/cycling_data.py</code>, <code>metadata.py</code>). These are server-side only and not exported as a public pip package today.</p>
+
+<div class="pager">
+  <a href="protocol-attachment.html"><span class="dir">&larr; Previous</span><span class="ttl">Protocol attachment</span></a>
+  <a class="next" href="api.html"><span class="dir">Next &rarr;</span><span class="ttl">REST API</span></a>
+</div>
+</div>
+</main>
+</div>
+
+<footer class="site">CellSeer repository docs</footer><script src="site-links.js"></script>
+</body>
+</html>

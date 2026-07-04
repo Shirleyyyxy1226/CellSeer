@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Overview — CellSeer repo docs</title>
+<link rel="stylesheet" href="styles.css?v=1783150572">
+</head>
+<body>
+<header class="topbar">
+  <a class="logo" href="index.html"><img src="assets/cellseer.svg" alt="CellSeer"> CellSeer repo</a>
+  <span class="spacer"></span>
+  <a class="ghlink cross-site" href="../index.html">User guide</a>
+</header>
+
+<div class="shell">
+<aside class="sidebar">
+  <div class="group">Start</div>
+  <a href="index.html">Home</a>
+  <a href="overview.html" class="active">Overview</a>
+  <a href="structure.html">Repository structure</a>
+  <div class="group">Build</div>
+  <a href="architecture.html">Architecture</a>
+  <a href="features.html">Features overview</a>
+  <a href="dashboard-guide.html">Dashboard &amp; plot guide</a>
+  <a href="design.html">Design language</a>
+  <div class="group">Data</div>
+  <a href="ingestion-pipeline.html">Ingestion pipeline</a>
+  <a href="digibat-sync.html">DIGIBAT sync</a>
+  <a href="protocol-attachment.html">Protocol attachment</a>
+  <a href="data-model.html">Data model</a>
+  <a href="api.html">REST API</a>
+  <div class="group">Analytics</div>
+  <a href="master-plot-metrics.html">Master Plot metrics</a>
+  <a href="computation-report.html">Computation report</a>
+  <div class="group">Run</div>
+  <a href="deployment.html">Deployment</a>
+  <a href="dependencies.html">Dependencies</a>
+  <div class="group">External</div>
+  <a href="../index.html" class="ext">User guide</a>
+</aside>
+
+<main>
+<div class="content">
+<h1>Overview</h1>
+  <p class="lede">Campaign visualisation and analysis for high-throughput coin-cell testing — linking cycling data to metadata through a React web app and FastAPI backend.</p>
+
+<h2>What it does</h2>
+<ul>
+  <li><strong>Hierarchy tree</strong> — filter by metadata</li>
+  <li><strong>Master Plot</strong> — heatmap, ranking, trajectories, parallel coords</li>
+  <li><strong>Per-cell plots</strong> — GCD, dQ/dV 3D, dV/dQ 3D, rate performance</li>
+  <li><strong>Ingest</strong> — upload (Neware, BioLogic, Arbin) or DIGIBAT sync</li>
+  <li><strong>Protocols</strong> — cycle-range / C-rate segments</li>
+  <li><strong>Annotations</strong> — notes and tags per cell</li>
+</ul>
+
+<h2>Three layers</h2>
+<table>
+  <tr><th>Layer</th><th>Technology</th><th>Role</th></tr>
+  <tr>
+    <td><strong>Frontend</strong></td>
+    <td>React 18, TypeScript, Vite, TanStack Query, Plotly, Recharts, shadcn/ui (Radix UI + Tailwind CSS)</td>
+    <td>SPA dashboards, shared selection/filter state, REST client</td>
+  </tr>
+  <tr>
+    <td><strong>Backend</strong></td>
+    <td>FastAPI, PostgreSQL, Parquet data lake (Polars + Pandas), orjson</td>
+    <td>REST API, ingest, caching, DIGIBAT sync, serves built SPA in production</td>
+  </tr>
+  <tr>
+    <td><strong><code>@/charts</code></strong></td>
+    <td>TypeScript (framework-free)</td>
+    <td>Plotly figure builders under <code>frontend/src/charts/</code>; unit-testable without a browser</td>
+  </tr>
+</table>
+
+<h2>Colour system</h2>
+<p>Deterministic DJB2-hash cell colours and blue cycle ramp — see <a href="dashboard-guide.html#colour-system">Colour system</a>.</p>
+
+<h2>Data flow (summary)</h2>
+<ol>
+  <li><strong>Ingest</strong> — upload/DIGIBAT → <code>cell</code> + <code>dataset</code> rows; time series → Parquet in <code>data_lake/</code></li>
+  <li><strong>Index</strong> — <code>GET /api/cell-record-index</code> (lightweight metadata for tree/filters)</li>
+  <li><strong>Bulk summaries</strong> — <code>/api/rate-performance</code> (lazy on Rate tab); <code>/api/master-plot/overview</code> (scalars — <a href="master-plot-metrics.html">metrics</a>)</li>
+  <li><strong>On-demand curves</strong> — <code>/api/cell-record/{id}</code> + differential endpoints</li>
+  <li><strong>Rendering</strong> — <code>@/charts</code> → <code>PlotlyChart</code></li>
+</ol>
+
+<h2>Projects and routing</h2>
+<p>Multi-project: home → detail → <code>/projects/:projectId/dashboard</code>. Legacy alias <code>/dashboard</code> — <a href="dashboard-guide.html#navigation-flow">Dashboard guide</a>.</p>
+
+<div class="pager">
+  <a href="index.html"><span class="dir">&larr; Previous</span><span class="ttl">Home</span></a>
+  <a class="next" href="structure.html"><span class="dir">Next &rarr;</span><span class="ttl">Repository structure</span></a>
+</div>
+</div>
+</main>
+</div>
+
+<footer class="site">CellSeer repository docs</footer><script src="site-links.js"></script>
+</body>
+</html>

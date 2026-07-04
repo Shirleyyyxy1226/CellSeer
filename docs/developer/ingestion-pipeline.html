@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ingestion pipeline — CellSeer repo docs</title>
+<link rel="stylesheet" href="styles.css?v=1783150572">
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script src="mermaid-init.js"></script>
+<script src="mermaid-lightbox.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <a class="logo" href="index.html"><img src="assets/cellseer.svg" alt="CellSeer"> CellSeer repo</a>
+  <span class="spacer"></span>
+  <a class="ghlink cross-site" href="../index.html">User guide</a>
+</header>
+
+<div class="shell">
+<aside class="sidebar">
+  <div class="group">Start</div>
+  <a href="index.html">Home</a>
+  <a href="overview.html">Overview</a>
+  <a href="structure.html">Repository structure</a>
+  <div class="group">Build</div>
+  <a href="architecture.html">Architecture</a>
+  <a href="features.html">Features overview</a>
+  <a href="dashboard-guide.html">Dashboard &amp; plot guide</a>
+  <a href="design.html">Design language</a>
+  <div class="group">Data</div>
+  <a href="ingestion-pipeline.html" class="active">Ingestion pipeline</a>
+  <a href="digibat-sync.html">DIGIBAT sync</a>
+  <a href="protocol-attachment.html">Protocol attachment</a>
+  <a href="data-model.html">Data model</a>
+  <a href="api.html">REST API</a>
+  <div class="group">Analytics</div>
+  <a href="master-plot-metrics.html">Master Plot metrics</a>
+  <a href="computation-report.html">Computation report</a>
+  <div class="group">Run</div>
+  <a href="deployment.html">Deployment</a>
+  <a href="dependencies.html">Dependencies</a>
+  <div class="group">External</div>
+  <a href="../index.html" class="ext">User guide</a>
+</aside>
+
+<main>
+<div class="content">
+<h1>File ingestion pipeline</h1>
+  <p class="lede">End-to-end trace of how browser uploads become PostgreSQL rows and Parquet files in <code>data_lake/</code> — with real function names, routes, and storage targets.</p>
+
+<div class="callout tip">
+  <strong>Related pages.</strong>
+  <a href="data-model.html">Data model</a> (schema) ·
+  <a href="api.html">REST API</a> (upload endpoints).
+</div>
+
+<h2>Terminology</h2>
+<table>
+  <tr><th>Term</th><th>Meaning in CellSeer</th></tr>
+  <tr><td><strong>Loader</strong></td><td>A <code>BaseTestTypeLoader</code> subclass registered in <code>backend/loaders/registry.py</code> (<code>MetadataLoader</code>, <code>CyclingFileLoader</code>). Resolves by file extension and optional <code>fileType</code> hint.</td></tr>
+  <tr><td><strong>Dataset</strong></td><td>Named time-series blob for one cell — e.g. <code>cycling</code>, <code>discharge_dqdv</code>, <code>discharge_dvdq</code>. Stored as LZ4-compressed Parquet; indexed in the <code>dataset</code> PostgreSQL table via <code>storage_uri</code>.</td></tr>
+  <tr><td><strong>cell-record-index</strong></td><td>Lightweight project-wide cell list from <code>GET /api/cell-record-index</code> — metadata columns plus a <code>datasets[]</code> summary per cell (no curve arrays).</td></tr>
+  <tr><td><strong>Readiness</strong></td><td>Project gate from <code>GET /api/projects/{id}/readiness</code>. <code>canEnterDashboard</code> is true only when at least one cell exists <em>and</em> at least one cell has a <code>cycling</code> dataset.</td></tr>
+  <tr><td><strong>upload_task</strong></td><td>Ephemeral progress row (<code>queued</code> → <code>processing</code> → <code>done</code> | <code>error</code>) polled by the frontend every ~700&nbsp;ms. <code>item_count</code> is &gt;1 for batch uploads; <code>message</code> holds JSON result on success or the exception string on failure.</td></tr>
+  <tr><td><strong>ingest_log</strong></td><td>Audit trail written after successful cycling ingest — one row per source file, keyed on <code>project_id</code> + <code>cell_id</code>, with detected cycler, confidence, and <code>file_order</code> (for multi-file continuation tests).</td></tr>
+  <tr><td><strong>id_no</strong></td><td>Numeric link key between metadata rows and cycling filenames. Chosen from the metadata spreadsheet; cycling files are matched by filename heuristic or explicit per-cell attach. <strong>Not unique per project</strong> — routing always uses <code>cell_id</code>; <code>id_no</code> is purely a matching hint. If a collision is detected at ingest time the incoming cell's <code>id_no</code> is set to <code>None</code>.</td></tr>
+</table>
+
+<h2>Accepted file types</h2>
+<table>
+  <tr><th>fileType</th><th>Loader class</th><th>Extensions</th><th>What it creates</th></tr>
+  <tr>
+    <td><code>metadata</code></td>
+    <td><code>MetadataLoader</code></td>
+    <td><code>.csv</code>, <code>.xlsx</code>, <code>.xls</code></td>
+    <td>One <code>cell</code> row per valid spreadsheet row (metadata only — no Parquet yet)</td>
+  </tr>
+  <tr>
+    <td><code>cycling</code></td>
+    <td><code>CyclingFileLoader</code></td>
+    <td><code>.xlsx</code>, <code>.xls</code>, <code>.csv</code>, <code>.mpt</code>, <code>.mpr</code></td>
+    <td>Parquet under <code>data_lake/</code> + <code>dataset</code> rows (+ derived dQ/dV / dV/dQ datasets when differentiation succeeds). Accepts Neware, BioLogic, Arbin, and other Excel/CSV cycler exports.</td>
+  </tr>
+</table>
+<p>Loader manifest: <code>GET /api/upload/loaders</code> → <code>test_type_manifest()</code> in <code>backend/loaders/registry.py</code>.</p>
+
+<h2>Three upload entry paths</h2>
+<table>
+  <tr><th>Path</th><th>HTTP route</th><th>Frontend trigger</th><th>When used</th></tr>
+  <tr>
+    <td><strong>Single file</strong></td>
+    <td><code>POST /api/upload</code></td>
+    <td><code>useFileUpload.uploadWithOptions()</code> → <code>uploadFile()</code></td>
+    <td>One metadata workbook or one cycling file. A dedup guard returns the existing <code>task_id</code> (status <code>already_processing</code>) if the same filename was already queued or processing in the same project within the last 20 minutes.</td>
+  </tr>
+  <tr>
+    <td><strong>Batch</strong></td>
+    <td><code>POST /api/upload/batch</code></td>
+    <td><code>useFileUpload.uploadManyWithOptions()</code> → <code>uploadFiles()</code></td>
+    <td>Multiple cycling files in one background task (Project detail "Cycling data" tile, <code>multiple</code> input). All files must resolve to the same <code>FILE_TYPE</code>. Files are processed sequentially; each file's 0–100 local progress is mapped to its proportional slice of the overall 0–100 range. Final message JSON is capped at the first 20 result entries.</td>
+  </tr>
+  <tr>
+    <td><strong>Per-cell attach</strong></td>
+    <td><code>POST /api/cells/{cell_id}/files/{test_type}</code></td>
+    <td><code>useCellTestFileAttach.attach()</code> → <code>uploadCellTestFile()</code></td>
+    <td>Attach cycling data to a known <code>cell_id</code> (expanded row in <code>CellMetadataCard</code> or <code>CellDetailPanel</code>). Only <code>test_type=cycling</code> is supported today. Validates the cell exists in PostgreSQL before dispatching. Passes <code>cellId</code> and <code>idNo</code> in <code>ingest_options</code> to bypass the filename heuristic.</td>
+  </tr>
+</table>
+<p>All three paths share the same background worker pattern: insert <code>upload_task</code>, then call <code>loader.ingest()</code> via <code>_run_upload</code> or <code>_run_upload_batch</code> in <code>routers/upload.py</code>. Background tasks run in FastAPI's background task pool (same process, separate thread); each progress update opens its own PostgreSQL connection via <code>_upload_db()</code> (pooled psycopg2 adapter).</p>
+
+<h2>Full pipeline flowchart</h2>
+<div class="mermaid-wrap mermaid-wrap--wide">
+<p class="caption">Upload → parse → persist → index (all paths converge on loader.ingest)</p>
+<pre class="mermaid">
+flowchart TB
+  subgraph ui["Browser · ProjectDetailPage / CellMetadataCard"]
+    PICK["User picks file(s)"]
+    META_OPT["fetchMetadataUploadOptions()<br/>POST /api/upload/metadata-options"]
+    UP1["uploadFile() · POST /api/upload"]
+    UPB["uploadFiles() · POST /api/upload/batch"]
+    UPC["uploadCellTestFile()<br/>POST /api/cells/{id}/files/cycling"]
+    POLL["Poll GET /api/upload/status/{taskId}<br/>every ~700 ms"]
+  end
+
+  subgraph api["FastAPI · routers/upload.py"]
+    GL["get_loader(filename, fileType?)<br/>backend/loaders/registry.py"]
+    TASK["INSERT upload_task<br/>status = queued"]
+    BG["_run_upload / _run_upload_batch<br/>BackgroundTasks"]
+    PROG["UPDATE upload_task<br/>progress + message"]
+    DONE["UPDATE upload_task<br/>status = done | error"]
+  end
+
+  subgraph loaders["backend/loaders/"]
+    ML["MetadataLoader.ingest()"]
+    CL["CyclingFileLoader.ingest()"]
+  end
+
+  subgraph core["backend/compute/"]
+    IM["ingest_metadata()"]
+    IC["ingest_cycling_file()"]
+    INS["inspect_metadata_file()"]
+    DET["detect_reader() · detect_cycler()"]
+    RD["NewareReader / BiologicReader / ArbinReader.read()"]
+    CDV["Cell.compute_dqdv()<br/>discharge + charge"]
+    SAVE["Cell.save() → PostgresBackend.upsert_cell()"]
+  end
+
+  subgraph store["Persistence"]
+    SQL_CELL[("PostgreSQL · cell")]
+    SQL_DS[("PostgreSQL · dataset")]
+    SQL_LOG[("PostgreSQL · ingest_log")]
+    LAKE[("Parquet · data_lake/<br/>{project}/{cell}/{name}.parquet")]
+  end
+
+  subgraph serve["Served to dashboards"]
+    IDX["GET /api/cell-record-index"]
+    RP["GET /api/rate-performance"]
+  end
+
+  PICK --> META_OPT
+  META_OPT --> UP1
+  PICK --> UP1
+  PICK --> UPB
+  PICK --> UPC
+  UP1 --> GL
+  UPB --> GL
+  UPC --> GL
+  GL --> TASK --> BG
+  BG --> PROG
+  GL --> ML
+  GL --> CL
+  ML --> IM
+  IM --> INS
+  IM --> SAVE
+  CL --> IC
+  IC --> DET --> RD
+  RD --> CDV --> SAVE
+  SAVE --> SQL_CELL
+  SAVE --> SQL_DS
+  SAVE --> LAKE
+  IC --> SQL_LOG
+  BG --> DONE
+  DONE --> POLL
+  SQL_CELL --> IDX
+  LAKE --> RP
+</pre>
+</div>
+
+<h2>Sequence: metadata then cycling upload</h2>
+<div class="mermaid-wrap mermaid-wrap--seq">
+<p class="caption">Typical first-time project setup on the project detail page</p>
+<pre class="mermaid">
+sequenceDiagram
+  actor User
+  participant PDP as ProjectDetailPage
+  participant API as upload.py
+  participant ML as MetadataLoader
+  participant IM as ingest_metadata
+  participant DB as PostgreSQLBackend
+  participant CL as CyclingFileLoader
+  participant IC as ingest_cycling_file
+  participant DS as dataset_store
+
+  User->>PDP: Drop metadata.xlsx
+  PDP->>API: POST /api/upload/metadata-options
+  API->>ML: MetadataLoader.inspect()
+  ML->>IM: inspect_metadata_file()
+  IM-->>PDP: keyCandidates, idNoCandidates, sheetName
+  PDP->>API: POST /api/upload (fileType=metadata, primaryKeyHeader, idNoHeader)
+  API->>API: INSERT upload_task
+  API-->>PDP: taskId
+  API->>ML: Background: loader.ingest()
+  ML->>IM: ingest_metadata(tmp_path, db, ...)
+  loop each row
+    IM->>IM: CellMetadata.from_dict()
+    IM->>DB: upsert_cell(cell)
+    DB->>DB: INSERT/UPDATE cell
+  end
+  API->>API: upload_task status=done
+  PDP->>API: GET /api/upload/status/{taskId}
+  PDP->>API: GET /api/projects/{id}/readiness
+  Note over PDP: canEnterDashboard still false (no cycling yet)
+
+  User->>PDP: Drop 1073_Rate.xlsx (+ more files)
+  PDP->>API: POST /api/upload/batch (fileType=cycling)
+  API->>CL: Background: loader.ingest() per file
+  CL->>IC: ingest_cycling_file(tmp_path, db)
+  IC->>IC: _id_no_from_filename() → _find_cell_id()
+  IC->>IC: detect_reader() → reader.read()
+  IC->>IC: cell.compute_dqdv(discharge + charge)
+  IC->>DB: cell.save() → upsert_cell()
+  DB->>DS: write_dataset_parquet(cycling, discharge_dqdv, ...)
+  DS->>DS: data_lake/{project}/{cell_id}/cycling.parquet
+  DB->>DB: INSERT/UPDATE dataset rows
+  IC->>DB: log_ingest() → ingest_log
+  PDP->>API: GET /api/projects/{id}/readiness
+  Note over PDP: canEnterDashboard = true → Dashboard button enabled
+</pre>
+</div>
+
+<h2>Step-by-step tables</h2>
+
+<h3>Phase A — HTTP accept &amp; queue</h3>
+<table>
+  <tr><th>Step</th><th>Name</th><th>File</th><th>Function / route</th><th>Input → Output</th></tr>
+  <tr><td>A1</td><td>Resolve loader</td><td><code>backend/loaders/registry.py</code></td><td><code>get_loader(filename, preferred_file_type)</code></td><td>Filename suffix (+ optional <code>fileType</code>) → <code>MetadataLoader</code> or <code>CyclingFileLoader</code> instance</td></tr>
+  <tr><td>A2</td><td>Validate size</td><td><code>routers/upload.py</code></td><td><code>upload_file()</code> / <code>upload_files_batch()</code></td><td>Raw bytes; reject if &gt; 512&nbsp;MB (<code>413</code>)</td></tr>
+  <tr><td>A3</td><td>Ensure project</td><td><code>project_scope.py</code></td><td><code>ensure_project_exists()</code></td><td><code>projectId</code> form field → project row exists</td></tr>
+  <tr><td>A4</td><td>Dedup check</td><td><code>routers/upload.py</code></td><td>query <code>upload_task</code></td><td>If same filename + project is already <code>queued</code>/<code>processing</code> within last 20 minutes, return existing <code>task_id</code> with status <code>already_processing</code> (no new row inserted)</td></tr>
+  <tr><td>A5</td><td>Enqueue task</td><td><code>routers/upload.py</code></td><td><code>_upload_db()</code> + INSERT</td><td>UUID <code>task_id</code>, <code>status=queued</code>, <code>item_count=1</code> (or N for batch) in <code>upload_task</code></td></tr>
+  <tr><td>A6</td><td>Background dispatch</td><td><code>routers/upload.py</code></td><td><code>BackgroundTasks.add_task(_run_upload, …)</code></td><td>File bytes + <code>ingest_options</code> dict passed to worker; runs in same-process thread pool</td></tr>
+</table>
+
+<h3>Phase B — Metadata ingest</h3>
+<table>
+  <tr><th>Step</th><th>Name</th><th>File</th><th>Function</th><th>Input → Output</th></tr>
+  <tr><td>B1</td><td>Stage bytes</td><td><code>backend/loaders/metadata.py</code></td><td><code>MetadataLoader.ingest()</code></td><td><code>file_bytes</code> → temp file on disk</td></tr>
+  <tr><td>B2</td><td>Parse workbook</td><td><code>backend/compute/ingest.py</code></td><td><code>inspect_metadata_file()</code> via <code>backend/compute/readers/metadata/reader.py</code></td><td>Excel/CSV path → <code>rows[]</code>, header candidates, sheet name. Raises if zero or multiple <code>id_no</code> candidate columns and user hasn't selected one.</td></tr>
+  <tr><td>B3</td><td>Build metadata</td><td><code>backend/compute/analysis/metadata/</code></td><td><code>CellMetadata.from_dict()</code></td><td>Row dict + <code>primaryKeyHeader</code> + <code>idNoHeader</code> → <code>cell_id</code>, <code>id_no</code>, display fields. <code>display_name_template</code> defaults to <code>{cathode}_{anode}_R{repeat}_ID{id_no}</code>. Unmapped source columns ride in <code>custom_meta</code> JSON. If another cell in the same project already owns the same <code>id_no</code>, the incoming cell's <code>id_no</code> is set to <code>None</code>.</td></tr>
+  <tr><td>B4</td><td>Upsert cell</td><td><code>backend/compute/db/pg_backend.py</code></td><td><code>PostgresBackend.upsert_cell()</code></td><td><code>Cell(metadata=…)</code> → <code>INSERT … ON CONFLICT DO UPDATE</code> on <code>cell</code> (includes <code>capacity_basis</code>, <code>custom_meta</code>; no Parquet written). Progress callbacks emit 45→95 during the upsert loop.</td></tr>
+  <tr><td>B5</td><td>Return summary</td><td><code>backend/loaders/metadata.py</code></td><td>return dict</td><td><code>importedCount</code>, <code>sampleCellIds</code> → JSON in <code>upload_task.message</code></td></tr>
+</table>
+
+<h3>Phase C — Cycling ingest</h3>
+<table>
+  <tr><th>Step</th><th>Name</th><th>File</th><th>Function</th><th>Input → Output</th></tr>
+  <tr><td>C1</td><td>Stage bytes</td><td><code>backend/loaders/cycling.py</code></td><td><code>CyclingFileLoader.ingest()</code></td><td>Bytes written to a named temp file (stem prefix + suffix preserved); <code>db.set_project_scope(projectId)</code>. Progress milestones: 10 = saving, 20 = detecting format, 30 = parsing, 100 = done.</td></tr>
+  <tr><td>C2</td><td>Resolve cell</td><td><code>backend/compute/ingest.py</code></td><td><code>_id_no_from_filename()</code> / <code>_find_cell_id()</code> or caller <code>cellId</code>/<code>idNo</code></td><td>Filename heuristic (numeric prefix → CEL/CELL token → first integer group) or per-cell options → <code>cell_id</code>; placeholder cell created if metadata missing. Raises <code>ValueError</code> if no integer can be extracted from filename.</td></tr>
+  <tr><td>C3</td><td>Detect format</td><td><code>backend/compute/readers/cycling/detect.py</code></td><td><code>detect_cycler()</code>, <code>detect_reader()</code></td><td>Header signature confidence scoring (minimum confidence 0.4) → <code>NewareReader</code> / <code>BiologicReader</code> / <code>ArbinReader</code></td></tr>
+  <tr><td>C4</td><td>Read curves</td><td><code>backend/compute/readers/cycling/*.py</code></td><td><code>reader.read()</code></td><td>Raw cycler export → <code>CyclingData</code> LazyFrame in <code>cell.datasets["cycling"]</code>. <code>reader.input_paths</code> accepts a list for multi-file continuation tests.</td></tr>
+  <tr><td>C5</td><td>Derive differentials</td><td><code>backend/compute/cell.py</code></td><td><code>Cell.compute_dqdv(direction=discharge|charge)</code></td><td>Per-cycle dQ/dV and dV/dQ via LEAN differentiation (default <code>method="lean"</code>, <code>lean_target_bins=180</code>) → <code>discharge_dqdv</code>, <code>discharge_dvdq</code>, <code>charge_dqdv</code>, <code>charge_dvdq</code> datasets (failures are non-fatal warnings)</td></tr>
+  <tr><td>C6</td><td>Persist</td><td><code>backend/compute/cell.py</code> → <code>backend/compute/db/pg_backend.py</code></td><td><code>cell.save()</code> → <code>PostgresBackend.upsert_cell()</code></td><td>Each dataset → Parquet + PostgreSQL <code>dataset</code> row</td></tr>
+  <tr><td>C7</td><td>Write Parquet</td><td><code>backend/dataset_store.py</code></td><td><code>write_dataset_parquet()</code></td><td>Polars LazyFrame collected, written to a <code>.tmp</code> file with LZ4 compression, SHA-256 checksum computed, then atomically renamed to final path <code>{project}/{cell_id}/{name}.parquet</code>. Returns dict: <code>{storage_kind, storage_uri, data_format, size_bytes, checksum_sha256}</code>.</td></tr>
+  <tr><td>C8</td><td>Audit</td><td><code>backend/compute/db/pg_backend.py</code></td><td><code>log_ingest()</code></td><td>One <code>ingest_log</code> row per source path: <code>project_id</code>, <code>cell_id</code>, <code>filepath</code>, <code>file_order</code>, <code>cycler</code>, <code>confidence</code>, <code>ingested_at</code></td></tr>
+</table>
+
+<h2>Where data lands</h2>
+
+<h3>Parquet data lake</h3>
+<p>Path template from <code>dataset_store.dataset_relpath()</code>:</p>
+<pre><code>{CELLSEER_DATA_LAKE_DIR}/{safe_project_id}/{safe_cell_id}/{safe_dataset_name}.parquet</code></pre>
+<p>Each path segment is sanitized to <code>[A-Za-z0-9._-]</code> (other characters replaced with <code>_</code>). Default root: <code>data_lake/</code> at repo root (<code>config.DATA_LAKE_DIR</code>, override with <code>CELLSEER_DATA_LAKE_DIR</code>).</p>
+<p>Example after ingesting cell <code>B01_NMC811_R03</code> in project <code>abc123</code>:</p>
+<ul>
+  <li><code>data_lake/abc123/B01_NMC811_R03/cycling.parquet</code></li>
+  <li><code>data_lake/abc123/B01_NMC811_R03/discharge_dqdv.parquet</code></li>
+  <li><code>data_lake/abc123/B01_NMC811_R03/discharge_dvdq.parquet</code></li>
+  <li>…and charge-direction variants when differentiation succeeds</li>
+</ul>
+
+<h3>PostgreSQL rows created or updated</h3>
+<table>
+  <tr><th>Table</th><th>When</th><th>Key columns</th></tr>
+  <tr><td><code>upload_task</code></td><td>Every browser upload</td><td><code>id</code> (TEXT PK), <code>project_id</code>, <code>filename</code>, <code>file_type</code>, <code>item_count</code> (&gt;1 for batch), <code>status</code>, <code>message</code> (JSON on success, error string on failure), <code>progress</code> (0–100), <code>created_at</code>, <code>updated_at</code></td></tr>
+  <tr><td><code>cell</code></td><td>Metadata ingest; updated on cycling ingest</td><td><code>cell_id</code> PK (with <code>project_id</code>), <code>id_no</code> (not unique per project), <code>capacity_basis</code>, <code>custom_meta</code>, cathode/anode/separator/…, soft-delete via <code>deleted_at</code></td></tr>
+  <tr><td><code>dataset</code></td><td>Every cycling ingest (<code>cell.save</code>)</td><td><code>(project_id, cell_id, name)</code> UNIQUE, <code>storage_kind</code>, <code>storage_uri</code>, <code>data_format</code>, <code>size_bytes</code>, <code>checksum_sha256</code>, <code>source_file_id</code>/<code>source_version</code> (populated by DIGIBAT path), optional <code>meta</code> JSON (protocol), soft-delete via <code>deleted_at</code></td></tr>
+  <tr><td><code>ingest_log</code></td><td>After successful <code>ingest_cycling_file</code></td><td><code>project_id</code>, <code>cell_id</code>, <code>filepath</code>, <code>file_order</code> (for continuation files), <code>cycler</code>, <code>confidence</code>, <code>ingested_at</code></td></tr>
+</table>
+
+<h2>Frontend upload UI map</h2>
+<table>
+  <tr><th>Component / hook</th><th>Role</th></tr>
+  <tr><td><code>ProjectDetailPage.tsx</code></td><td>Upload strip (metadata + cycling tiles), readiness polling, cell table with expand-to-attach</td></tr>
+  <tr><td><code>useFileUpload.ts</code></td><td>Single-slot upload lifecycle for project-level tiles; polls <code>/api/upload/status</code></td></tr>
+  <tr><td><code>useCellTestFileAttach.ts</code></td><td>Per-cell attach (isolated instance per row/panel); calls <code>uploadCellTestFile()</code></td></tr>
+  <tr><td><code>CellMetadataCard.tsx</code></td><td>Expanded row UI — attach cycling file, edit metadata, protocol attach</td></tr>
+  <tr><td><code>lib/api/</code></td><td><code>uploadFile</code>, <code>uploadFiles</code>, <code>uploadCellTestFile</code>, <code>fetchMetadataUploadOptions</code>, <code>fetchUploadStatus</code></td></tr>
+</table>
+
+<h2>Post-ingest: how dashboards see new data</h2>
+<p>Ingest does not push to the browser. After <code>upload_task.status = done</code>:</p>
+<ol>
+  <li><code>ProjectDetailPage</code> refreshes <code>fetchProjectReadiness</code> and <code>fetchCellRecordIndex</code>.</li>
+  <li>Inside the dashboard, <code>DataRefreshContext.triggerDataRefresh()</code> bumps <code>dataVersion</code>, invalidating React Query keys in <code>useCellData.ts</code>.</li>
+  <li><code>GET /api/cell-record-index</code> reads <code>cell</code> + <code>dataset</code> tables; heavy endpoints (<code>/api/rate-performance</code>) read Parquet via <code>read_dataset_parquet()</code>.</li>
+</ol>
+
+<h2>Alternate ingest: DIGIBAT sync</h2>
+<p>Not covered step-by-step here — see the dedicated <a href="digibat-sync.html">DIGIBAT sync</a> deep dive. That path (<code>backend/digibat/sync_service.py</code>) eventually calls the same <code>ingest_cycling_file</code> / <code>upsert_cell</code> stack and lands in the same <code>data_lake/</code> layout. It also populates <code>dataset.source_file_id</code>, <code>source_version</code>, and <code>source_system</code> fields that the browser upload path leaves null.</p>
+
+<div class="pager">
+  <a href="design.html"><span class="dir">&larr; Previous</span><span class="ttl">Design language</span></a>
+  <a class="next" href="digibat-sync.html"><span class="dir">Next &rarr;</span><span class="ttl">DIGIBAT sync</span></a>
+</div>
+</div>
+</main>
+</div>
+
+<footer class="site">CellSeer repository docs</footer><script src="site-links.js"></script>
+</body>
+</html>

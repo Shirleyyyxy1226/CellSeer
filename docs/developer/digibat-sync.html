@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DIGIBAT sync — CellSeer repo docs</title>
+<link rel="stylesheet" href="styles.css?v=1783150572">
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script src="mermaid-init.js"></script>
+<script src="mermaid-lightbox.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <a class="logo" href="index.html"><img src="assets/cellseer.svg" alt="CellSeer"> CellSeer repo</a>
+  <span class="spacer"></span>
+  <a class="ghlink cross-site" href="../index.html">User guide</a>
+</header>
+
+<div class="shell">
+<aside class="sidebar">
+  <div class="group">Start</div>
+  <a href="index.html">Home</a>
+  <a href="overview.html">Overview</a>
+  <a href="structure.html">Repository structure</a>
+  <div class="group">Build</div>
+  <a href="architecture.html">Architecture</a>
+  <a href="features.html">Features overview</a>
+  <a href="dashboard-guide.html">Dashboard &amp; plot guide</a>
+  <a href="design.html">Design language</a>
+  <div class="group">Data</div>
+  <a href="ingestion-pipeline.html">Ingestion pipeline</a>
+  <a href="digibat-sync.html" class="active">DIGIBAT sync</a>
+  <a href="protocol-attachment.html">Protocol attachment</a>
+  <a href="data-model.html">Data model</a>
+  <a href="api.html">REST API</a>
+  <div class="group">Analytics</div>
+  <a href="master-plot-metrics.html">Master Plot metrics</a>
+  <a href="computation-report.html">Computation report</a>
+  <div class="group">Run</div>
+  <a href="deployment.html">Deployment</a>
+  <a href="dependencies.html">Dependencies</a>
+  <div class="group">External</div>
+  <a href="../index.html" class="ext">User guide</a>
+</aside>
+
+<main>
+<div class="content">
+<h1>DIGIBAT remote sync</h1>
+  <p class="lede">End-to-end trace of how the <code>/digibat</code> page connects to the Imperial DIGIBAT API, downloads cycling files, and lands them in the same PostgreSQL + Parquet storage as browser uploads. Sync is feasible in the shipped build; hardening for production use is outstanding.</p>
+
+<div class="callout tip">
+  <strong>Related pages.</strong>
+  <a href="ingestion-pipeline.html">Ingestion pipeline</a> documents the shared <code>ingest_cycling_file</code> path;
+  <a href="data-model.html">Data model</a> lists DIGIBAT provenance columns;
+  <a href="api.html">REST API</a> documents <code>/api/digibat/*</code> routes.
+</div>
+
+<h2>Terminology</h2>
+<table>
+  <tr><th>Term</th><th>Meaning in CellSeer</th></tr>
+  <tr><td><strong>Collection</strong></td><td>Remote DIGIBAT grouping (lab campaign). Listed via <code>GET /api/digibat/collections</code>; synced by collection id.</td></tr>
+  <tr><td><strong>Refcode</strong></td><td>Stable remote cell identifier (e.g. <code>digibat:VAOGWT</code>). Mapped in <code>digibat_cell_map</code>; survives upstream display-name renames.</td></tr>
+  <tr><td><strong>source_file_id</strong></td><td>Remote file immutable id. Tracked in <code>digibat_file_map</code> for incremental skip/resync.</td></tr>
+  <tr><td><strong>Continuation group</strong></td><td>Multi-part exports (<code>_C01</code>, <code>_C02</code>, …) grouped by <code>group_continuation_files()</code> and ingested in one <code>ingest_cycling_file</code> call.</td></tr>
+  <tr><td><strong>Sync run</strong></td><td>Observability row in <code>digibat_sync_run</code> — status <code>running</code> → <code>done</code> | <code>error</code>. Mode is <code>sync</code> (normal) or <code>dry-run</code>.</td></tr>
+</table>
+
+<h2>PostgreSQL tables</h2>
+<table>
+  <tr><th>Table</th><th>Purpose</th><th>Key columns</th></tr>
+  <tr>
+    <td><code>digibat_connection</code></td>
+    <td>Per-project API credentials</td>
+    <td><code>project_id</code> PK, <code>base_url</code>, <code>api_key</code> (nullable), <code>key_source</code> (<code>env</code> | <code>user</code>), <code>created_at</code>, <code>updated_at</code></td>
+  </tr>
+  <tr>
+    <td><code>digibat_cell_map</code></td>
+    <td>Remote refcode → local <code>cell_id</code></td>
+    <td><code>(project_id, remote_refcode)</code> PK, <code>remote_item_id</code>, <code>cell_id</code> (FK→cell), <code>last_seen_at</code></td>
+  </tr>
+  <tr>
+    <td><code>digibat_file_map</code></td>
+    <td>Per remote file ingest state</td>
+    <td><code>(project_id, source_file_id)</code> PK, <code>remote_refcode</code>, <code>filename</code>, <code>source_version</code>, <code>cell_id</code> (FK→cell, ON DELETE SET NULL), <code>last_status</code>, <code>last_error</code>, <code>last_synced_at</code>, <code>deleted_at</code></td>
+  </tr>
+  <tr>
+    <td><code>digibat_sync_run</code></td>
+    <td>Run history + totals JSON</td>
+    <td><code>id</code> (UUID), <code>project_id</code>, <code>mode</code> (<code>sync</code>|<code>dry-run</code>), <code>status</code> (<code>running</code>|<code>done</code>|<code>error</code>), <code>collection_ids_json</code>, <code>totals_json</code>, <code>error_message</code>, <code>started_at</code>, <code>completed_at</code></td>
+  </tr>
+</table>
+<p>After successful ingest, data also appears in the standard <code>cell</code>, <code>dataset</code>, and <code>data_lake/</code> tables — same as upload. On <code>cell</code> rows: <code>source_system='digibat'</code>, <code>source_refcode</code>, <code>source_item_id</code>, <code>last_seen_at</code>, and <code>deleted_at</code> (soft-delete). On <code>dataset</code> rows: <code>source_system</code>, <code>source_refcode</code>, <code>source_file_id</code>, <code>source_version</code>, <code>last_synced_at</code>, and <code>deleted_at</code>.</p>
+
+<h2>Client &amp; config layer</h2>
+<p><code>DigibatClient</code> (<code>digibat/client.py</code>) wraps <code>requests.Session</code> with the <code>DATALAB-API-KEY</code> header and <code>User-Agent: CellSeer/DigibatClient</code>. Key behaviours:</p>
+<ul>
+  <li><code>get_json()</code> raises <code>RuntimeError</code> on HTTP 401/403 or error-status payloads.</li>
+  <li><code>download()</code> enforces a minimum 120-second timeout for file downloads and guards against HTML error-page responses.</li>
+  <li>Supported cycling file extensions: <code>.xlsx</code>, <code>.xls</code>, <code>.csv</code>, <code>.mpt</code>, <code>.mpr</code>. BDF cycle-block objects (<code>blocks_obj</code>) are also harvested as <code>bdf</code>-kind <code>FileCandidate</code> entries.</li>
+</ul>
+<p><code>DigibatConfig</code> (<code>digibat/config.py</code>) is a frozen dataclass holding <code>base_url</code> (default <code>https://digibat.dept.ic.ac.uk</code>), <code>api_key</code>, and <code>timeout_seconds</code>. Loaded from env vars <code>DATALAB_BASE_URL</code>, <code>DATALAB_API_KEY</code>, <code>DATALAB_TIMEOUT</code>. The router resolver <code>_effective_config()</code> prefers a per-project key stored in <code>digibat_connection</code>; falls back to the env var; raises HTTP 400 if neither is available.</p>
+
+<h2>Sequence: connect → sync → download → ingest</h2>
+<div class="mermaid-wrap mermaid-wrap--seq">
+<p class="caption">Browser-initiated sync via DigibatPage</p>
+<pre class="mermaid">
+sequenceDiagram
+  actor User
+  participant Page as DigibatPage.tsx
+  participant Hook as useDigibatSync
+  participant API as digibatApi.ts
+  participant Router as routers/digibat.py
+  participant BG as BackgroundTasks
+  participant Sync as sync_service.sync_collections
+  participant Client as DigibatClient
+  participant DB as PostgreSQLBackend
+  participant IC as ingest_cycling_file
+  participant Lake as data_lake Parquet
+
+  User->>Page: Connect account (API key or default)
+  Page->>API: connectDigibatAccount()
+  API->>Router: POST /api/digibat/connect
+  Router->>DB: UPSERT digibat_connection
+
+  User->>Page: Load collections + select cells
+  Page->>API: fetchDigibatCollections()
+  API->>Router: GET /api/digibat/collections
+  Router->>Client: get_json("/api/collections")
+
+  User->>Page: Start sync
+  Page->>Hook: triggerSync({ collectionIds, selectedRefcodes })
+  Hook->>API: startDigibatSync()
+  API->>Router: POST /api/projects/{id}/digibat/sync
+  Router->>Router: atomic conflict check + INSERT digibat_sync_run
+  Router->>DB: start_sync_run() status=running
+  Router->>BG: _run_sync_task()
+  Router-->>Hook: requestId
+
+  loop poll every 1.5s
+    Hook->>API: fetchDigibatStatus()
+    API->>Router: GET /api/projects/{id}/digibat/status
+  end
+
+  BG->>Sync: sync_collections(config, options, run_id)
+  loop each collection
+    Sync->>Client: get_json collection + items
+    Sync->>DB: upsert_cell metadata
+    Sync->>DB: upsert_cell_source digibat_cell_map
+    Sync->>Client: download cycling files
+    Sync->>IC: ingest_cycling_file(paths, db)
+    IC->>DB: cell.save upsert_cell + dataset rows
+    IC->>Lake: write_dataset_parquet
+    Sync->>DB: upsert_file_map + upsert_dataset_source
+  end
+  Sync->>DB: finish_sync_run done
+  Hook->>Hook: triggerDataRefresh() on status=done
+</pre>
+</div>
+
+<h2>Sync flowchart</h2>
+<div class="mermaid-wrap mermaid-wrap--wide">
+<p class="caption">Remote API to local storage — converges on the same ingest stack as browser upload</p>
+<pre class="mermaid">
+flowchart TB
+  subgraph ui["Browser · /digibat · DigibatPage.tsx"]
+    CONN["connectDigibatAccount()"]
+    COLL["fetchDigibatCollections()"]
+    CELLS["fetchDigibatCollectionCells()"]
+    SYNC["useDigibatSync.triggerSync()"]
+    POLL["poll fetchDigibatStatus()"]
+  end
+
+  subgraph api["FastAPI · routers/digibat.py"]
+    CONNECT["POST /api/digibat/connect"]
+    LIST["GET /api/digibat/collections"]
+    START["POST /api/projects/{id}/digibat/sync"]
+    STATUS["GET /api/projects/{id}/digibat/status"]
+    TASK["_run_sync_task → sync_collections"]
+  end
+
+  subgraph remote["DIGIBAT API · DigibatClient"]
+    GET["get_json()"]
+    DL["download()"]
+  end
+
+  subgraph sync["digibat/sync_service.py"]
+    IMP["import_collection()"]
+    META["metadata_row_from_item()<br/>CellMetadata.from_dict()"]
+    CAND["item_file_candidates()"]
+    GRP["group_continuation_files()"]
+    SKIP{"source_version unchanged?"}
+    ING["ingest_cycling_file()"]
+    TOMB["soft_delete_missing_files()<br/>soft_delete_stale_cells()<br/>· provenance.py"]
+  end
+
+  subgraph store["Persistence (same as upload)"]
+    SQL_CELL[("PostgreSQL · cell")]
+    SQL_DS[("PostgreSQL · dataset")]
+    MAP[("digibat_cell_map<br/>digibat_file_map")]
+    RUN[("digibat_sync_run")]
+    LAKE[("Parquet · data_lake/")]
+  end
+
+  CONN --> CONNECT
+  COLL --> LIST --> GET
+  CELLS --> LIST
+  SYNC --> START --> TASK
+  START --> RUN
+  TASK --> IMP
+  IMP --> GET
+  IMP --> META --> SQL_CELL
+  IMP --> CAND --> GRP --> SKIP
+  SKIP -->|no| DL --> ING
+  ING --> SQL_CELL
+  ING --> SQL_DS
+  ING --> LAKE
+  ING --> MAP
+  IMP --> TOMB
+  TASK --> RUN
+  SYNC --> POLL --> STATUS
+</pre>
+</div>
+
+<h2>Step-by-step tables</h2>
+
+<h3>Phase A — Connect &amp; browse</h3>
+<table>
+  <tr><th>Step</th><th>Name</th><th>File</th><th>Function / route</th><th>Input → Output</th></tr>
+  <tr><td>A1</td><td>Page shell</td><td><code>digibat/pages/DigibatPage.tsx</code></td><td><code>DigibatPage</code></td><td><code>?projectId=</code> pre-selects project; wires <code>useDigibatSync</code></td></tr>
+  <tr><td>A2</td><td>Connect</td><td><code>digibat/api/digibatApi.ts</code></td><td><code>connectDigibatAccount()</code></td><td><code>POST /api/digibat/connect</code> → UPSERT <code>digibat_connection</code>; <code>key_source='env'</code> or <code>'user'</code></td></tr>
+  <tr><td>A3</td><td>Resolve config</td><td><code>routers/digibat.py</code></td><td><code>_effective_config()</code></td><td>Per-project DB key → <code>DATALAB_API_KEY</code> env fallback → HTTP 400 if neither present → <code>DigibatConfig</code></td></tr>
+  <tr><td>A4</td><td>List collections</td><td><code>routers/digibat.py</code></td><td><code>list_digibat_collections()</code></td><td><code>DigibatClient.get_json("/api/collections")</code> → normalised id/name list</td></tr>
+  <tr><td>A5</td><td>List cells</td><td><code>routers/digibat.py</code></td><td><code>list_digibat_collection_cells()</code></td><td>Collection payload <code>child_items</code> where <code>type=cells</code> → refcode + name</td></tr>
+  <tr><td>A6</td><td>Manual project</td><td><code>digibat/api/digibatApi.ts</code></td><td><code>createManualDigibatProject()</code></td><td><code>POST /api/digibat/manual-project</code> → creates an offline project with manually entered cells (no DIGIBAT API call required)</td></tr>
+</table>
+
+<h3>Phase B — Start sync &amp; poll</h3>
+<table>
+  <tr><th>Step</th><th>Name</th><th>File</th><th>Function</th><th>Input → Output</th></tr>
+  <tr><td>B1</td><td>Start sync</td><td><code>digibat/hooks/useDigibatSync.ts</code></td><td><code>triggerSync()</code></td><td><code>startDigibatSync()</code> → begin 1.5&nbsp;s status polling</td></tr>
+  <tr><td>B2</td><td>Conflict guard</td><td><code>routers/digibat.py</code></td><td><code>_running_collection_ids()</code></td><td>Conflict check and run-row INSERT are performed atomically in the same transaction — TOCTOU-safe. Overlapping <code>running</code> collections → HTTP <code>409</code> (<code>DigibatSyncConflictError</code>) with human-readable conflict list.</td></tr>
+  <tr><td>B3</td><td>Enqueue run</td><td><code>digibat/provenance.py</code></td><td><code>start_sync_run()</code></td><td>INSERT <code>digibat_sync_run</code> with <code>status='running'</code>, <code>collection_ids_json</code>, <code>started_at</code></td></tr>
+  <tr><td>B4</td><td>Background worker</td><td><code>routers/digibat.py</code></td><td><code>_run_sync_task()</code></td><td>Builds <code>DigibatSyncOptions</code> (collectionIds, selectedRefcodes, maxItems, dryRun, fullResync, includeCycling, verbose) → <code>sync_collections()</code></td></tr>
+  <tr><td>B5</td><td>Status poll</td><td><code>useDigibatSync.ts</code></td><td><code>refreshStatus()</code></td><td><code>status=done</code> → <code>triggerDataRefresh()</code> invalidates dashboard queries; polling stops automatically</td></tr>
+</table>
+
+<h3>Phase C — Per-collection import</h3>
+<table>
+  <tr><th>Step</th><th>Name</th><th>File</th><th>Function</th><th>Input → Output</th></tr>
+  <tr><td>C1</td><td>Sync driver</td><td><code>digibat/sync_service.py</code></td><td><code>sync_collections()</code></td><td>For each collection id → <code>import_collection()</code>; <code>finish_sync_run()</code> on completion</td></tr>
+  <tr><td>C2</td><td>Fetch item</td><td><code>sync_service.py</code></td><td><code>client.get_json("/api/items/{refcode}")</code></td><td>Item metadata + file list + BDF blocks (<code>blocks_obj</code>)</td></tr>
+  <tr><td>C3</td><td>Metadata row</td><td><code>sync_service.py</code></td><td><code>metadata_row_from_item()</code> → <code>CellMetadata.from_dict()</code></td><td>HTML plan table + electrode fields → cell metadata (cathode, anode, electrolyte, mass, etc.)</td></tr>
+  <tr><td>C4</td><td>Upsert cell</td><td><code>compute/db/pg_backend.py</code></td><td><code>PostgresBackend.upsert_cell()</code></td><td><code>Cell(metadata=…)</code> → <code>cell</code> row; if upstream display name changed, <code>rename_cell_id()</code> cascades the new id through <code>cell</code>, <code>dataset</code>, <code>digibat_cell_map</code>, and <code>digibat_file_map</code></td></tr>
+  <tr><td>C5</td><td>Cell map</td><td><code>digibat/provenance.py</code></td><td><code>upsert_cell_source()</code></td><td>Stamps <code>cell.source_system='digibat'</code>, <code>source_refcode</code>, <code>source_item_id</code>, <code>last_seen_at</code>; upserts <code>digibat_cell_map</code> row</td></tr>
+  <tr><td>C5b</td><td>Refcode lookup</td><td><code>digibat/provenance.py</code></td><td><code>lookup_cell_id_by_refcode()</code></td><td>Resolves stable upstream refcode to local <code>cell_id</code> across upstream renames; returns <code>None</code> on first import</td></tr>
+  <tr><td>C6</td><td>File candidates</td><td><code>sync_service.py</code></td><td><code>item_file_candidates()</code></td><td>Native exports (.xlsx/.xls/.csv/.mpt/.mpr) + BDF cycle blocks → <code>FileCandidate[]</code></td></tr>
+  <tr><td>C7</td><td>Incremental skip</td><td><code>sync_service.py</code></td><td><code>get_previous_source_version()</code></td><td>Unchanged <code>source_version</code> → skip download (unless <code>fullResync=true</code>)</td></tr>
+</table>
+
+<h3>Phase D — Download &amp; ingest (shared with upload)</h3>
+<table>
+  <tr><th>Step</th><th>Name</th><th>File</th><th>Function</th><th>Input → Output</th></tr>
+  <tr><td>D1</td><td>HTTP client</td><td><code>digibat/client.py</code></td><td><code>DigibatClient.download()</code></td><td>File URL → bytes + content-type; 120&nbsp;s minimum timeout; guards HTML error pages</td></tr>
+  <tr><td>D2</td><td>Temp staging</td><td><code>sync_service.py</code></td><td><code>tempfile.NamedTemporaryFile</code></td><td>Bytes → temp path(s); continuation groups may be multi-file</td></tr>
+  <tr><td>D3</td><td>Ingest</td><td><code>cellseer/ingest.py</code></td><td><code>ingest_cycling_file(paths, db, cell_id=…)</code></td><td>Same loader stack as <a href="ingestion-pipeline.html">browser upload</a> — detect reader, compute dQ/dV, <code>cell.save()</code></td></tr>
+  <tr><td>D4</td><td>Parquet</td><td><code>dataset_store.py</code></td><td><code>write_dataset_parquet()</code></td><td><code>data_lake/{project}/{cell_id}/cycling.parquet</code> (+ derived datasets); written via Polars with lz4 compression</td></tr>
+  <tr><td>D5</td><td>File map</td><td><code>digibat/provenance.py</code></td><td><code>upsert_file_map()</code>, <code>upsert_dataset_source()</code></td><td>Track <code>source_file_id</code>, <code>source_version</code>, status <code>done</code> | <code>error</code>, <code>last_error</code></td></tr>
+  <tr><td>D6</td><td>Tombstones</td><td><code>digibat/provenance.py</code></td><td><code>soft_delete_missing_files()</code>, <code>soft_delete_stale_cells()</code></td><td>Full collection sweep sets <code>deleted_at</code> on files/cells absent upstream. Partial syncs (<code>selectedRefcodes</code> covers a subset) do <em>not</em> soft-delete unselected cells to avoid false tombstoning.</td></tr>
+</table>
+
+<h2>Soft-delete / purge lifecycle</h2>
+<p>Deletion is two-phase:</p>
+<ol>
+  <li><strong>Soft-delete (phase 1):</strong> <code>deleted_at</code> is stamped on stale cells, files, and datasets at the end of each full sweep, or immediately when a file disappears from the upstream item. Records remain queryable but are excluded from normal views.</li>
+  <li><strong>Hard-delete / purge (phase 2):</strong> <code>purge_soft_deleted()</code> in <code>provenance.py</code> runs explicitly via CLI flag <code>--purge</code> (or a future admin endpoint). Configurable age cutoff defaults to 30 days. Purge order: dataset rows (local Parquet files unlinked first) → <code>digibat_file_map</code> rows → cell rows (cascades to <code>digibat_cell_map</code>).</li>
+</ol>
+
+<h2>Convergence with browser upload</h2>
+<p>DIGIBAT sync never writes a parallel storage format. After <code>ingest_cycling_file</code>:</p>
+<ul>
+  <li><code>cell</code> and <code>dataset</code> rows match the upload path layout.</li>
+  <li>Parquet files land under the same <code>data_lake/{project}/{cell_id}/</code> template.</li>
+  <li>Dashboard hooks (<code>useCellRecordIndexQuery</code>, <code>useRatePerformanceQuery</code>) see new data after <code>triggerDataRefresh()</code> — no DIGIBAT-specific query layer.</li>
+</ul>
+
+<h2>CLI alternate entry</h2>
+<p><code>backend/scripts/sync_digibat.py</code> (and <code>sync_service.run_sync_cli()</code>) call <code>sync_collections()</code> directly without the HTTP router — useful for cron/ops. The CLI creates its own <code>digibat_sync_run</code> row when no <code>run_id</code> is passed. The run history (last 20 runs) is also accessible via <code>GET /api/projects/{project_id}/digibat/runs</code>.</p>
+
+<div class="pager">
+  <a href="ingestion-pipeline.html"><span class="dir">&larr; Previous</span><span class="ttl">Ingestion pipeline</span></a>
+  <a class="next" href="protocol-attachment.html"><span class="dir">Next &rarr;</span><span class="ttl">Protocol attachment</span></a>
+</div>
+</div>
+</main>
+</div>
+
+<footer class="site">CellSeer repository docs</footer><script src="site-links.js"></script>
+</body>
+</html>

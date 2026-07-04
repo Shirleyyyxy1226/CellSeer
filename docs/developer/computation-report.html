@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Computation report — CellSeer repo docs</title>
+<link rel="stylesheet" href="styles.css?v=1783150572">
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script src="mermaid-init.js"></script>
+<script src="mermaid-lightbox.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <a class="logo" href="index.html"><img src="assets/cellseer.svg" alt="CellSeer"> CellSeer repo</a>
+  <span class="spacer"></span>
+  <a class="ghlink cross-site" href="../index.html">User guide</a>
+</header>
+
+<div class="shell">
+<aside class="sidebar">
+  <div class="group">Start</div>
+  <a href="index.html">Home</a>
+  <a href="overview.html">Overview</a>
+  <a href="structure.html">Repository structure</a>
+  <div class="group">Build</div>
+  <a href="architecture.html">Architecture</a>
+  <a href="features.html">Features overview</a>
+  <a href="dashboard-guide.html">Dashboard &amp; plot guide</a>
+  <a href="design.html">Design language</a>
+  <div class="group">Data</div>
+  <a href="ingestion-pipeline.html">Ingestion pipeline</a>
+  <a href="digibat-sync.html">DIGIBAT sync</a>
+  <a href="protocol-attachment.html">Protocol attachment</a>
+  <a href="data-model.html">Data model</a>
+  <a href="api.html">REST API</a>
+  <div class="group">Analytics</div>
+  <a href="master-plot-metrics.html">Master Plot metrics</a>
+  <a href="computation-report.html" class="active">Computation report</a>
+  <div class="group">Run</div>
+  <a href="deployment.html">Deployment</a>
+  <a href="dependencies.html">Dependencies</a>
+  <div class="group">External</div>
+  <a href="../index.html" class="ext">User guide</a>
+</aside>
+
+<main>
+<div class="content">
+<h1>Computation report</h1>
+<p class="lede">Formulas and methods for CellSeer analytical computations — traced from source. Gaps stated where the repo lacks primary literature.</p>
+
+<h2>1. Executive summary</h2>
+<p>CellSeer ingests cycler exports → Parquet + PostgreSQL, then computes per-cycle capacity, differential curves (dQ/dV, dV/dQ), campaign scalars (Master Plot), and plot traces (GCD, rate, differential).</p>
+<ul>
+  <li><strong>Protocol-gated metrics</strong>: CE, retention, and dQ/dV peak shift show "needs a protocol" or "Coming soon" in the UI</li>
+  <li><strong>Declared gaps</strong>: no cathode mass → no specific capacity (not interpolated)</li>
+  <li><strong>Protocol segmentation</strong>: C-rate labels from attached protocol or ingest metadata</li>
+  <li><strong>Replicate stats</strong>: condition cohorts carry mean, SD, CV%, t-based 95% CI on frontend</li>
+  <li><strong>Server-side overview</strong>: scalars in Python (<code>masterplot/overview.py</code>); client adapts via <code>summariesFromOverview</code></li>
+</ul>
+
+<h2>2. Computation pipeline overview</h2>
+<div class="mermaid-wrap mermaid-wrap--wide">
+<p class="caption">Raw data → loaders → derived metrics → dashboard views</p>
+<pre class="mermaid">
+flowchart TB
+  subgraph ingest["Ingest"]
+    UP["Upload / DIGIBAT sync"]
+    READ["PyProBE cycler readers"]
+    PQ["Parquet data lake"]
+    SQL["PostgreSQL cell + dataset rows"]
+  end
+
+  subgraph derive["Derived at ingest"]
+    CS["Per-cycle capacity summary"]
+    DIFF["dQ/dV + dV/dQ per cycle"]
+  end
+
+  subgraph api["API payloads"]
+    RP["GET /api/rate-performance"]
+    CR["GET /api/cell-record"]
+    OV["GET /api/master-plot/overview"]
+    DIF["GET /api/differential"]
+  end
+
+  subgraph client["Browser computation"]
+    ADAPT["summariesFromOverview · aggregate.ts"]
+    COND["groupConditions + computeCondStats"]
+    RPA["buildTraces · ratePerfAggregation.ts"]
+    CVIZ["@/charts plotting"]
+  end
+
+  subgraph views["Dashboards"]
+    MP["Master Plot overview"]
+    RATE["Rate performance"]
+    GCD["GCD plot"]
+    DQ["dQ/dV / dV/dQ"]
+    TREE["Hierarchy tree"]
+  end
+
+  UP --> READ --> PQ
+  READ --> SQL
+  PQ --> CS
+  PQ --> DIFF
+  CS --> RP
+  CS --> OV
+  DIFF --> DIF
+  PQ --> CR
+  OV --> ADAPT --> COND --> MP
+  RP --> RPA --> RATE
+  CR --> CVIZ --> GCD
+  DIF --> CVIZ --> DQ
+  SQL --> TREE
+</pre>
+</div>
+
+<h2>3. Computation inventory</h2>
+<table>
+  <tr>
+    <th>Metric / analysis</th>
+    <th>Where computed</th>
+    <th>Input data</th>
+    <th>Method summary</th>
+    <th>Reference</th>
+  </tr>
+  <tr>
+    <td>Per-cycle charge / discharge capacity</td>
+    <td>Python: <code>routers/cells/</code> (<code>_cycle_capacity_summary</code>), <code>backend/compute/analysis/cycling/summary.py</code></td>
+    <td>Parquet: <code>Cycle</code>, <code>Current [A]</code>, <code>Capacity [Ah]</code></td>
+    <td>Per cycle: capacity range on rows where current &gt; threshold (charge) or &lt; −threshold (discharge). Converted Ah → mAh (×1000) in API.</td>
+    <td><em>Conventional</em> cycler summary practice</td>
+  </tr>
+  <tr>
+    <td>Specific capacity (mAh/g)</td>
+    <td>Python: <code>_build_rate_payload_for_cell</code></td>
+    <td>Discharge mAh, <code>cell.cathode_mass</code> (g)</td>
+    <td>Q<sub>spec</sub> = Q<sub>dch</sub> / m<sub>cathode</sub>. Omitted when mass missing or ≤ 0.</td>
+    <td><em>Conventional</em> gravimetric normalisation</td>
+  </tr>
+  <tr>
+    <td>Coulombic efficiency (per cycle)</td>
+    <td>Python: <code>cycle_summary</code></td>
+    <td>Charge and discharge capacity per cycle</td>
+    <td>CE = Q<sub>dch</sub> / Q<sub>chg</sub> (dimensionless 0–1 in library; ×100 % in UI)</td>
+    <td><em>Conventional</em> battery testing</td>
+  </tr>
+  <tr>
+    <td>SOH charge / discharge [%]</td>
+    <td>Python: <code>cycle_summary</code></td>
+    <td>Per-cycle capacities</td>
+    <td>Capacity / cycle-1 capacity × 100</td>
+    <td><em>Conventional</em> state-of-health normalisation</td>
+  </tr>
+</table>
+<p>Master Plot overview metrics (peak capacity, protocol-gated CE/retention, condition stats, etc.) are catalogued in <a href="master-plot-metrics.html">Master Plot metrics</a> — not duplicated here.</p>
+<table>
+  <tr>
+    <th>Metric / analysis</th>
+    <th>Where computed</th>
+    <th>Input data</th>
+    <th>Method summary</th>
+    <th>Reference</th>
+  </tr>
+  <tr>
+    <td>Condition mean, SD, CV, 95% CI</td>
+    <td>TS: <code>conditions.ts</code>; Python: <code>compute_cond_stat</code></td>
+    <td>Replicate CellSummary values per condition</td>
+    <td>Mean; population SD (÷ n) across replicates; CV% (requires n ≥ 2 and mean ≠ 0); SEM = sample SD (÷ (n−1)) / √n; 95% CI half-width = t-critical × SEM. t-table: exact df for df ≤ 30; 2.0 for df 31–60; 1.96 for df &gt; 60.</td>
+    <td>Standard statistics; t table in <code>stats.ts</code></td>
+  </tr>
+  <tr>
+    <td>dQ/dV (incremental capacity)</td>
+    <td>Python ingest: <code>differentiation.py</code>; runtime/on-the-fly: <code>routers/cells/differential.py</code>, <code>cellseer/src/cellseer/compute.py</code>; plots: <code>frontend/src/charts/plotting/dqdv.ts</code></td>
+    <td>Per-cycle V, Q, I</td>
+    <td>Default <code>method="lean"</code> (PyProBE LEAN + bin protection, <code>lean_target_bins=180</code>, 5-point kernel). Alternatives: <code>navani</code> (Savitzky–Golay + spline), <code>raw</code> (uniform grid + <code>numpy.gradient</code>, <code>n_bins=1000</code>). Frontend re-interpolates to ~150 points for smooth 2D/3D curves.</td>
+    <td>LEAN: Feng et al. 2020 via PyProBE; conventional ICA</td>
+  </tr>
+  <tr>
+    <td>dV/dQ (differential voltage)</td>
+    <td>Same stack as dQ/dV</td>
+    <td>Per-cycle Q, V</td>
+    <td>Same methods as dQ/dV with capacity as the binned axis for LEAN</td>
+    <td>Conventional DVA; LEAN default as above</td>
+  </tr>
+  <tr>
+    <td>Peak detection (dQ/dV UI)</td>
+    <td>TS: <code>dqdv.ts</code>, <code>dvdq.ts</code> (<code>findPeak</code>)</td>
+    <td>Precomputed differential arrays</td>
+    <td>argmax of the y-array per cycle (not a peak-finding library). Used for diamond peak markers and 2D-mode 'baseline'/'range' overlays.</td>
+    <td>CellSeer visual aid; not a published peak-tracking algorithm</td>
+  </tr>
+  <tr>
+    <td>GCD V vs Q</td>
+    <td>TS: <code>frontend/src/charts/plotting/gcd.ts</code>; Python: <code>cellseer/src/cellseer/gcd.py</code></td>
+    <td>Per-cycle V, Q, I</td>
+    <td>Split charge/discharge by current sign (positive or absent = charge; negative = discharge); Ah→mAh; optional ÷ cathode mass; discharge x = q<sub>max</sub> − q (relative capacity from 0); charge x offset from q<sub>min</sub></td>
+    <td><em>Conventional</em> galvanostatic curve plotting</td>
+  </tr>
+  <tr>
+    <td>Rate performance aggregation</td>
+    <td>TS: <code>ratePerfAggregation.ts</code></td>
+    <td><code>/api/rate-performance</code> cells</td>
+    <td>Group by hierarchy field; per-cycle <strong>arithmetic mean</strong>; asymmetric error bars = distance to min/max among replicates (not SEM)</td>
+    <td><em>Conventional</em> cohort averaging</td>
+  </tr>
+  <tr>
+    <td>Hierarchy column analysis</td>
+    <td>Python: <code>tree_utils.analyse_columns</code></td>
+    <td>Metadata CSV / DB rows</td>
+    <td>Cardinality, coverage, numeric detection; heuristic hierarchy column ordering; tree build — not inferential statistics</td>
+    <td>CellSeer metadata UX algorithm</td>
+  </tr>
+</table>
+
+<h2>4. Domain sections</h2>
+
+<h3>4.1 Cycling &amp; capacity metrics</h3>
+
+<h4>Cycle indexing</h4>
+<p>Parquet cycling data uses a <code>Cycle</code> column (from cycler export or inferred from <code>Step</code> / <code>Event</code> via <code>_prepare_cycling_df</code>). Per-cycle summaries group by this index.</p>
+
+<h4>Capacity</h4>
+<table>
+  <tr><th>Quantity</th><th>Formula / rule</th><th>Units</th><th>Edge cases</th></tr>
+  <tr>
+    <td>Discharge capacity per cycle</td>
+    <td>max(Capacity) − min(Capacity) on rows with I &lt; −ε</td>
+    <td>mAh in API (from Ah × 1000)</td>
+    <td>Zero or missing current → row excluded from charge/discharge buckets</td>
+  </tr>
+  <tr>
+    <td>Specific capacity</td>
+    <td>Q<sub>dch</sub> / m<sub>cathode</sub></td>
+    <td>mAh/g</td>
+    <td>Null when cathode mass absent — common in DIGIBAT exports</td>
+  </tr>
+  <tr>
+    <td>Peak capacity (overview)</td>
+    <td>max(positive finite cycle capacities) — specific series if non-empty, else raw discharge mAh</td>
+    <td>mAh or mAh/g</td>
+    <td>Zero/negative capacities dropped before max</td>
+  </tr>
+  <tr>
+    <td>Capacity throughput</td>
+    <td>Cumulative Σ|ΔQ| per cycle (<code>cycle_summary</code> only)</td>
+    <td>Ah</td>
+    <td>Exposed via cycle-summary API, not Master Plot overview</td>
+  </tr>
+  <tr>
+    <td>Cycle count</td>
+    <td>Count of finite, positive entries in <code>capacitySeries</code> (specificCapacityMahG series if non-empty, else dischargeCapacityMah series)</td>
+    <td>unitless</td>
+    <td>Returns null if cycleCount == 0</td>
+  </tr>
+</table>
+
+<p><strong>Capacity basis fallback:</strong> non-empty <code>specificCapacityMahG</code> series → use it; else raw mAh. <code>capacityBasis</code> on each row.</p>
+<p><strong>Energy</strong> not computed — capacity metrics only.</p>
+
+<h4>Coulombic efficiency</h4>
+<table>
+  <tr><th>Context</th><th>Definition</th><th>Notes</th></tr>
+  <tr>
+    <td><code>cycle_summary</code></td>
+    <td>Q<sub>dch</sub> / Q<sub>chg</sub></td>
+    <td>0–1 ratio in Polars result</td>
+  </tr>
+  <tr>
+    <td>Master Plot overview CE</td>
+    <td>Protocol-gated</td>
+    <td>Not yet computed in overview; UI shows "needs a protocol" / "Coming soon"</td>
+  </tr>
+</table>
+
+<h3>4.2 Rate performance</h3>
+<p><strong>Backend</strong> (<code>GET /api/rate-performance</code>): per-cell aligned arrays — cycles, discharge/charge mAh, optional specific mAh/g, optional C-rates and protocol segments.</p>
+<p><strong>C-rate:</strong> protocol segments map cycle index → C-rate; open-ended segments extend to max cycle.</p>
+<p><strong>Frontend</strong> (<code>ratePerfAggregation.ts</code>): group by hierarchy level; single cell = raw series; multiple = cycle-aligned mean with min–max whiskers (not SEM).</p>
+
+<h3>4.3 Differential analysis (dQ/dV, dV/dQ)</h3>
+<p>ICA (dQ/dV vs V) and DVA (dV/dQ vs Q). Ingest + on-the-fly API share:</p>
+<ol>
+  <li>Isolate charge/discharge by current sign (≥30 points for LEAN)</li>
+  <li>Uniform capacity grid; LEAN bins (~180) with bin protection</li>
+  <li>5-point LEAN kernel (Feng et al. / PyProBE); self-repair on blow-up</li>
+  <li>Alternatives: <code>navani</code> (Savitzky–Golay + spline) or <code>raw</code> (1000-point grid + <code>numpy.gradient</code>)</li>
+</ol>
+
+<table>
+  <tr><th>Implementation</th><th>Default parameters</th><th>Output columns</th></tr>
+  <tr>
+    <td><code>backend/compute/analysis/cycling/differentiation.py</code></td>
+    <td><code>method="lean"</code> (default), <code>lean_target_bins=180</code>, 5-point <code>_LEAN_KERNEL</code>. Also <code>navani</code>, <code>raw</code> (<code>n_bins=1000</code>).</td>
+    <td><code>dQ/dV [Ah/V]</code>, <code>dV/dQ [V/Ah]</code></td>
+  </tr>
+  <tr>
+    <td><code>cellseer/src/cellseer/compute.py</code></td>
+    <td>Mirrors backend LEAN (<code>target_bins=180</code>); optional navani/raw paths</td>
+    <td>Stored as mAh V⁻¹ in frontend plots (unit scaling at display)</td>
+  </tr>
+  <tr>
+    <td><code>frontend/src/charts/plotting/dqdv.ts</code> / <code>dvdq.ts</code></td>
+    <td>Visualisation only — reads precomputed or on-the-fly API payload. ~150 interpolation points in <code>useDifferentialData</code> for smooth curves.</td>
+    <td>Peak = argmax of curve (<code>findPeak</code>); 2D and 3D Plotly figures</td>
+  </tr>
+</table>
+
+<h4>3D surface views</h4>
+<p>One <code>scatter3d</code> line per cycle. dQ/dV: X=V, Y=cycle, Z=dQ/dV; dV/dQ: X=Q, Y=cycle, Z=dV/dQ. Cycle colour via <code>cycleFadeColor</code>.</p>
+<p>Camera presets (Profile / Evolution), wheel isolation, resize handle — see <a href="dashboard-guide.html#surface3d">Surface3dPlot</a>.</p>
+
+<h4>2D side panels</h4>
+<p>Cycle slider (defaults to latest); Profile = baseline + optional pinned refs; snaps to nearest cycle if typed value missing.</p>
+
+<h3>4.4 Master Plot metrics</h3>
+
+<h4>Condition grouping</h4>
+<p>Key = <code>cathode|separatorType|spacerMm</code> (em dash when spacer null). Same key in Python uses JS-compatible number stringification for spacer values.</p>
+
+<h4>Cohort statistics</h4>
+<table>
+  <tr><th>Statistic</th><th>Definition</th><th>Used for</th></tr>
+  <tr><td>Mean</td><td>Arithmetic mean over replicates with finite metric values</td><td>Heatmap, ranking</td></tr>
+  <tr><td>SD (whisker)</td><td>Population SD: √(Σ(x−μ)²/n)</td><td>Replicate spread in ranking view</td></tr>
+  <tr><td>SEM / CI half-width</td><td>Sample SD (√(Σ(x−μ)²/(n−1))); SEM = sample SD / √n; 95% CI half-width = t-critical × SEM. t-critical: exact t-table for df ≤ 30; 2.0 for df 31–60; 1.96 for df &gt; 60.</td><td>Uncertainty of mean (distinct from SD whisker)</td></tr>
+  <tr><td>CV%</td><td>|pop SD| / |mean| × 100 (requires n ≥ 2 and mean ≠ 0)</td><td>High scatter flag when CV &gt; 15% (<code>HIGH_CV_PCT</code>)</td></tr>
+</table>
+
+<h4>Colour scheme</h4>
+<p>DJB2 hash of cathode name — see <a href="dashboard-guide.html#colour-system">Colour system</a>.</p>
+
+<h4>Correlation methods</h4>
+<p><strong>Removed.</strong> No correlation matrix in current build.</p>
+
+<h4>Client vs server overview</h4>
+<p><code>GET /api/master-plot/overview</code> → <code>build_overview</code> → <code>summariesFromOverview</code>. <code>computeCondStats</code> client-side. Tests: <code>test_master_plot_overview.py</code>.</p>
+
+<h3>4.5 Hierarchy analysis</h3>
+
+<p><code>POST /api/hierarchy/analyse</code> does <strong>not</strong> compute battery metrics. It:</p>
+<ul>
+  <li>Parses metadata CSV text.</li>
+  <li>Profiles each column (cardinality, coverage, numeric vs categorical, notes/replicate keywords).</li>
+  <li>Selects up to <code>maxLevels</code> hierarchy columns via heuristics (exclude row-id, leaf label, flag columns).</li>
+  <li>Builds a tree JSON, colour maps, and path→colour assignments for the mindmap UI.</li>
+</ul>
+<p><code>GET /api/hierarchy</code> runs the same pipeline on live PostgreSQL <code>cell</code> metadata for the active project.</p>
+
+<h3>4.6 GCD plots</h3>
+<p>From <code>/api/cell-record/{id}</code>; mirrors <code>cellseer/gcd.py</code>:</p>
+<ul>
+  <li>Discharge x from 0 (relative to q<sub>max</sub>); charge from q<sub>min</sub></li>
+  <li>Cumulative mode chains segments along x</li>
+  <li>Downsample: max 2500 points/trace (stride)</li>
+  <li>Specific capacity when <code>cathodeMassG</code> present</li>
+  <li>Per-cycle colour via <code>cellCycleColor</code>; multi-cell uses dash/symbol discriminators</li>
+</ul>
+
+<h2>5. References</h2>
+
+<h3>Named in repository code</h3>
+<table>
+  <tr><th>Method / tool</th><th>Where cited</th></tr>
+  <tr>
+    <td>Iglewicz–Hoaglin modified Z-score (MAD-based)</td>
+    <td><code>stats.ts</code></td>
+  </tr>
+  <tr>
+    <td>Savitzky–Golay smoothing</td>
+    <td><code>differentiation.py</code>, <code>numerical.py</code></td>
+  </tr>
+  <tr>
+    <td>PyProBE / PyProBE-Data</td>
+    <td>Cycler readers</td>
+  </tr>
+  <tr>
+    <td>LEAN differentiation (optional path)</td>
+    <td><code>differentiation.py</code></td>
+  </tr>
+</table>
+
+<h3>Conventional methods</h3>
+<ul>
+  <li>Coulombic efficiency as discharge/charge capacity ratio.</li>
+  <li>ICA (dQ/dV) and DVA (dV/dQ) as standard lithium-ion diagnostic plots.</li>
+  <li>SOH normalised to first cycle capacity.</li>
+  <li>GCD voltage vs capacity with per-cycle normalisation.</li>
+</ul>
+
+<h2>6. Validation &amp; parity</h2>
+<p>Quick checks: <code>cd frontend &amp;&amp; npx vitest run</code>, <code>pytest cellseer/tests</code>. See <a href="master-plot-metrics.html">Master Plot metrics</a>.</p>
+
+<h3>Scientific correctness (CEL-79)</h3>
+<p>Reference cell CEL-79 (NMC622/Graphite, cathode mass 0.03623&nbsp;g) checked against Neware export sheets and published NMC622 dQ/dV peak positions (Birkl et al.&nbsp;2017, Beatty et al.&nbsp;2024).</p>
+<figure>
+  <a href="../assets/cel79-validation-summary.png" target="_blank">
+    <img src="../assets/cel79-validation-summary.png" alt="CEL-79 validation summary: per-step capacity, GCD curve, and dQ/dV peak vs ground truth" loading="lazy" style="width:100%;border:1px solid var(--line);border-radius:10px;">
+  </a>
+  <figcaption>Three checks on real CEL-79 data: per-step discharge capacity vs the Neware step sheet (max |Δ| = 0.128&nbsp;mAh/g), GCD discharge curve overlay for cycle&nbsp;7 (≤0.003&nbsp;mAh/g), and LEAN dQ/dV peak at 3.640&nbsp;V (literature band 3.63–3.72&nbsp;V).</figcaption>
+</figure>
+
+<div class="pager">
+  <a href="master-plot-metrics.html"><span class="dir">&larr; Previous</span><span class="ttl">Master Plot metrics</span></a>
+</div>
+</div>
+</main>
+</div>
+
+<footer class="site">CellSeer repository docs</footer>
+<script src="site-links.js"></script>
+</body>
+</html>

@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Features overview — CellSeer repo docs</title>
+<link rel="stylesheet" href="styles.css?v=1783150572">
+</head>
+<body>
+<header class="topbar">
+  <a class="logo" href="index.html"><img src="assets/cellseer.svg" alt="CellSeer"> CellSeer repo</a>
+  <span class="spacer"></span>
+  <a class="ghlink cross-site" href="../index.html">User guide</a>
+</header>
+
+<div class="shell">
+<aside class="sidebar">
+  <div class="group">Start</div>
+  <a href="index.html">Home</a>
+  <a href="overview.html">Overview</a>
+  <a href="structure.html">Repository structure</a>
+  <div class="group">Build</div>
+  <a href="architecture.html">Architecture</a>
+  <a href="features.html" class="active">Features overview</a>
+  <a href="dashboard-guide.html">Dashboard &amp; plot guide</a>
+  <a href="design.html">Design language</a>
+  <div class="group">Data</div>
+  <a href="ingestion-pipeline.html">Ingestion pipeline</a>
+  <a href="digibat-sync.html">DIGIBAT sync</a>
+  <a href="protocol-attachment.html">Protocol attachment</a>
+  <a href="data-model.html">Data model</a>
+  <a href="api.html">REST API</a>
+  <div class="group">Analytics</div>
+  <a href="master-plot-metrics.html">Master Plot metrics</a>
+  <a href="computation-report.html">Computation report</a>
+  <div class="group">Run</div>
+  <a href="deployment.html">Deployment</a>
+  <a href="dependencies.html">Dependencies</a>
+  <div class="group">External</div>
+  <a href="../index.html" class="ext">User guide</a>
+</aside>
+
+<main>
+<div class="content">
+<h1>Features overview</h1>
+  <p class="lede">Product capabilities mapped to frontend modules and backend support. Tab-level detail lives in the <a href="dashboard-guide.html">Dashboard &amp; plot guide</a>; user-facing behaviour in <a href="../index.html">User guide</a>.</p>
+
+<h2>Dashboard</h2>
+<p>Six URL-addressable tabs in <code>frontend/src/pages/Index.tsx</code> (<code>?tab=</code>, default <code>tree</code>): hierarchy tree, Master Plot, rate performance, GCD, dV/dQ 3D, dQ/dV 3D. Per-cell scalars always from <code>GET /api/master-plot/overview</code>; per-cycle payloads lazy-loaded when a view needs them.</p>
+<ul>
+  <li><strong>Hierarchy tree</strong> — mindmap filter and selection (<code>features/hierarchy/</code>)</li>
+  <li><strong>Master Plot</strong> — heatmap, ranking, trajectories, parallel coords (<code>features/masterPlot/</code>)</li>
+  <li><strong>Rate performance · GCD · differential 3D</strong> — Plotly dashboards with shared tree sidebar</li>
+</ul>
+<p>Tab registry, hooks, endpoints, and controls: <a href="dashboard-guide.html">Dashboard &amp; plot guide</a>. Campaign metrics: <a href="master-plot-metrics.html">Master Plot metrics</a>.</p>
+
+<h2>Protocols</h2>
+<p>Two-step wizard (<code>AttachProtocolDialog.tsx</code>): SequenceStep → ApplyStep. Segment: <code>{ name?, cycleStart, cycleEnd (null=open), cRate }</code>. Wire via <code>toWireList()</code> (strips React UUID).</p>
+<ul>
+  <li>Templates: <code>GET /api/protocol-templates</code> (builtins read-only; user templates by name)</li>
+  <li>Single: <code>PUT /api/cells/{cell_id}/protocol</code>; bulk: <code>POST /api/cells/protocol/bulk</code></li>
+  <li>Protocol-gated Master Plot metrics → "needs a protocol" / "Coming soon" — <a href="protocol-attachment.html">Protocol attachment</a></li>
+</ul>
+
+<h2>Upload and ingest</h2>
+<ul>
+  <li>Metadata spreadsheets &rarr; cell rows</li>
+  <li>Cycler files (Neware, BioLogic, Arbin) &rarr; Parquet + <code>dataset</code> rows</li>
+  <li>Background tasks tracked in <code>upload_task</code> table</li>
+  <li>Loader manifest at <code>GET /api/upload/loaders</code></li>
+</ul>
+<p>Full pipeline trace: <a href="ingestion-pipeline.html">Ingestion pipeline</a>.</p>
+
+<h2>DIGIBAT sync</h2>
+<p>Admin page at <code>/digibat</code> and API under <code>/api/digibat/*</code> and <code>/api/projects/{id}/digibat/*</code>. CLI alternative: <code>backend/scripts/sync_digibat.py</code>. See <a href="digibat-sync.html">DIGIBAT sync</a> for provenance, soft-delete lifecycle, and schema details.</p>
+
+<h2>Annotations</h2>
+<p>Per-cell notes and JSON tag arrays via <code>/api/cell-annotation/{cell_id}</code>. Separate from metadata <code>notes</code> column on <code>cell</code>.</p>
+
+<h2>Export</h2>
+<p><code>frontend/src/lib/plot/exportUtils.ts</code> bundles Plotly JSON, PNG, CSV, and reproducibility manifests into ZIP downloads from dashboard toolbars.</p>
+
+<h2>Home and projects</h2>
+<ul>
+  <li><code>HomePage</code> — project list, create/delete, DIGIBAT status snippet</li>
+  <li><code>ProjectDetailPage</code> — project summary, readiness, link to dashboard</li>
+</ul>
+
+<div class="pager">
+  <a href="architecture.html"><span class="dir">&larr; Previous</span><span class="ttl">Architecture</span></a>
+  <a class="next" href="dashboard-guide.html"><span class="dir">Next &rarr;</span><span class="ttl">Dashboard &amp; plot guide</span></a>
+</div>
+</div>
+</main>
+</div>
+
+<footer class="site">CellSeer repository docs</footer><script src="site-links.js"></script>
+</body>
+</html>

@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Architecture — CellSeer repo docs</title>
+<link rel="stylesheet" href="styles.css?v=1783150572">
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script src="mermaid-init.js"></script>
+<script src="mermaid-lightbox.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <a class="logo" href="index.html"><img src="assets/cellseer.svg" alt="CellSeer"> CellSeer repo</a>
+  <span class="spacer"></span>
+  <a class="ghlink cross-site" href="../index.html">User guide</a>
+</header>
+
+<div class="shell">
+<aside class="sidebar">
+  <div class="group">Start</div>
+  <a href="index.html">Home</a>
+  <a href="overview.html">Overview</a>
+  <a href="structure.html">Repository structure</a>
+  <div class="group">Build</div>
+  <a href="architecture.html" class="active">Architecture</a>
+  <a href="features.html">Features overview</a>
+  <a href="dashboard-guide.html">Dashboard &amp; plot guide</a>
+  <a href="design.html">Design language</a>
+  <div class="group">Data</div>
+  <a href="ingestion-pipeline.html">Ingestion pipeline</a>
+  <a href="digibat-sync.html">DIGIBAT sync</a>
+  <a href="protocol-attachment.html">Protocol attachment</a>
+  <a href="data-model.html">Data model</a>
+  <a href="api.html">REST API</a>
+  <div class="group">Analytics</div>
+  <a href="master-plot-metrics.html">Master Plot metrics</a>
+  <a href="computation-report.html">Computation report</a>
+  <div class="group">Run</div>
+  <a href="deployment.html">Deployment</a>
+  <a href="dependencies.html">Dependencies</a>
+  <div class="group">External</div>
+  <a href="../index.html" class="ext">User guide</a>
+</aside>
+
+<main>
+<div class="content">
+<h1>Architecture</h1>
+  <p class="lede">How the browser, API, storage, external services, and plotting libraries connect. Deep dives: <a href="ingestion-pipeline.html">Ingestion pipeline</a> (data path) · <a href="dashboard-guide.html">Dashboard &amp; plot guide</a> (UI).</p>
+
+<h2>Positioning</h2>
+<p>CellSeer is an <strong>independent visualisation layer</strong> above laboratory data management (DIGIBAT datalab, shared drives, cycler exports). It maintains its own working store (PostgreSQL + Parquet) and does not replace the source of truth in the datalab or on instrument PCs. Two first-class ingestion paths: <strong>direct upload</strong> (metadata spreadsheet + cycler files) and optional <strong>DIGIBAT API sync</strong>. The tool runs with or without an institutional datalab.</p>
+
+<h2>High-level system</h2>
+<div class="mermaid-wrap mermaid-wrap--wide">
+<p class="caption">Browser ↔ FastAPI ↔ PostgreSQL + Parquet data lake + optional DIGIBAT upstream</p>
+<pre class="mermaid">
+flowchart TB
+  subgraph client["Browser · React SPA"]
+    direction TB
+    UI["Dashboards<br/>&amp; tree"]
+    CVL["@/charts<br/>builders"]
+    PLT["Plotly.js<br/>via PlotlyChart"]
+    UI --> CVL --> PLT
+  end
+
+  subgraph server["Backend · FastAPI"]
+    direction TB
+    API["api.py"]
+    RT["routers/"]
+    CS["backend/compute/"]
+    DS["dataset_store.py"]
+    MP["masterplot/overview.py"]
+    API --> RT
+    RT --> CS
+    RT --> DS
+    RT --> MP
+  end
+
+  subgraph storage["Local storage"]
+    direction LR
+    PG[("PostgreSQL<br/>CELLSEER_DATABASE_URL")]
+    LAKE[("Parquet<br/>data_lake/")]
+  end
+
+  subgraph external["External"]
+    DIG["DIGIBAT /<br/>DataLab API"]
+  end
+
+  subgraph standalone["Standalone · no server"]
+    direction LR
+    CVZ["cellseer<br/>Python pkg"]
+    PYP["Plotly<br/>figures"]
+    CVZ --> PYP
+  end
+
+  client -->|"REST /api/*"| API
+  RT --> PG
+  DS --> LAKE
+  CS --> LAKE
+  RT -->|"sync"| DIG
+  DIG -->|"download"| LAKE
+
+  classDef client fill:#dbeafe,stroke:#1e40af,color:#0f172a
+  classDef server fill:#e0e7ff,stroke:#3730a3,color:#0f172a
+  classDef store fill:#dcfce7,stroke:#15803d,color:#0f172a
+  classDef ext fill:#fef3c7,stroke:#b45309,color:#0f172a
+  classDef alone fill:#f1f5f9,stroke:#64748b,color:#0f172a
+  class UI,CVL,PLT client
+  class API,RT,CS,DS,MP server
+  class PG,LAKE store
+  class DIG ext
+  class CVZ,PYP alone
+</pre>
+</div>
+
+<h2>Production vs development</h2>
+<ul>
+  <li><strong>Development</strong> — Vite dev server (port 8080) proxies <code>/api</code> to uvicorn on port 8000. See <a href="deployment.html">Deployment</a>.</li>
+  <li><strong>Production</strong> — Docker image serves built <code>frontend/dist</code> from FastAPI on port 8000 (single origin). Runbook: <a href="https://github.com/Shirleyyyxy1226/CellSeer/blob/main/DEPLOY.md"><code>DEPLOY.md</code></a>.</li>
+</ul>
+
+<h2>Frontend feature modules</h2>
+<div class="mermaid-wrap mermaid-wrap--wide">
+<p class="caption">React routes and dashboard feature ownership</p>
+<pre class="mermaid">
+flowchart TB
+  App["App.tsx"]
+
+  subgraph routes["Top-level routes"]
+    direction LR
+    R1["/<br/>HomePage"]
+    R2["/digibat<br/>DigibatPage"]
+    R3["/projects/:id<br/>ProjectDetailPage"]
+    R4["/projects/:id/dashboard<br/>Index"]
+    R5["/dashboard<br/>Index alias"]
+  end
+
+  App --> routes
+
+  subgraph shell["Index.tsx · tab shell"]
+    direction TB
+    T1["hierarchy/<br/>HierarchyDashboard"]
+    T2["masterPlot/<br/>ProjectOverviewDashboard"]
+    T3["ratePerformance/<br/>RatePerformanceDashboard"]
+    T4["gcdPlot/<br/>GcdDashboard"]
+    T5["differential/<br/>DvDqDashboard"]
+    T6["differential/<br/>DqDvDashboard"]
+  end
+
+  R4 --> shell
+  R5 --> shell
+
+  subgraph mpviews["Master Plot subviews"]
+    direction LR
+    OV["overview/*<br/>heatmaps · ranking"]
+    PC["ParallelCoordsPanel<br/>parcoords"]
+  end
+
+  T2 --> mpviews
+
+  subgraph ctx["Shared React contexts"]
+    direction LR
+    C1["CellSelection"]
+    C2["ProjectHierarchy"]
+    C3["MasterPlotBridge"]
+    C4["TreeFilter"]
+    C5["ProtocolFilter"]
+  end
+
+  shell --> ctx
+
+  classDef route fill:#dbeafe,stroke:#1e40af,color:#0f172a
+  classDef tab fill:#e0e7ff,stroke:#3730a3,color:#0f172a
+  classDef ctx fill:#fef3c7,stroke:#b45309,color:#0f172a
+  classDef mp fill:#dcfce7,stroke:#15803d,color:#0f172a
+  class R1,R2,R3,R4,R5 route
+  class T1,T2,T3,T4,T5,T6 tab
+  class C1,C2,C3,C4,C5 ctx
+  class OV,PC mp
+</pre>
+</div>
+
+<h2>Backend service structure</h2>
+<div class="mermaid-wrap mermaid-wrap--wide">
+<p class="caption">Request path through middleware, routers, and data modules</p>
+<pre class="mermaid">
+flowchart TB
+  Client["HTTP client<br/>(Browser SPA)"]
+
+  subgraph mw["Middleware"]
+    direction TB
+    CORS["CORS"] --> GZip["GZip"] --> Auth["Bearer auth"]
+  end
+
+  Entry["api.py<br/>FastAPI app"]
+
+  subgraph routers["Routers · backend/routers/"]
+    direction TB
+    subgraph core["Core"]
+      direction TB
+      cells["cells/<br/>record · rate · diff · mutations"]
+      projects["projects.py"]
+      upload["upload.py"]
+      analysis["analysis.py"]
+    end
+    subgraph feat["Features"]
+      direction TB
+      digibat["digibat.py"]
+      master["master_plot.py"]
+      protocols["protocols.py"]
+      annot["annotations.py"]
+    end
+  end
+
+  subgraph data["Data layer"]
+    direction TB
+    PG[("PostgreSQL")]
+    Lake[("Parquet lake")]
+  end
+
+  subgraph modules["Supporting modules"]
+    direction TB
+    subgraph authmod["Auth &amp; config"]
+      direction TB
+      authM["auth.py"]
+      cfg["config.py"]
+    end
+    subgraph persist["Persistence helpers"]
+      direction TB
+      dbM["db.py"]
+      store["dataset_store.py"]
+      mpo["masterplot/overview.py"]
+    end
+    subgraph ingest["Ingest &amp; sync"]
+      direction TB
+      loaders["loaders/ + ingest"]
+      prov["digibat/sync"]
+    end
+  end
+
+  Client --> CORS
+  Auth --> Entry
+  Entry --> routers
+
+  authM -.-> Auth
+  cfg -.-> Entry
+
+  cells --> dbM
+  dbM --> PG
+  cells --> store
+  store --> Lake
+  upload --> loaders
+  loaders --> Lake
+  digibat --> prov
+  prov --> Lake
+  master --> mpo
+  mpo --> Lake
+  projects --> dbM
+  analysis --> store
+
+  classDef mw fill:#dbeafe,stroke:#1e40af,color:#0f172a
+  classDef entry fill:#e0e7ff,stroke:#3730a3,color:#0f172a
+  classDef rt fill:#c7d2fe,stroke:#4338ca,color:#0f172a
+  classDef data fill:#dcfce7,stroke:#15803d,color:#0f172a
+  classDef mod fill:#fef3c7,stroke:#b45309,color:#0f172a
+  class CORS,GZip,Auth mw
+  class Entry entry
+  class cells,projects,upload,analysis,digibat,master,protocols,annot rt
+  class PG,Lake data
+  class authM,cfg,dbM,store,mpo,loaders,prov mod
+</pre>
+</div>
+
+<h2>Typical user workflow</h2>
+<div class="mermaid-wrap mermaid-wrap--seq">
+<p class="caption">From opening the app to inspecting a cell on a plot</p>
+<pre class="mermaid">
+sequenceDiagram
+  autonumber
+  actor User
+  participant Home as HomePage
+  participant API as FastAPI
+  participant DB as PostgreSQL
+  participant Lake as Parquet
+  participant Dash as Dashboard
+  participant Plot as @/charts
+
+  User->>Home: open /
+  Home->>API: GET /api/projects
+  API->>DB: list projects
+  API-->>Home: project list
+
+  User->>Home: select project
+  Home->>Dash: navigate dashboard route
+
+  Dash->>API: GET cell-record-index
+  API->>DB: cell metadata
+  API-->>Dash: index for tree / filters
+
+  User->>Dash: open Master Plot tab
+  Dash->>API: GET master-plot/overview
+  API->>Lake: read cycling parquets
+  API-->>Dash: aggregates + scalars
+
+  User->>Dash: select cell · open GCD tab
+  Dash->>API: GET cell-record/{id}
+  API->>Lake: load cycling dataset
+  API-->>Dash: curve arrays
+  Dash->>Plot: buildGcdFigure()
+  Plot-->>User: interactive GCD chart
+</pre>
+</div>
+
+<h2>Auth layer</h2>
+<p>When <code>CELLSEER_API_TOKEN</code> is set, <code>backend/auth.py</code> requires <code>Authorization: Bearer …</code> on all <code>/api/*</code> paths except <code>/api/health</code>. The SPA captures an initial <code>?token=</code> from the URL into <code>localStorage</code> via <code>frontend/src/lib/api/authToken.ts</code> and attaches it on every fetch through <code>fetchInterceptor.ts</code>.</p>
+
+<h2>Caching strategy</h2>
+<ul>
+  <li><strong>TanStack Query v5</strong> — client-side cache for index, rate-performance, overview, cell records; tab-gated fetches avoid loading multi-MB payloads unnecessarily.</li>
+  <li><strong>Server-side</strong> — cycle-summary cache and parallel Parquet reads in <code>routers/cells/</code>; overview reuses the same cell loader as rate-performance.</li>
+  <li><strong>orjson + gzip</strong> — large JSON responses serialised and compressed in production.</li>
+</ul>
+
+<h2>Frontend rendering patterns</h2>
+<ul>
+  <li><strong>Colour</strong> — <a href="dashboard-guide.html#colour-system">Colour system</a></li>
+  <li><strong>ChartLegend</strong> — inside <code>ResizableChartCard</code> callback, not floating</li>
+  <li><strong>DirectionToggle</strong> — inside chart card header</li>
+  <li><strong>GCD rate panel</strong> — full <code>RatePerformancePlot</code>, not bespoke mini-chart</li>
+  <li><strong>3D camera</strong> — <code>cameraEye</code> + <code>cameraSeq</code> → <code>uirevision</code> forces reapply</li>
+  <li><strong>Resize handle</strong> — render prop into <code>Surface3dPlot</code> plot area</li>
+  <li><strong>Wheel isolation</strong> — <code>{passive: false}</code> on 3D canvas</li>
+</ul>
+
+<div class="pager">
+  <span></span>
+  <a class="next" href="features.html"><span class="dir">Next &rarr;</span><span class="ttl">Features overview</span></a>
+</div>
+</div>
+</main>
+</div>
+
+<footer class="site">CellSeer repository docs</footer><script src="site-links.js"></script>
+</body>
+</html>
