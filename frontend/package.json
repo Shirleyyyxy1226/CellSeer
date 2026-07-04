@@ -1,7 +1,7 @@
 {
   "name": "vite_react_shadcn_ts",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "scripts": {
     "api": "cd .. && .venv/bin/python -m uvicorn backend.api:app --host 127.0.0.1 --port 8000 --reload",

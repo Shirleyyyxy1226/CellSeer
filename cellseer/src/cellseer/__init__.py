@@ -21,4 +21,4 @@ __all__ = [
     "compute_rate_performance",
 ]
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
